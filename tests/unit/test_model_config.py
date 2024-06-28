@@ -1,4 +1,4 @@
-from core.models.config import ServiceConfig
+from models.config import ServiceConfig
 
 from patch import yaml
 

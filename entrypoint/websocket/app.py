@@ -3,7 +3,7 @@ from typing import Dict, Set
 
 import mode
 import uvicorn
-from core.models.service import AppService
+from models.service import AppService
 from starlette.applications import Starlette
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -32,10 +32,10 @@ class SocketService(AppService):
         self.logger.debug(f"A subscriber unsubscribed, total subscribers: {len(self.subscribers)}")
 
     async def publish(self, message: BaseMessage):
-        subscribers = self.session.get(message.trace_id,[])
+        subscribers = self.session.get(message.trace_id, [])
         for subscriber in subscribers:
             try:
-                result = await message.state
+                await message.state
                 await subscriber.send_json(message.model_dump())
             except Exception as e:
                 self.logger.exception(e)
@@ -70,7 +70,7 @@ class SocketService(AppService):
         super().__init__(**kwargs)
 
     async def on_first_start(self) -> None:
-        bus.router.register('*',self.publish)  # ?
+        bus.router.register('*', self.publish)  # ?
 
     async def on_start(self) -> None:
         self.socket_app.add_websocket_route("/", self.websocket_endpoint)
@@ -106,4 +106,3 @@ class SocketService(AppService):
         except Exception as e:
             self.logger.error(e)
         await super(SocketService, self).on_stop()
-

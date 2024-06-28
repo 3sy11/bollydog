@@ -1,6 +1,6 @@
 from typing import Callable, Dict, Set
 
-from core.models.service import AppService
+from models.service import AppService
 
 from models.base import BaseMessage as Message, MessageName
 
@@ -9,7 +9,7 @@ _Domain = 'router'
 
 class Router(AppService):
     domain = _Domain
-    callbacks: Dict[MessageName,Set[Callable]] = {'*':set()}
+    callbacks: Dict[MessageName, Set[Callable]] = {'*': set()}
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -22,14 +22,14 @@ class Router(AppService):
     def production(self, message: Message):
         ...
 
-    def register(self, name:MessageName, callback: Callable):  # < 绑定消息名称
+    def register(self, name: MessageName, callback: Callable):  # < 绑定消息名称
         if name not in self.callbacks:
-            self.callbacks[name] = {callback,}
+            self.callbacks[name] = {callback, }
         else:
             self.callbacks[name].add(callback)
 
-    def unregister(self, name:MessageName,callback: Callable):
-        if name in self.callbacks and  callback in self.callbacks[name]:
+    def unregister(self, name: MessageName, callback: Callable):
+        if name in self.callbacks and callback in self.callbacks[name]:
             self.callbacks[name].remove(callback)
         else:
             self.logger.warning(f'{callback} not in {name}')

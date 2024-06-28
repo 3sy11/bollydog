@@ -2,7 +2,7 @@ import os
 import re
 
 import yaml
-from core.config import IS_DEBUG
+from config import IS_DEBUG
 from mode.utils.imports import smart_import
 
 
@@ -32,7 +32,7 @@ def patch_logging():
         0: 'trace',
     }
 
-    def _log(self,
+    def _log(self,  # # noqa
              level,
              msg,
              args,

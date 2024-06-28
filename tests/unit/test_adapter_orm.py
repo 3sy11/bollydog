@@ -1,5 +1,5 @@
 import pytest
-from core.adapters.orm import SqlAlchemyProtocol, SqlAlchemyAsyncUnitOfWork, map_imperatively
+from adapters.orm import SqlAlchemyProtocol, SqlAlchemyAsyncUnitOfWork, map_imperatively
 from pydantic import Field
 
 from models.base import BaseDomain
@@ -33,9 +33,9 @@ async def test_adapter_orm():
     async with unit_of_work:
         await unit_of_work.create_all()
         protocol = SqlAlchemyProtocol(unit_of_work=unit_of_work)
-        u1 = await protocol.add(Point(x=1, y=2))
+        await protocol.add(Point(x=1, y=2))
         u2 = await protocol.add(Point(x=3, y=4))
-        u3 = await protocol.add(Point(x=1, y=6))
+        await protocol.add(Point(x=1, y=6))
         user_list = await protocol.list(Point)
         assert len(user_list) == 3
         user_list = await protocol.list(Point, x=1)

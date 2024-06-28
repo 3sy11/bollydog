@@ -1,7 +1,7 @@
 from typing import Type, List, Any
 
-from core.adapters.other import NoneProtocol, NoneUnitOfWork
-from core.models.protocol import Protocol, UnitOfWork
+from adapters.other import NoneProtocol, NoneUnitOfWork
+from models.protocol import Protocol, UnitOfWork
 from pydantic import BaseModel, Field, ConfigDict, AnyUrl
 
 from models.base import BaseMessage, ModulePathWithDot

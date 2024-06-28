@@ -5,8 +5,8 @@ from typing import Dict
 
 import fire
 import yaml
-from core.bootstrap import Bootstrap
-from core.models.service import AppService
+from bootstrap import Bootstrap
+from models.service import AppService
 from mode.utils.imports import smart_import
 
 from globals import _protocol_ctx_stack  # # noqa
@@ -39,13 +39,14 @@ def get_apps(config: str) -> Dict[str, AppService]:
 class CLI:
 
     # # 入参如果是字符串，需要做一次转义或者使用单引号，例如：'"str"',"'str'",\"str\"
-    def command(self,
-                app: str,
-                config: str,
-                message: MessageName,
-                handler: ModulePathWithDot = None,
-                **kwargs
-                ):
+    @staticmethod
+    def command(
+            app: str,
+            config: str,
+            message: MessageName,
+            handler: ModulePathWithDot = None,
+            **kwargs
+    ):
         apps = get_apps(config)
         app = apps[app]
         message = MessageManager.messages[message](**kwargs)
@@ -58,13 +59,12 @@ class CLI:
             result = asyncio.run(handler(message, protocol=app.protocol))
             logging.info(result)
 
-    def service(self,
-                config: str,
-                app: str = None,
-                only: str = None,
-                *args,
-                **kwargs
-                ):
+    @staticmethod
+    def service(
+            config: str,
+            app: str = None,
+            only: str = None,
+    ):
         if app and only:
             raise ValueError('only one of app and only can be set')
         config = _load_config(config)
@@ -83,7 +83,8 @@ class CLI:
             worker = Bootstrap(bus)
         raise worker.execute_from_commandline()
 
-    def execute(self, message: ModulePathWithDot, config: str = None, app: str = None):
+    @staticmethod
+    def execute(message: ModulePathWithDot, config: str = None, app: str = None):
         protocol = None
         if config:
             protocol = get_apps(config)[app]

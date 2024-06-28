@@ -5,8 +5,8 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Type, Dict, TypeVar, List
 
 from annotated_types import MaxLen
-from core.config import IS_DEBUG
-from core.models.protocol import UnitOfWork, Protocol
+from config import IS_DEBUG
+from models.protocol import UnitOfWork, Protocol
 from pydantic import AnyUrl
 from pydantic_core import PydanticUndefined
 from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, JSON, Float, Table
@@ -30,9 +30,6 @@ orm_class_mapping: Dict[Type[BaseDomain], Type] = {}
 def map_imperatively(cls: Type[BaseDomain]):
     """
     pydantic model to sqlalchemy model, bind to pydantic model `Config.orm_mapper_registry_class` attribute
-    :param _mapper_registry:
-    :param cls:
-    :return:
     """
     columns = [
         Column('id', Integer, primary_key=True, autoincrement=True),
@@ -88,7 +85,6 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             hide_parameters=not IS_DEBUG,
             pool_pre_ping=True,
             pool_recycle=3600,
-            # poolclass=NullPool,
         )
 
     @asynccontextmanager
@@ -122,7 +118,6 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
 
     async def close_session(self):
         if self.async_scoped_session is not None:
-            # setattr(self.async_scoped_session, 'scopefunc', lambda: True)  # # 释放时没有message会异常
             await self.async_scoped_session.close()
 
     async def create_all(self, metadata=None):
@@ -214,7 +209,7 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
     async def _get(self, cls, *args, **kwargs):
         stmt = select(cls)
         for column, value in kwargs.items():
-            stmt = stmt.where(getattr(cls, column) == value)
+            stmt = stmt.where(getattr(cls, column).is_(value))
         async with self.unit_of_work.context() as session:
             result = await session.execute(stmt)
         return result.scalars().first()
@@ -222,21 +217,21 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
     async def _list(self, cls, *args, **kwargs):
         stmt = select(cls)
         for column, value in kwargs.items():
-            stmt = stmt.where(getattr(cls, column) == value)
+            stmt = stmt.where(getattr(cls, column).is_(value))
         async with self.unit_of_work.context() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
-    async def _update(self, cls, item_id, *args, **kwargs):
-        stmt = update(cls).where(cls.id == item_id)
+    async def _update(self, cls: Table, item_id, *args, **kwargs):
+        stmt = update(cls).where(cls.id.is_(item_id))
         stmt = stmt.values(update_time=time.time() * 1000, **kwargs)
         stmt = stmt.returning(cls)
         async with self.unit_of_work.context() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
-    async def _delete(self, cls, item_id, *args, **kwargs):
-        stmt = delete(cls).where(cls.id == item_id)
+    async def _delete(self, cls: Table, item_id, *args, **kwargs):
+        stmt = delete(cls).where(cls.id.is_(item_id))
         for column, value in kwargs.items():
             stmt = stmt.where(getattr(cls, column) == value)
         stmt = stmt.returning(cls)

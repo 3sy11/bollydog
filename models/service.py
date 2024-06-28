@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from core.models.config import ServiceConfig, default_config
+from models.config import ServiceConfig, default_config
 
 from models.base import BaseService
 from service.message import MessageManager

@@ -4,8 +4,8 @@ pytest-cov
 requests
 pydot
 pydot-ng
-graphviz  # # windows 下需要安装编译好的包，并修改pydot中的Dot.prog路径指向dot.exe
-aiomonitor  # # windows 环境下不支持中的reuse_port，设置monitor.py 中的reuse_port=False,便于调试，实际生产环境中不需要
+graphviz
+aiomonitor
 aiosqlite
 pycli
 ipython

@@ -5,7 +5,7 @@ import uuid
 from functools import partial
 from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set
 
-from core.exception import HandlerTimeOutError, HandlerMaxRetryError
+from exception import HandlerTimeOutError, HandlerMaxRetryError
 from mode.utils.imports import smart_import
 
 from models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
@@ -62,7 +62,6 @@ class _MessageManager(object):
             logger.exception(e)
 
     def task_done_callback(self, task):
-        result = None
         message, future = self.futures[task.get_name()]
         try:
             if not future.cancelled():
@@ -79,10 +78,10 @@ class _MessageManager(object):
             future.set_exception(e)
         finally:
             self.futures.pop(message.iid, None)  # < 序列化然后释放,或独立任务释放
-            logger.info(f'{message.trace_id}|\001\001|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
+            logger.info(f'{message.trace_id}|\001|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
             return message.model_dump()
 
-    def create_tasks(self, message: 'BaseMessage', callback: Callable = None) -> List[asyncio.Task]:
+    def create_tasks(self, message: 'BaseMessage', callback: Callable = None) -> List[asyncio.Task]:  # < callback
         handlers = message.handlers
         if message.name in self.mapping:
             handlers += list(self.mapping[message.name])

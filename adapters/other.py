@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from core.models.protocol import UnitOfWork, Protocol
+from models.protocol import UnitOfWork, Protocol
 
 
 class LogUnitOfWork(UnitOfWork):

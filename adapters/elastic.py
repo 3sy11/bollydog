@@ -3,7 +3,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Union, List
 
-from core.models.protocol import UnitOfWork, Protocol
+from models.protocol import UnitOfWork, Protocol
 from elasticsearch import AsyncElasticsearch
 from pydantic import AnyUrl
 
@@ -69,15 +69,15 @@ class ElasticProtocol(Protocol):
             result.append(await self.update(item=item, index=index))
         return result
 
-    async def get(self, index: str, *args, **kwargs):
+    async def get(self, index: str, **kwargs):
         result = await self.unit_of_work.client.search(index=index, **kwargs)  # < scroll
         return result.body
 
-    async def delete(self, index: str, item_id, *args, **kwargs):
+    async def delete(self, index: str, item_id):
         result = await self.unit_of_work.client.delete(index=index, id=item_id)  # < update sign=0
         return result
 
-    async def list(self, index: str, *args, **kwargs):
+    async def list(self, index: str, **kwargs):
         result = await self.unit_of_work.client.search(index=index, **kwargs)  # < scroll
         return result.body
 

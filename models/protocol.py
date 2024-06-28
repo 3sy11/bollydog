@@ -42,4 +42,3 @@ class Protocol(abc.ABC):
         super().__init__()
         self.events = []
         self.unit_of_work = unit_of_work
-

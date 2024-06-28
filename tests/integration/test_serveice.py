@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 import yaml
-from core.service.model import TaskCount, TaskList
+from service.model import TaskCount, TaskList
 from httpx import AsyncClient, ASGITransport
 from starlette.testclient import TestClient
 
@@ -25,7 +25,7 @@ async def test_run_service():
     async with bus:
         m1 = TaskCount()
         m2 = TaskList()
-        m = await bus.put_message(m1)
+        await bus.put_message(m1)
         # await asyncio.sleep(1)
         r1 = await m1.state
         await bus.put_message(m2)

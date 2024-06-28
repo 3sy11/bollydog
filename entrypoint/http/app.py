@@ -2,7 +2,7 @@ from typing import Type
 
 import mode
 import uvicorn
-from core.models.service import AppService
+from models.service import AppService
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request

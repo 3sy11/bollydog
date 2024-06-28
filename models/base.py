@@ -7,7 +7,7 @@ from functools import lru_cache
 from typing import Dict, Type, List, Any
 
 import mode
-from core.config import MESSAGE_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION
+from config import MESSAGE_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 from pydantic_core import PydanticUndefined
 from typing_extensions import Annotated
@@ -34,8 +34,9 @@ def get_model_name(o) -> str:
     if inspect.isfunction(o):
         return f'{o.__module__}.{o.__name__}'
     elif issubclass(o, BaseModel):
-        if 'name' in o.model_fields and o.model_fields['name'].default and o.model_fields[
-            'name'].default != PydanticUndefined:
+        if 'name' in o.model_fields \
+                and o.model_fields['name'].default \
+                and o.model_fields['name'].default != PydanticUndefined:
             return o.model_fields['name'].default
         else:
             return f'{o.__module__}.{o.__name__}'
