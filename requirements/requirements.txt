@@ -1,0 +1,14 @@
+loguru
+uvicorn
+authlib
+starlette-authentication
+itsdangerous
+sqlalchemy==2.0.13
+greenlet
+mode-streaming==0.4.1  # # services
+fire  # # command line tool
+pyyaml
+py_rete
+redis
+websockets
+pydantic

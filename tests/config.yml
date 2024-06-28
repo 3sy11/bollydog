@@ -1,0 +1,10 @@
+http_service:
+    app: !module entrypoint.http.app.HttpService
+    middlewares:
+        -   middleware: !module starlette.middleware.sessions.SessionMiddleware
+            secret_key: ${BOLLYDOG_HTTP_SERVICE_SECRET_KEY}
+        -   middleware: !module starlette.middleware.authentication.AuthenticationMiddleware
+            backend: !module entrypoint.http.middleware.base_auth_backend
+        -   middleware:  !module entrypoint.http.middleware.ASGIMiddleware
+ws_service:
+    app: !module entrypoint.websocket.app.SocketService
