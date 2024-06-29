@@ -5,16 +5,16 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Type, Dict, TypeVar, List
 
 from annotated_types import MaxLen
-from config import IS_DEBUG
-from models.protocol import UnitOfWork, Protocol
+from bollydog.config import IS_DEBUG
+from bollydog.models.protocol import UnitOfWork, Protocol
 from pydantic import AnyUrl
 from pydantic_core import PydanticUndefined
 from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, JSON, Float, Table
 from sqlalchemy.ext.asyncio import create_async_engine, async_scoped_session, async_sessionmaker
 from sqlalchemy.orm import registry
 
-from globals import message
-from models.base import BaseDomain
+from bollydog.globals import message
+from bollydog.models.base import BaseDomain
 
 annotation_mapping: Dict[Type, Type] = {
     str: String,

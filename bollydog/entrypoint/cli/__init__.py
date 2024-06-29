@@ -5,14 +5,14 @@ from typing import Dict
 
 import fire
 import yaml
-from bootstrap import Bootstrap
-from models.service import AppService
+from bollydog.bootstrap import Bootstrap
+from bollydog.models.service import AppService
 from mode.utils.imports import smart_import
 
-from globals import _protocol_ctx_stack  # # noqa
-from models.base import ModulePathWithDot, MessageName
-from service.app import BusService, maybe_continue
-from service.message import MessageManager
+from bollydog.globals import _protocol_ctx_stack  # # noqa
+from bollydog.models.base import ModulePathWithDot, MessageName
+from bollydog.service.app import BusService, maybe_continue
+from bollydog.service.message import MessageManager
 
 
 def _load_config(config: str) -> Dict:

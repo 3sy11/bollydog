@@ -2,15 +2,15 @@ from typing import Type
 
 import mode
 import uvicorn
-from models.service import AppService
+from bollydog.models.service import AppService
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from globals import bus
-from models.base import BaseMessage
-from service.message import MessageManager
+from bollydog.globals import bus
+from bollydog.models.base import BaseMessage
+from bollydog.service.message import MessageManager
 from .config import (
     SERVICE_DEBUG,
     SERVICE_PORT,

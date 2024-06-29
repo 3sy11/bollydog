@@ -2,18 +2,18 @@ import asyncio
 from typing import Iterable
 
 import mode
-from exception import (
+from bollydog.exception import (
     ServiceRejectException,
     MessageValidationError,
     ServiceMaxSizeOfQueueError,
 )
-from models.config import ServiceConfig
-from models.service import AppService
-from service.router import Router
+from bollydog.models.config import ServiceConfig
+from bollydog.models.service import AppService
+from bollydog.service.router import Router
 
-from globals import _protocol_ctx_stack, _bus_ctx_stack, _message_ctx_stack
-from models.base import BaseMessage as Message
-from service.message import MessageManager
+from bollydog.globals import _protocol_ctx_stack, _bus_ctx_stack, _message_ctx_stack
+from bollydog.models.base import BaseMessage as Message
+from bollydog.service.message import MessageManager
 from .config import service_config, QUEUE_MAX_SIZE
 
 

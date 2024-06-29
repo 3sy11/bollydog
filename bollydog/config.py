@@ -1,6 +1,6 @@
 import os
 
-from utils.base import get_repository_version, get_hostname
+from bollydog.utils.base import get_repository_version, get_hostname
 
 HOSTNAME = get_hostname()
 REPOSITORY_VERSION = get_repository_version()

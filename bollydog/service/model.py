@@ -1,6 +1,6 @@
 from pydantic import Field
 
-from models.base import Command, Event
+from bollydog.models.base import Command, Event
 
 
 class TaskList(Command):

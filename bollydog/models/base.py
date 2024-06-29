@@ -7,12 +7,12 @@ from functools import lru_cache
 from typing import Dict, Type, List, Any
 
 import mode
-from config import MESSAGE_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION
+from bollydog.config import MESSAGE_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 from pydantic_core import PydanticUndefined
 from typing_extensions import Annotated
 
-from globals import message
+from bollydog.globals import message
 
 _DEFAULT_SIGN = 1
 _DELIVERY_COUNT = 0

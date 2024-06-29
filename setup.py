@@ -1,7 +1,8 @@
 from setuptools import setup, find_packages
 
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
+long_description = """
+Bollydog.com
+"""
 
 setup(
     name="bollydog",
@@ -12,7 +13,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/3sy11/bollydog",
-    packages=find_packages(include=['bollydog.core', 'bollydog.entrypoint', 'bollydog']),
+    packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
@@ -31,7 +32,7 @@ setup(
         "mode-streaming==0.4.1",
         "fire==0.5.0",
         "pyyaml==6.0",
-        "websockets=12.0",
+        "websockets==12.0",
         "pydantic==2.5.2",
         "elasticsearch==8.14.0",
 
@@ -54,7 +55,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'bollydog=bollydog.cli',
+            'bollydog=bollydog.cli:main',
         ],
     },
     include_package_data=False,  # 包含包中的所有非代码文件

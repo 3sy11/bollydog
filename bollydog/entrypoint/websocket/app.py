@@ -3,14 +3,14 @@ from typing import Dict, Set
 
 import mode
 import uvicorn
-from models.service import AppService
+from bollydog.models.service import AppService
 from starlette.applications import Starlette
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from entrypoint.websocket.config import SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST
-from globals import bus
-from models.base import BaseMessage, MessageTraceId
-from service.message import MessageManager
+from bollydog.entrypoint.websocket.config import SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST
+from bollydog.globals import bus
+from bollydog.models.base import BaseMessage, MessageTraceId
+from bollydog.service.message import MessageManager
 
 
 class SocketService(AppService):

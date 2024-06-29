@@ -4,7 +4,7 @@ from typing import AsyncGenerator, List
 
 from pydantic import AnyUrl
 
-from models.base import BaseService, BaseMessage
+from bollydog.models.base import BaseService, BaseMessage
 
 
 class UnitOfWork(BaseService, abstract=True):

@@ -1,8 +1,8 @@
 from typing import Callable, Dict, Set
 
-from models.service import AppService
+from bollydog.models.service import AppService
 
-from models.base import BaseMessage as Message, MessageName
+from bollydog.models.base import BaseMessage as Message, MessageName
 
 _Domain = 'router'
 

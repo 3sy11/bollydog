@@ -5,10 +5,10 @@ import uuid
 from functools import partial
 from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set
 
-from exception import HandlerTimeOutError, HandlerMaxRetryError
+from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
 from mode.utils.imports import smart_import
 
-from models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
+from bollydog.models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
 
 logger = logging.getLogger(__name__)
 HandlerName = str

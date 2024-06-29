@@ -1,10 +1,10 @@
 import logging
 from typing import List
 
-from models.config import ServiceConfig, default_config
+from bollydog.models.config import ServiceConfig, default_config
 
-from models.base import BaseService
-from service.message import MessageManager
+from bollydog.models.base import BaseService
+from bollydog.service.message import MessageManager
 
 logger = logging.getLogger(__name__)
 

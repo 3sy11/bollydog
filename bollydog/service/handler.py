@@ -3,7 +3,7 @@ import logging
 
 from mode.utils.imports import smart_import
 
-from globals import message
+from bollydog.globals import message
 from .app import maybe_continue
 from .model import TaskList, TaskCount, TaskDoneE, ContinueMessage
 

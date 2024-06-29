@@ -3,7 +3,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Union, List
 
-from models.protocol import UnitOfWork, Protocol
+from bollydog.models.protocol import UnitOfWork, Protocol
 from elasticsearch import AsyncElasticsearch
 from pydantic import AnyUrl
 

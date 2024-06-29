@@ -2,7 +2,7 @@ import os
 import re
 
 import yaml
-from config import IS_DEBUG
+from bollydog.config import IS_DEBUG
 from mode.utils.imports import smart_import
 
 

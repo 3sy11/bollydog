@@ -1,10 +1,10 @@
 from typing import Type, List, Any
 
-from adapters.other import NoneProtocol, NoneUnitOfWork
-from models.protocol import Protocol, UnitOfWork
+from bollydog.adapters.other import NoneProtocol, NoneUnitOfWork
+from bollydog.models.protocol import Protocol, UnitOfWork
 from pydantic import BaseModel, Field, ConfigDict, AnyUrl
 
-from models.base import BaseMessage, ModulePathWithDot
+from bollydog.models.base import BaseMessage, ModulePathWithDot
 
 
 class UnitOfWorkConfig(BaseModel):

@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from models.protocol import UnitOfWork, Protocol
+from bollydog.models.protocol import UnitOfWork, Protocol
 
 
 class LogUnitOfWork(UnitOfWork):
