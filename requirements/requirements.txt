@@ -1,6 +1,7 @@
 loguru
 uvicorn
 authlib
+aiohttp
 starlette-authentication
 itsdangerous
 sqlalchemy==2.0.13

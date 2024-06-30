@@ -4,10 +4,11 @@ import pathlib
 import socket
 
 logger = logging.getLogger(__name__)
+WORKING_DIR = os.getenv('PWD', __file__)
 
 
-def get_repository_version(path: str = None):  # < tag and version
-    path = os.path.abspath(path) if path else pathlib.Path(__file__)
+def get_repository_version(path: str = WORKING_DIR):  # < tag and version
+    path = pathlib.Path(path)
     while path != pathlib.Path('/'):
         logger.debug(f'get_repository_version: {path.name}')
         _git = path / '.git'
