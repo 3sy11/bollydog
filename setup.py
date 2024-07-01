@@ -35,6 +35,7 @@ setup(
         "websockets==12.0",
         "pydantic==2.5.2",
         "elasticsearch==8.14.0",
+        "aiohttp"
 
     ],
     extras_require={
