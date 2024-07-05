@@ -2,6 +2,7 @@
 
 - [ ] ftr:支持handlers的类
 - [ ] ftr:bollydog service支持exclude
+- [ ] ftr:support Message AsyncIterator
 
 # TODO 按需增加
 
