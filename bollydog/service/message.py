@@ -3,15 +3,27 @@ import inspect
 import logging
 import uuid
 from functools import partial
-from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set
+from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set, AsyncIterator
 
 from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
 from mode.utils.imports import smart_import
 
 from bollydog.models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
+from bollydog.globals import bus
 
 logger = logging.getLogger(__name__)
 HandlerName = str
+
+
+async def maybe_execute_async_generator_tasks(async_generator: AsyncIterator, callback: Callable = None) -> List[
+    asyncio.Task]:
+    async for message in async_generator:
+        if isinstance(message, BaseMessage):
+            tasks = MessageManager.create_tasks(message, callback)
+            if bus:
+                await bus.put_message(message)
+        else:
+            result = message
 
 
 class _MessageManager(object):
