@@ -17,15 +17,6 @@ from bollydog.service.message import MessageManager
 from .config import service_config, QUEUE_MAX_SIZE
 
 
-async def maybe_continue(message, protocol):
-    bus = _bus_ctx_stack.top
-    if bus:
-        await bus.push_message(message)
-    else:
-        for handler in MessageManager.mapping.get(message.name, []):
-            return await MessageManager.handlers[handler](message, protocol=protocol)
-
-
 class BusService(AppService):
     queue: asyncio.Queue
     apps: dict

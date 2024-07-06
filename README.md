@@ -2,7 +2,7 @@
 
 - [ ] ftr:支持handlers的类
 - [ ] ftr:bollydog service支持exclude
-- [ ] ftr:support Message AsyncIterator
+- [X] ftr:support Message AsyncIterator
 
 # TODO 按需增加
 
@@ -57,4 +57,4 @@ BOLLYDOG_WS_SERVICE_LOG_LEVEL
 
  `bollydog command` 实例化一条message并调用对应handler执行  
  `bollydog execute` 执行一条实例化好的message并调用对应的handler执行
- `bollydog service` 启动编排好的各项服务，只有通过服务处理的事件才会被发布，订阅者才能感知
+ `bollydog service` 启动编排好的各项服务，只有通过服务处理的事件才会被发布，订阅者才能感知, 允许protocol为空  

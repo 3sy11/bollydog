@@ -11,7 +11,7 @@ from mode.utils.imports import smart_import
 
 from bollydog.globals import _protocol_ctx_stack  # # noqa
 from bollydog.models.base import ModulePathWithDot, MessageName
-from bollydog.service.app import BusService, maybe_continue
+from bollydog.service.app import BusService
 from bollydog.service.message import MessageManager
 
 
@@ -89,7 +89,8 @@ class CLI:
         if config:
             protocol = get_apps(config)[app]
         message = smart_import(message)
-        return asyncio.run(maybe_continue(message=message, protocol=protocol))
+        tasks = MessageManager.create_tasks(message, protocol)
+        return MessageManager.wait_many(tasks)
 
 
 def main():

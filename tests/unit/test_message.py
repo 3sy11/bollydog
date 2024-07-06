@@ -3,8 +3,8 @@ import logging
 import pytest
 from pydantic import Field
 
-from models.base import Event, BaseMessage
-from service.message import MessageManager
+from bollydog.models.base import Event, BaseMessage
+from bollydog.service.message import MessageManager
 
 logger = logging.getLogger(__name__)
 

@@ -39,13 +39,12 @@ MessageManager.register_handler(RandMovePoint, move_point)
 
 
 @pytest.mark.asyncio
-async def test_handler():
+async def test_async_generator_handler():
     point = Point(x=0, y=0)
     log_point = LogPoint(point=point)
     tasks = MessageManager.create_tasks(log_point)
     for task in tasks:
         await task
-    async for message in move_point(RandMovePoint(point=point)):
-        tasks = MessageManager.create_tasks(message)
-        for task in tasks:
-            await task
+    tasks = MessageManager.create_tasks(RandMovePoint(point=point))
+    for task in tasks:
+        await task

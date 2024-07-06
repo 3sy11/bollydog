@@ -1,12 +1,17 @@
 import pathlib
 
+import sys
+sys.path.append(pathlib.Path(__file__).parent.parent.parent.as_posix())
+print(sys.path)
+
 import pytest
-import yaml
-from service.model import TaskCount, TaskList
+from bollydog.service.model import TaskCount, TaskList
+from bollydog.patch import yaml
+
 from httpx import AsyncClient, ASGITransport
 from starlette.testclient import TestClient
 
-from service.app import BusService
+from bollydog.service.app import BusService
 
 path = pathlib.Path(__file__).parent.parent.joinpath('./config.yml')
 
@@ -36,12 +41,12 @@ async def test_run_service():
         web_service = bus.apps.get('http')
         web_app = web_service.http_app
         async with AsyncClient(transport=ASGITransport(app=web_app), base_url="http://0.0.0.0") as client:
-            r1 = await client.get('/core/service/command/TaskList', timeout=1)
+            r1 = await client.get('/bollydog/service/model/TaskList', timeout=1)
             assert r1.status_code == 200
-            r2 = await client.get('/core/service/command/TaskCount', timeout=1)
+            r2 = await client.get('/bollydog/service/model/TaskCount', timeout=1)
             assert r2.status_code == 200
 
         client = TestClient(bus.apps.get('websocket').socket_app)
         with client.websocket_connect('/') as ws:
-            ws.send_text('{"name":"core.service.command.TaskCount"}')
+            ws.send_text('{"name":"bollydog.service.model.TaskCount"}')
         bus.supervisor = None

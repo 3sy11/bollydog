@@ -1,8 +1,8 @@
 import pytest
-from adapters.orm import SqlAlchemyProtocol, SqlAlchemyAsyncUnitOfWork, map_imperatively
+from bollydog.adapters.orm import SqlAlchemyProtocol, SqlAlchemyAsyncUnitOfWork, map_imperatively
 from pydantic import Field
 
-from models.base import BaseDomain
+from bollydog.models.base import BaseDomain
 
 
 class Point(BaseDomain):

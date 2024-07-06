@@ -9,24 +9,14 @@ from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
 from mode.utils.imports import smart_import
 
 from bollydog.models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
+from bollydog.models.base import BaseService
 from bollydog.globals import bus
 
 logger = logging.getLogger(__name__)
 HandlerName = str
 
 
-async def maybe_execute_async_generator_tasks(async_generator: AsyncIterator, callback: Callable = None) -> List[
-    asyncio.Task]:
-    async for message in async_generator:
-        if isinstance(message, BaseMessage):
-            tasks = MessageManager.create_tasks(message, callback)
-            if bus:
-                await bus.put_message(message)
-        else:
-            result = message
-
-
-class _MessageManager(object):
+class _MessageManager(BaseService):
     messages: Dict[MessageName, Type[BaseMessage]] = {}
     handlers: Dict[MessageName, Callable] = {}
     futures: MutableMapping[MessageId, Tuple[BaseMessage, asyncio.Future]] = {}
@@ -42,6 +32,7 @@ class _MessageManager(object):
         self.handlers[get_model_name(handler)] = handler
 
     def register_handler(self, message: Type[BaseMessage], handler: Callable):
+        assert handler  # < async
         message_name = get_model_name(message)
         self.add_message(message)
         self.add_handler(handler)
@@ -93,23 +84,41 @@ class _MessageManager(object):
             logger.info(f'{message.trace_id}|\001|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
             return message.model_dump()
 
-    def create_tasks(self, message: 'BaseMessage', callback: Callable = None) -> List[asyncio.Task]:  # < callback
+    def create_tasks(self, message: 'BaseMessage', protocol=None, callback: Callable = None) -> List[asyncio.Task]:  # < callback
         handlers = message.handlers
         if message.name in self.mapping:
             handlers += list(self.mapping[message.name])
         if not handlers:
-            logger.warning(f'No handler found for {message.name}')
-            return []
+            logger.debug(f'No handler found for {message.name},nothing will be done')
         handlers = [partial(self.handlers[h], message) for h in handlers]
+        if protocol:
+            handlers = [partial(h, protocol) for h in handlers]
         tasks = []
         # < 根据条件添加过程处理函数：异常处理，重试，超时
         for handler in handlers[::-1]:
-            task = asyncio.create_task(handler(), name=message.iid)
+            coro = handler()
+            if isinstance(coro, AsyncIterator):
+                coro = self.async_generator_task(coro)
+            task = asyncio.create_task(coro, name=message.iid)
             task.add_done_callback(self.task_done_callback)
             tasks.append(task)
             self.futures[message.iid] = (message, message.state)
             message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
         return tasks
 
+    async def async_generator_task(self, async_generator: AsyncIterator, ):
+        result = None
+        async for maybe_message in async_generator:
+            if isinstance(maybe_message, BaseMessage):
+                if bus:
+                    await bus.put_message(maybe_message)
+                else:
+                    tasks = self.create_tasks(maybe_message)
+                    result = await self.wait_many(tasks, timeout=maybe_message.expire_time)
+            else:
+                result = maybe_message
+        else:
+            return result
 
-MessageManager = _MessageManager()
+
+MessageManager = _MessageManager()  # # 不会被start

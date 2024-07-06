@@ -13,7 +13,3 @@ class TaskCount(Command):
 
 class TaskDoneE(Event):
     pass
-
-
-class ContinueMessage(Command):
-    message: str = Field(init=True)
