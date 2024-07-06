@@ -88,10 +88,7 @@ class BusService(AppService):
                 app: AppService = self.apps.get(message.domain)
                 self.logger.info(
                     f'{message.trace_id}|\001\001|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
-                with _protocol_ctx_stack.push(app.protocol):
-                    tasks = MessageManager.create_tasks(message)
-                    if tasks:
-                        await self.wait_many(tasks, timeout=message.expire_time)
+                await MessageManager.execute(message, app.protocol)
                 await self.router.publish(message)
 
     @mode.Service.timer(1)

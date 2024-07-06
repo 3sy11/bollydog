@@ -3,14 +3,14 @@ import inspect
 import logging
 import uuid
 from functools import partial
-from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set, AsyncIterator
+from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set, AsyncIterator, Coroutine
 
 from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
 from mode.utils.imports import smart_import
 
 from bollydog.models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
 from bollydog.models.base import BaseService
-from bollydog.globals import bus
+from bollydog.globals import bus,_protocol_ctx_stack
 
 logger = logging.getLogger(__name__)
 HandlerName = str
@@ -21,6 +21,7 @@ class _MessageManager(BaseService):
     handlers: Dict[MessageName, Callable] = {}
     futures: MutableMapping[MessageId, Tuple[BaseMessage, asyncio.Future]] = {}
     mapping: Dict[MessageName, Set[HandlerName]] = {}
+    tasks: Dict[MessageId, List[asyncio.Task]] = {}  # # < tasks状态管理，需要释放避免溢出
 
     def add_message(self, message: Type[BaseMessage], alias: str = None):
         message_name = alias or get_model_name(message)
@@ -84,21 +85,27 @@ class _MessageManager(BaseService):
             logger.info(f'{message.trace_id}|\001|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
             return message.model_dump()
 
-    def create_tasks(self, message: 'BaseMessage', protocol=None, callback: Callable = None) -> List[asyncio.Task]:  # < callback
+    def create_tasks(self, message: 'BaseMessage', protocol=None, callback: Callable = None) -> List[asyncio.Task]:
         handlers = message.handlers
         if message.name in self.mapping:
             handlers += list(self.mapping[message.name])
         if not handlers:
             logger.debug(f'No handler found for {message.name},nothing will be done')
         handlers = [partial(self.handlers[h], message) for h in handlers]
-        if protocol:
-            handlers = [partial(h, protocol) for h in handlers]
+        # if protocol:
+        #     handlers = [partial(h, protocol) for h in handlers]
         tasks = []
         # < 根据条件添加过程处理函数：异常处理，重试，超时
         for handler in handlers[::-1]:
-            coro = handler()
+            coro = handler()  # # handler 可以是异步迭代器、协程方法、类
             if isinstance(coro, AsyncIterator):
-                coro = self.async_generator_task(coro)
+                coro = self.async_generator_task(coro, protocol)
+            elif isinstance(coro, Coroutine):
+                coro = coro
+            elif isinstance(coro, object):
+                ...
+            else:
+                ...
             task = asyncio.create_task(coro, name=message.iid)
             task.add_done_callback(self.task_done_callback)
             tasks.append(task)
@@ -106,19 +113,25 @@ class _MessageManager(BaseService):
             message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
         return tasks
 
-    async def async_generator_task(self, async_generator: AsyncIterator, ):
+    # # 1. async generator to layout message
+    async def async_generator_task(self, async_generator: AsyncIterator, protocol):
         result = None
         async for maybe_message in async_generator:
             if isinstance(maybe_message, BaseMessage):
                 if bus:
                     await bus.put_message(maybe_message)
                 else:
-                    tasks = self.create_tasks(maybe_message)
-                    result = await self.wait_many(tasks, timeout=maybe_message.expire_time)
+                    await self.execute(maybe_message, protocol)
             else:
                 result = maybe_message
         else:
             return result
+
+    async def execute(self, message, protocol):
+        with _protocol_ctx_stack.push(protocol):
+            tasks = MessageManager.create_tasks(message, protocol)
+            if tasks:
+                await self.wait_many(tasks, timeout=message.expire_time)
 
 
 MessageManager = _MessageManager()  # # 不会被start
