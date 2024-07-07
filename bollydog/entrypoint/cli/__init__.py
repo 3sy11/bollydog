@@ -66,6 +66,7 @@ class CLI:
             config: str,
             app: str = None,
             only: str = None,
+            exclude: list = None,
     ):
         if app and only:
             raise ValueError('only one of app and only can be set')
@@ -78,6 +79,9 @@ class CLI:
             for app_name, app_config in config.items():
                 app = app_config.pop('app')
                 apps[app_name] = app.create_from(**app_config)
+        if exclude:
+            for app_name in exclude:
+                apps.pop(app_name)
         if only:
             worker = Bootstrap(apps[only])
         else:
@@ -101,9 +105,11 @@ class CLI:
         apps = get_apps(config)
         bus = BusService.create_from(apps=apps.values())
         mm = MessageManager
+        print(mm.messages)
+        print(mm.handlers)
         embed_result:Coroutine=embed(globals(), locals(), return_asyncio_coroutine=True)  # # noqa
-        print("Starting ptpython asyncio REPL")
-        print('Use "await" directly instead of "asyncio.run()".')
+        # print("Starting ptpython asyncio REPL")
+        # print('Use "await" directly instead of "asyncio.run()".')
         asyncio.run(embed_result)
 
 

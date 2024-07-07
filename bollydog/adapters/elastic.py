@@ -82,5 +82,10 @@ class ElasticProtocol(Protocol):
         return result.body
 
     async def scroll(self, scroll, scroll_id, **kwargs):
-        result = await self.unit_of_work.client.scroll(scroll_id=scroll_id, scroll=scroll, **kwargs)
-        return result.body
+        if not scroll_id:
+            res = await self.unit_of_work.client.get(index=kwargs['index'], scroll=scroll,body=kwargs['body'])
+            yield res
+            while len(res['hits']['hits']):
+                yield await self.unit_of_work.client.scroll(scroll=scroll, scroll_id=res['_scroll_id'])
+        else:
+            yield await self.unit_of_work.client.scroll(scroll=scroll, scroll_id=scroll_id)

@@ -49,8 +49,8 @@ def get_class_domain(cls: Type) -> str:
 
 
 class _ModelMixin(BaseModel):
-    created_time: float = Field(default_factory=time.time)
-    update_time: float = Field(default_factory=time.time)
+    created_time: float = Field(default_factory=lambda : int(time.time()*1000))
+    update_time: float = Field(default_factory=lambda : int(time.time()*1000))
     iid: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
     sign: int = Field(default=_DEFAULT_SIGN)
     created_by: str = Field(default=HOSTNAME, max_length=50)
