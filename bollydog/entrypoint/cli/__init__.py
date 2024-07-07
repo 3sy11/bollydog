@@ -1,12 +1,14 @@
 import asyncio
 import json
 import logging
-from typing import Dict
-
+import pathlib
+import sys
+from typing import Dict, Coroutine
+from ptpython.repl import embed
 import fire
-import yaml
 from bollydog.bootstrap import Bootstrap
 from bollydog.models.service import AppService
+from bollydog.patch import yaml
 from mode.utils.imports import smart_import
 
 from bollydog.globals import _protocol_ctx_stack  # # noqa
@@ -91,6 +93,18 @@ class CLI:
         message = smart_import(message)
         tasks = MessageManager.create_tasks(message, protocol)
         return MessageManager.wait_many(tasks)
+
+    @staticmethod
+    def shell(config: str,):
+        path = pathlib.Path(config).parent.as_posix()
+        sys.path.insert(0, path)
+        apps = get_apps(config)
+        bus = BusService.create_from(apps=apps.values())
+        mm = MessageManager
+        embed_result:Coroutine=embed(globals(), locals(), return_asyncio_coroutine=True)  # # noqa
+        print("Starting ptpython asyncio REPL")
+        print('Use "await" directly instead of "asyncio.run()".')
+        asyncio.run(embed_result)
 
 
 def main():

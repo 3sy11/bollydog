@@ -8,7 +8,7 @@ graphviz
 aiomonitor
 aiosqlite
 pycli
-ipython
+ptpython
 mycli
 iredis
 elasticsearch

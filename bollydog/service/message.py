@@ -61,7 +61,7 @@ class _MessageManager(BaseService):
                         self.register_handler(parameter, func)
                         break
         except (ModuleNotFoundError, AttributeError) as e:
-            logger.warning(f'Error: {e}')
+            logger.warning(f'Error: {e}, {module} may have error, try to import {module}.py')
         except Exception as e:
             logger.exception(e)
 

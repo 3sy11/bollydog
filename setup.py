@@ -49,7 +49,7 @@ setup(
             "aiomonitor",
             "aiosqlite",
             "pycli",
-            "ipython",
+            "ptpython",
             "mycli",
             "iredis",
         ],

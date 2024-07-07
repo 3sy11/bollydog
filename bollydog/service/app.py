@@ -91,11 +91,13 @@ class BusService(AppService):
                 await MessageManager.execute(message, app.protocol)
                 await self.router.publish(message)
 
-    @mode.Service.timer(1)
+    @mode.Service.task
     async def pop_events(self):
-        for app in self.apps.values():
-            while app.protocol and app.protocol.events:
-                await self.queue.put(app.protocol.events.pop())
+        while True:
+            for app in self.apps.values():
+                while app.protocol and app.protocol.events:
+                    await self.queue.put(app.protocol.events.pop())
+            await asyncio.sleep(1)
 
     # @mode.Service.timer(60)
     # async def matrix(self):
