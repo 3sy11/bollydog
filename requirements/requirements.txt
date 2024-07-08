@@ -13,3 +13,4 @@ py_rete
 redis
 websockets
 pydantic
+environs

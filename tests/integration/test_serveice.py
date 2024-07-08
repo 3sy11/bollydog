@@ -7,17 +7,18 @@ print(sys.path)
 import pytest
 from bollydog.service.model import TaskCount, TaskList
 from bollydog.patch import yaml
-
+import environs
 from httpx import AsyncClient, ASGITransport
 from starlette.testclient import TestClient
 
 from bollydog.service.app import BusService
 
 path = pathlib.Path(__file__).parent.parent.joinpath('./config.yml')
-
+env = pathlib.Path(__file__).parent.parent.joinpath('./.env')
 
 @pytest.mark.asyncio
 async def test_run_service():
+    environs.Env().read_env(env.as_posix())
     with open(path.as_posix()) as f:
         config = yaml.safe_load(f)
     apps = {}

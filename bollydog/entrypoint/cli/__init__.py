@@ -6,6 +6,7 @@ import sys
 from typing import Dict, Coroutine
 from ptpython.repl import embed
 import fire
+import environs
 from bollydog.bootstrap import Bootstrap
 from bollydog.models.service import AppService
 from bollydog.patch import yaml
@@ -20,6 +21,8 @@ from bollydog.service.message import MessageManager
 def _load_config(config: str) -> Dict:
     if not config:
         return {}
+    path = pathlib.Path(config).parent.joinpath('.env').as_posix()
+    logging.info(f'loading env from {path}:{environs.Env().read_env(path)}')
     if config[-5:] == '.json':
         return json.loads(config)
     elif config[-5:] == '.yaml' or config[-4:] == '.yml':
