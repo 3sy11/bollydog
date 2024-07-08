@@ -9,7 +9,7 @@ from bollydog.config import IS_DEBUG
 from bollydog.models.protocol import UnitOfWork, Protocol
 from pydantic import AnyUrl
 from pydantic_core import PydanticUndefined
-from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, JSON, Float, Table
+from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, JSON, Float, Table, text
 from sqlalchemy.ext.asyncio import create_async_engine, async_scoped_session, async_sessionmaker
 from sqlalchemy.orm import registry
 
@@ -155,6 +155,10 @@ class SqlAlchemyBaseProtocol(Protocol):
     async def _add_all(self, items: List[TypeVar], *args, **kwargs):
         ...
 
+    @abc.abstractmethod
+    async def _search(self, *args, **kwargs):
+        ...
+
     async def add(self, item: BaseDomain, *args, **kwargs):
         _item = orm_class_mapping[item.__class__](**item.model_dump())
         _item = await self._add(_item, *args, **kwargs)
@@ -175,6 +179,9 @@ class SqlAlchemyBaseProtocol(Protocol):
 
     async def update(self, cls: Type[BaseDomain], item_id, *args, **kwargs):
         return await self._update(orm_class_mapping[cls], item_id, *args, **kwargs)
+
+    async def search(self, *args, **kwargs):
+        return await self._search(*args, **kwargs)
 
 
 class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
@@ -233,8 +240,14 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
     async def _delete(self, cls: Table, item_id, *args, **kwargs):
         stmt = delete(cls).where(cls.id.is_(item_id))
         for column, value in kwargs.items():
-            stmt = stmt.where(getattr(cls, column) == value)
+            stmt = stmt.where(getattr(cls, column).is_(value))
         stmt = stmt.returning(cls)
         async with self.unit_of_work.context() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
+
+    async def _search(self, *args, **kwargs):
+        query = text(kwargs['query'])
+        async with self.unit_of_work.context() as session:
+            result = await session.execute(query)
+        return result.fetchall()

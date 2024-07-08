@@ -43,6 +43,8 @@ async def test_adapter_orm():
         assert await protocol.update(Point, item_id=u2['id'], y=5)
         _u2 = await protocol.get(Point, id=u2['id'])
         assert _u2.y == 5
+        res = await protocol.search(query='select id,x,y from point where x=1')
+        assert len(res) == 2
         await protocol.delete(Point, item_id=u2['id'])
         user_list = await protocol.list(Point)
         assert len(user_list) == 2
