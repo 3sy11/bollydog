@@ -56,7 +56,7 @@ class CLI:
             **kwargs
     ):
         apps = get_apps(config)
-        app = app or config.split('.')[0]
+        app = app or message.split('.')[0]
         app = apps[app]
         bus = BusService.create_from(apps=apps.values())
         with _bus_ctx_stack.push(bus):
@@ -88,13 +88,18 @@ class CLI:
     @staticmethod
     def execute(config: str, message: MessageName, app: str = None, **kwargs):
         apps = get_apps(config)
-        app = app or config.split('.')[0]
+        app = app or message.split('.')[0]
         protocol = apps[app]
         bus = BusService.create_from(apps=apps.values())
-        with _bus_ctx_stack.push(bus):
-            message = smart_import(message)
-            tasks = MessageManager.create_tasks(message, protocol)
-            asyncio.run(MessageManager.wait_many(tasks))
+
+        async def _execute():
+            with _bus_ctx_stack.push(bus):
+                msg = smart_import(message)
+                tasks = MessageManager.create_tasks(msg, protocol)
+                await MessageManager.wait_many(tasks)
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(_execute())
 
     @staticmethod
     def shell(config: str, ):

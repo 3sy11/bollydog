@@ -74,7 +74,7 @@ class _MessageManager(BaseService):
                 if not future.done():
                     future.set_result(result)
             # result, __mode_service_stopped_identifier = task.result()  # # 适配mode.WaitResult
-        except (HandlerTimeOutError, HandlerMaxRetryError, AssertionError, RuntimeError) as e:
+        except (HandlerTimeOutError, HandlerMaxRetryError, AssertionError, StopAsyncIteration, RuntimeError) as e:
             logger.error(e)
             future.set_exception(e)
         except Exception as e:
@@ -108,7 +108,7 @@ class _MessageManager(BaseService):
                 ...
             task = asyncio.create_task(coro, name=message.iid)
             task.add_done_callback(self.task_done_callback)
-            tasks.append(task)
+            tasks.append(task)  # >>
             self.futures[message.iid] = (message, message.state)
             message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
         return tasks
