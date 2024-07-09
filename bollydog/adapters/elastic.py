@@ -44,7 +44,7 @@ class ElasticProtocol(Protocol):
             id=uuid.uuid4().hex,
             body=item,
         )
-        return result
+        return result.body
 
     async def add_all(self, items: list[dict], index: str):
         result = []
@@ -55,13 +55,13 @@ class ElasticProtocol(Protocol):
     async def update(self, item: dict, index: str):
         result = await self.unit_of_work.client.update(
             index=index,
-            id=item['id'],
+            id=item['iid'],
             body={
                 "doc": item,
                 "doc_as_upsert": True,
             },
         )
-        return result
+        return result.body
 
     async def update_all(self, items: list[dict], index: str):
         result = []
@@ -75,7 +75,7 @@ class ElasticProtocol(Protocol):
 
     async def delete(self, index: str, item_id):
         result = await self.unit_of_work.client.delete(index=index, id=item_id)  # < update sign=0
-        return result
+        return result.body
 
     async def list(self, index: str, **kwargs):
         result = await self.unit_of_work.client.search(index=index, **kwargs)  # < scroll
@@ -83,9 +83,11 @@ class ElasticProtocol(Protocol):
 
     async def scroll(self, scroll, scroll_id, **kwargs):
         if not scroll_id:
-            res = await self.unit_of_work.client.get(index=kwargs['index'], scroll=scroll,body=kwargs['body'])
-            yield res
-            while len(res['hits']['hits']):
-                yield await self.unit_of_work.client.scroll(scroll=scroll, scroll_id=res['_scroll_id'])
+            res = await self.unit_of_work.client.search(index=kwargs['index'], scroll=scroll, body=kwargs['body'])
+            yield res.body
+            while len(res.body['hits']['hits']):
+                res = await self.unit_of_work.client.scroll(scroll=scroll, scroll_id=res['_scroll_id'])
+                yield res.body
         else:
-            yield await self.unit_of_work.client.scroll(scroll=scroll, scroll_id=scroll_id)
+            res = await self.unit_of_work.client.scroll(scroll=scroll, scroll_id=scroll_id)
+            yield res.body
