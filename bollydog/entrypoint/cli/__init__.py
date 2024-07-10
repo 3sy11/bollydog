@@ -13,7 +13,7 @@ from bollydog.patch import yaml
 from mode.utils.imports import smart_import
 
 from bollydog.globals import _bus_ctx_stack  # # noqa
-from bollydog.models.base import ModulePathWithDot, MessageName
+from bollydog.models.base import ModulePathWithDot, MessageName, BaseMessage
 from bollydog.service.app import BusService
 from bollydog.service.message import MessageManager
 
@@ -47,27 +47,6 @@ def get_apps(config: str) -> Dict[str, AppService]:
 class CLI:
 
     # # 入参如果是字符串，需要做一次转义或者使用单引号，例如：'"str"',"'str'",\"str\"
-    @staticmethod
-    def command(
-            config: str,
-            message: MessageName,
-            app: str = None,
-            handler: ModulePathWithDot = None,
-            **kwargs
-    ):
-        apps = get_apps(config)
-        app = app or message.split('.')[0]
-        app = apps[app]
-        bus = BusService.create_from(apps=apps.values())
-        with _bus_ctx_stack.push(bus):
-            message = MessageManager.messages[message](**kwargs)
-            if handler:
-                handlers = [smart_import(handler)]
-            else:
-                handlers = [MessageManager.handlers[h] for h in MessageManager.mapping[message.name]]
-            for handler in handlers:
-                result = asyncio.run(handler(message, protocol=app.protocol))
-                logging.info(result)
 
     @staticmethod
     def service(
@@ -86,20 +65,36 @@ class CLI:
         raise worker.execute_from_commandline()
 
     @staticmethod
-    def execute(config: str, message: MessageName, app: str = None, **kwargs):
+    def execute(
+            config: str,
+            message: MessageName,  # # instance or class name
+            app: str = None,
+            handler: ModulePathWithDot = None,
+            **kwargs):
         apps = get_apps(config)
         app = app or message.split('.')[0]
         protocol = apps[app]
         bus = BusService.create_from(apps=apps.values())
 
+        msg = smart_import(message)
+        if issubclass(msg, BaseMessage):
+            msg = msg(**kwargs)
+        if handler:
+            handlers = [smart_import(handler)]
+        else:
+            handlers = [MessageManager.handlers[h] for h in MessageManager.mapping[message]]
+
+        logging.info(f'prepare to execute {msg.iid}')
+
         async def _execute():
             with _bus_ctx_stack.push(bus):
-                msg = smart_import(message)
-                tasks = MessageManager.create_tasks(msg, protocol)
-                await MessageManager.wait_many(tasks)
+                async with asyncio.TaskGroup() as group:
+                    tasks = [group.create_task(h(msg, protocol=protocol), name=f'{h.__name__}:{msg.iid}') for h in
+                             handlers]
+                for task in tasks:
+                    logging.info(f'{task.get_name()} result : {task.result()}')
 
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(_execute())
+        asyncio.run(_execute())
 
     @staticmethod
     def shell(config: str, ):
