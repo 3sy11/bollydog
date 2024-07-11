@@ -1,6 +1,7 @@
 import logging
-
+import asyncio
 import pytest
+import time
 from pydantic import Field
 
 from bollydog.models.base import Event, BaseMessage
@@ -15,6 +16,13 @@ class LogInfoCommand(BaseMessage):
 
 async def log_info(message: LogInfoCommand):
     logger.info(message.model_dump())
+    return message.model_dump()
+
+
+async def timeout_log_info(message: LogInfoCommand):
+    await asyncio.sleep(4)
+    logger.info(message.model_dump())
+    return message.model_dump()
 
 
 class RaiseException(Event):
@@ -39,3 +47,18 @@ async def test_message():
     # tasks = MessageManager.create_tasks(event)
     # for task in tasks:
     #     res = await task
+
+
+@pytest.mark.asyncio
+async def test_task_group():
+    msg1 = LogInfoCommand(info='test1', a=1, b=2)
+    msg2 = LogInfoCommand(info='test2', a=3, b=4)
+    coro1 = asyncio.wait_for(log_info(msg1), timeout=5)
+    coro2 = asyncio.wait_for(timeout_log_info(msg2), timeout=2)
+    async with asyncio.TaskGroup() as tg:
+        task1 = tg.create_task(coro1)
+        task2 = tg.create_task(coro2)
+        task1.add_done_callback(MessageManager.task_done_callback)
+        task2.add_done_callback(MessageManager.task_done_callback)
+    print(task1.result())
+    print(task2.result())
