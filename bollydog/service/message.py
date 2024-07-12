@@ -10,7 +10,7 @@ from mode.utils.imports import smart_import
 
 from bollydog.models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
 from bollydog.models.base import BaseService
-from bollydog.globals import bus,_protocol_ctx_stack
+from bollydog.globals import bus, _protocol_ctx_stack
 
 logger = logging.getLogger(__name__)
 HandlerName = str

@@ -49,12 +49,21 @@ async def test_message():
     #     res = await task
 
 
+async def try_exception(coro):
+    result = None
+    try:
+        result = await coro
+    except Exception as e:
+        raise e
+    return result
+
+
 @pytest.mark.asyncio
 async def test_task_group():
     msg1 = LogInfoCommand(info='test1', a=1, b=2)
     msg2 = LogInfoCommand(info='test2', a=3, b=4)
-    coro1 = asyncio.wait_for(log_info(msg1), timeout=5)
-    coro2 = asyncio.wait_for(timeout_log_info(msg2), timeout=2)
+    coro1 = try_exception(asyncio.wait_for(log_info(msg1), timeout=5))
+    coro2 = try_exception(asyncio.wait_for(timeout_log_info(msg2), timeout=2))
     async with asyncio.TaskGroup() as tg:
         task1 = tg.create_task(coro1)
         task2 = tg.create_task(coro2)
