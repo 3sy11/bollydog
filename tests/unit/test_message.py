@@ -5,7 +5,7 @@ import time
 from pydantic import Field
 
 from bollydog.models.base import Event, BaseMessage
-from bollydog.service.message import MessageManager
+from bollydog.service.message import MessageManager, register
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +14,26 @@ class LogInfoCommand(BaseMessage):
     info: str = Field(default='info message')
 
 
-async def log_info(message: LogInfoCommand):
+class GenInfoCommand(BaseMessage):
+    ...
+
+
+async def log_info(message: LogInfoCommand, *args):
     logger.info(message.model_dump())
     return message.model_dump()
 
 
-async def timeout_log_info(message: LogInfoCommand):
+async def timeout_log_info(message: LogInfoCommand, *args):
     await asyncio.sleep(4)
     logger.info(message.model_dump())
     return message.model_dump()
+
+
+@register
+async def async_gen(message: GenInfoCommand, *args):
+    yield LogInfoCommand(info='yield 1')
+    await asyncio.sleep(2)
+    yield LogInfoCommand(info='yield 2')
 
 
 class RaiseException(Event):
@@ -39,14 +50,17 @@ MessageManager.register_handler(RaiseException, raise_exception)
 
 @pytest.mark.asyncio
 async def test_message():
-    command = LogInfoCommand(info='test', a=1, b=2)
-    tasks = MessageManager.create_tasks(command)
-    for task in tasks:
-        res = await task
+    # command = LogInfoCommand(info='test', a=1, b=2)
+    # tasks = MessageManager.create_tasks(command)
+    # for task in tasks:
+    #     res = await task
     # event = RaiseException()
     # tasks = MessageManager.create_tasks(event)
     # for task in tasks:
     #     res = await task
+    command = GenInfoCommand()
+    command.expire_time = 2
+    await MessageManager.execute(command, None)
 
 
 async def try_exception(coro):

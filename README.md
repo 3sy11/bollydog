@@ -1,13 +1,14 @@
 # TODO
 
-- [ ] ftr:支持handlers的类
+- [X] ftr:支持handlers的类
 - [X] ftr:bollydog service支持exclude
 - [X] ftr:support Message AsyncIterator
 - [ ] opt:Use strong references for free-flying tasks when asyncio.create_task
+- [ ] opt:rm handler arg `protocol`
 
 # TODO 按需增加
 
-- [ ] opt: combine `execute` `command` together
+- [X] opt: combine `execute` `command` together
 - [ ] ftr:entrypoint增加一个开关，能够开启或者关闭接收特定消息
 - [ ] ftr:rete，和开关特性是否一致？
 - [ ] ftr:pydantic plugin 校验入参的预留关键词

@@ -41,7 +41,7 @@ def get_model_name(o) -> str:
         else:
             return f'{o.__module__}.{o.__name__}'
     else:
-        raise ValueError(f'{o} is not a illegal model')
+        return f'{o.__module__}.{o.__name__}'
 
 
 def get_class_domain(cls: Type) -> str:

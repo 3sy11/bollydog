@@ -84,12 +84,11 @@ class BusService(AppService):
                 continue
             message: Message = await self.queue.get()
             self.logger.debug(f'{message.module}-{message.domain}-{message.name}')
-            with _message_ctx_stack.push(message):
-                app: AppService = self.apps.get(message.domain)
-                self.logger.info(
-                    f'{message.trace_id}|\001\001|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
-                await MessageManager.execute(message, app.protocol)
-                await self.router.publish(message)
+            app: AppService = self.apps.get(message.domain)
+            self.logger.info(
+                f'{message.trace_id}|\001\001|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
+            await MessageManager.execute(message, app.protocol)
+            await self.router.publish(message)
 
     @mode.Service.task
     async def pop_events(self):
