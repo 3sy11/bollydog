@@ -4,7 +4,7 @@ import logging
 import uuid
 import sys
 from functools import partial, wraps
-from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set, AsyncIterator, Coroutine, AsyncGenerator
+from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set, Awaitable, Coroutine, AsyncGenerator
 
 from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
 from mode.utils.imports import smart_import
@@ -36,10 +36,10 @@ class _MessageManager(BaseService):
     def _run_async_generator(self, func):
 
         @wraps(func)
-        async def _(message, protocol):
+        async def _(message):
             result = None
-            async for msg in func(message, protocol):
-                result = await self.execute(msg, protocol)
+            async for msg in func(message):
+                result = await self.execute(msg, _protocol_ctx_stack.top)
             return result
 
         return _
@@ -89,7 +89,9 @@ class _MessageManager(BaseService):
                 result = task.result()
                 if not future.done():
                     future.set_result(result)
-        except (HandlerTimeOutError, HandlerMaxRetryError, AssertionError, StopAsyncIteration, RuntimeError, TimeoutError) as e:
+        except (
+                HandlerTimeOutError, HandlerMaxRetryError, AssertionError, StopAsyncIteration, RuntimeError,
+                TimeoutError) as e:
             logger.error(e)
             future.set_exception(e)
         except Exception as e:
@@ -101,7 +103,7 @@ class _MessageManager(BaseService):
             # logger.debug(sys.getrefcount(task))
             return message.model_dump()
 
-    def create_tasks(self, message: 'BaseMessage', protocol=None, callback: Callable = None) -> List[Coroutine]:
+    def create_tasks(self, message: 'BaseMessage', protocol=None, callback: Callable = None) -> List[Awaitable]:
         handlers = message.handlers
         if message.name in self.mapping:
             handlers += list(self.mapping[message.name])
@@ -110,23 +112,30 @@ class _MessageManager(BaseService):
         handlers = [self.handlers[h] for h in handlers]
         coroutines = []
         for handler in handlers[::-1]:
-            coroutine = asyncio.wait_for(handler(message, protocol), timeout=message.expire_time)
+            coroutine = asyncio.wait_for(handler(message), timeout=message.expire_time)
             self.futures[message.iid] = (message, message.state)
             coroutines.append(coroutine)
             message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
         return coroutines
 
-    async def execute(self, message, protocol):
+    async def execute(self, message: BaseMessage, protocol):
+        # # use like `mode` `wait_many`
         with (_protocol_ctx_stack.push(protocol), _message_ctx_stack.push(message)):
             coroutines = self.create_tasks(message, protocol)
-            # await asyncio.gather(*coroutines)
             try:
-                async with asyncio.TaskGroup() as tg:
-                    for coroutine in coroutines:
-                        task = tg.create_task(coro=coroutine, name=message.iid)
-                        task.add_done_callback(self.task_done_callback)
-                        await asyncio.sleep(0)
-
+                tasks = [asyncio.create_task(coroutine, name=message.iid) for coroutine in coroutines]
+                for task in tasks:
+                    task.add_done_callback(self.task_done_callback)
+                # coro = asyncio.wait(tasks, return_when=asyncio.ALL_COMPLETED, timeout=message.expire_time)
+                # await asyncio.gather(*tasks)
+                # async with asyncio.TaskGroup() as tg:
+                #     task = tg.create_task(coro)
+                #     tasks = [tg.create_task(coro=coroutine, name=message.iid) for coroutine in coroutines]
+                #     for task in tasks:
+                #         task.add_done_callback(self.task_done_callback)
+                # await asyncio.sleep(0)
+                self.logger.debug(
+                    f'{message.trace_id}|\002|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
             except Exception as e:
                 self.logger.error(f'{e}')
             await asyncio.sleep(0)

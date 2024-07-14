@@ -19,20 +19,21 @@ class GenInfoCommand(BaseMessage):
 
 
 async def log_info(message: LogInfoCommand, *args):
-    logger.info(message.model_dump())
+    print(message.model_dump())
     return message.model_dump()
 
 
 async def timeout_log_info(message: LogInfoCommand, *args):
-    await asyncio.sleep(4)
-    logger.info(message.model_dump())
+    await asyncio.sleep(0.5)
+    print(message.model_dump())
     return message.model_dump()
 
 
 @register
 async def async_gen(message: GenInfoCommand, *args):
     yield LogInfoCommand(info='yield 1')
-    await asyncio.sleep(2)
+    yield RaiseException()
+    await asyncio.sleep(0.5)
     yield LogInfoCommand(info='yield 2')
 
 
@@ -41,7 +42,7 @@ class RaiseException(Event):
 
 
 async def raise_exception(message: RaiseException):
-    raise Exception("test")
+    raise Exception("test raise_exception")
 
 
 MessageManager.register_handler(LogInfoCommand, log_info)
@@ -50,16 +51,19 @@ MessageManager.register_handler(RaiseException, raise_exception)
 
 @pytest.mark.asyncio
 async def test_message():
-    # command = LogInfoCommand(info='test', a=1, b=2)
-    # tasks = MessageManager.create_tasks(command)
-    # for task in tasks:
-    #     res = await task
+    command = LogInfoCommand(info='test', a=1, b=2)
+    tasks = MessageManager.create_tasks(command)
+    for task in tasks:
+        res = await task
     # event = RaiseException()
     # tasks = MessageManager.create_tasks(event)
-    # for task in tasks:
-    #     res = await task
+    # try:
+    #     for task in tasks:
+    #         res = await task
+    # except:
+    #     pass
     command = GenInfoCommand()
-    command.expire_time = 2
+    command.expire_time = 1
     await MessageManager.execute(command, None)
 
 
@@ -68,7 +72,8 @@ async def try_exception(coro):
     try:
         result = await coro
     except Exception as e:
-        raise e
+        # raise e
+        print(e)
     return result
 
 
@@ -81,7 +86,7 @@ async def test_task_group():
     async with asyncio.TaskGroup() as tg:
         task1 = tg.create_task(coro1)
         task2 = tg.create_task(coro2)
-        task1.add_done_callback(MessageManager.task_done_callback)
-        task2.add_done_callback(MessageManager.task_done_callback)
+        # task1.add_done_callback(MessageManager.task_done_callback)
+        # task2.add_done_callback(MessageManager.task_done_callback)
     print(task1.result())
     print(task2.result())

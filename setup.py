@@ -53,6 +53,7 @@ setup(
             "ptpython",
             "mycli",
             "iredis",
+            "httpx"
         ],
     },
     entry_points={

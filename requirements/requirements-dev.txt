@@ -12,3 +12,4 @@ ptpython
 mycli
 iredis
 elasticsearch
+httpx
