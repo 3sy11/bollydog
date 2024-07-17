@@ -9,6 +9,7 @@
 # TODO 按需增加
 
 - [X] opt: combine `execute` `command` together
+- [ ] ftr: anonymous message call handler or generator
 - [ ] ftr:entrypoint增加一个开关，能够开启或者关闭接收特定消息
 - [ ] ftr:rete，和开关特性是否一致？
 - [ ] ftr:pydantic plugin 校验入参的预留关键词

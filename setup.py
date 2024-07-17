@@ -31,7 +31,7 @@ setup(
         "greenlet==3.0.1",
         "mode-streaming==0.4.1",
         "fire==0.5.0",
-        "pyyaml==6.0",
+        "pyyaml==6.0.1",
         "websockets==12.0",
         "pydantic==2.5.2",
         "elasticsearch==8.14.0",
