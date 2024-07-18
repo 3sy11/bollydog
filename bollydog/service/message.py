@@ -11,7 +11,7 @@ from mode.utils.imports import smart_import
 
 from bollydog.models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
 from bollydog.models.base import BaseService
-from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack
+from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack, bus
 
 logger = logging.getLogger(__name__)
 HandlerName = str
@@ -39,7 +39,11 @@ class _MessageManager(BaseService):
         async def _(message):
             result = None
             async for msg in func(message):
-                result = await self.execute(msg, _protocol_ctx_stack.top)
+                if msg.qos == 0:
+                    await bus.put_message(msg)
+                    result = True
+                else:
+                    result = await self.execute(msg, _protocol_ctx_stack.top)
             return result
 
         return _

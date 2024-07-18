@@ -84,6 +84,7 @@ class BaseMessage(_ModelMixin):
     handlers: List[ModulePathWithDot] = Field(default_factory=list)
     delivery_count: int = Field(default=_DELIVERY_COUNT)
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
+    qos: int = Field(default=1)
 
     # conditions: Dict = Field(default=None)  # <
 
