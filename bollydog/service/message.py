@@ -143,6 +143,7 @@ class _MessageManager(BaseService):
             except Exception as e:
                 self.logger.error(f'{e}')
             await asyncio.sleep(0)
+        return tasks
 
 
 MessageManager = _MessageManager()
