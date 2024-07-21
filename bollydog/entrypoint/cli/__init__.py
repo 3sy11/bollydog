@@ -12,7 +12,7 @@ from bollydog.models.service import AppService
 from bollydog.patch import yaml
 from mode.utils.imports import smart_import
 
-from bollydog.globals import _bus_ctx_stack  # # noqa
+from bollydog.globals import _bus_ctx_stack, _protocol_ctx_stack  # # noqa
 from bollydog.models.base import ModulePathWithDot, MessageName, BaseMessage
 from bollydog.service.app import BusService
 from bollydog.service.message import MessageManager
@@ -73,7 +73,7 @@ class CLI:
             **kwargs):
         apps = get_apps(config)
         app = app or message.split('.')[0]
-        protocol = apps[app]
+        protocol = apps[app].protocol
         bus = BusService.create_from(apps=apps.values())
 
         msg = smart_import(message)
@@ -87,9 +87,9 @@ class CLI:
         logging.info(f'prepare to execute {msg.iid}')
 
         async def _execute():
-            with _bus_ctx_stack.push(bus):
+            with (_bus_ctx_stack.push(bus), _protocol_ctx_stack.push(protocol)):
                 async with asyncio.TaskGroup() as group:
-                    tasks = [group.create_task(h(msg, protocol=protocol), name=f'{h.__name__}:{msg.iid}') for h in
+                    tasks = [group.create_task(h(msg), name=f'{h.__name__}:{msg.iid}') for h in
                              handlers]
                 for task in tasks:
                     logging.info(f'{task.get_name()} result : {task.result()}')

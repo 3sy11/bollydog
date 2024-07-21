@@ -9,9 +9,8 @@ from bollydog.config import IS_DEBUG
 from bollydog.models.protocol import UnitOfWork, Protocol
 from pydantic import AnyUrl
 from pydantic_core import PydanticUndefined
-from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, JSON, Float, Table, text
+from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, JSON, Float, Table, text, Text
 from sqlalchemy.ext.asyncio import create_async_engine, async_scoped_session, async_sessionmaker
-from sqlalchemy.orm import registry
 
 from bollydog.globals import message
 from bollydog.models.base import BaseDomain
@@ -20,14 +19,13 @@ annotation_mapping: Dict[Type, Type] = {
     str: String,
     float: Float,
     int: Integer,
-    dict: JSON,
+    dict: Text,
 }
 DEFAULT_STR_LEN = 50
-mapper_registry = registry()
 orm_class_mapping: Dict[Type[BaseDomain], Type] = {}
 
 
-def map_imperatively(cls: Type[BaseDomain]):
+def map_imperatively(cls: Type[BaseDomain], registry):
     """
     pydantic model to sqlalchemy model, bind to pydantic model `Config.orm_mapper_registry_class` attribute
     """
@@ -60,9 +58,9 @@ def map_imperatively(cls: Type[BaseDomain]):
         )
 
     orm_cls = type(cls.__name__, (object,), {})
-    mapper_registry.map_imperatively(
+    registry.map_imperatively(
         orm_cls,  # # noqa
-        Table(cls.__name__.lower(), mapper_registry.metadata, *columns, )
+        Table(cls.__name__.lower(), registry.metadata, *columns, )
     )
     orm_class_mapping[cls] = orm_cls
 
@@ -72,7 +70,7 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
 
     def __init__(self,
                  url: AnyUrl | str,
-                 metadata: MetaData = mapper_registry.metadata,
+                 metadata: MetaData,
                  *args, **kwargs):
         if isinstance(url, str):
             url = AnyUrl(url)
