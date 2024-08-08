@@ -2,14 +2,12 @@ import abc
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, List
 
-from pydantic import AnyUrl
-
 from bollydog.models.base import BaseService, BaseMessage
 
 
 class UnitOfWork(BaseService, abstract=True):
 
-    def __init__(self, url: AnyUrl, *args, **kwargs):
+    def __init__(self, url: str, *args, **kwargs):
         super().__init__()
         self.url = url
 

@@ -7,11 +7,11 @@ from functools import lru_cache
 from typing import Dict, Type, List, Any
 
 import mode
-from bollydog.config import MESSAGE_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 from pydantic_core import PydanticUndefined
 from typing_extensions import Annotated
 
+from bollydog.config import MESSAGE_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION
 from bollydog.globals import message
 
 _DEFAULT_SIGN = 1
@@ -49,8 +49,8 @@ def get_class_domain(cls: Type) -> str:
 
 
 class _ModelMixin(BaseModel):
-    created_time: float = Field(default_factory=lambda : int(time.time()*1000))
-    update_time: float = Field(default_factory=lambda : int(time.time()*1000))
+    created_time: float = Field(default_factory=lambda: int(time.time() * 1000))
+    update_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     iid: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
     sign: int = Field(default=_DEFAULT_SIGN)
     created_by: str = Field(default=HOSTNAME, max_length=50)

@@ -2,16 +2,15 @@ import asyncio
 import inspect
 import logging
 import uuid
-import sys
-from functools import partial, wraps
-from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set, Awaitable, Coroutine, AsyncGenerator
+from functools import wraps
+from typing import Type, MutableMapping, List, Callable, Any, Dict, Tuple, Set, Awaitable
 
-from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
 from mode.utils.imports import smart_import
 
+from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
+from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack, bus
 from bollydog.models.base import BaseMessage, MessageName, MessageId, get_model_name, ModulePathWithDot
 from bollydog.models.base import BaseService
-from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack, bus
 
 logger = logging.getLogger(__name__)
 HandlerName = str
@@ -39,11 +38,13 @@ class _MessageManager(BaseService):
         async def _(message):
             result = None
             async for msg in func(message):
-                if msg.qos == 0:
+                if isinstance(msg, BaseMessage) and msg.qos == 0:
                     await bus.put_message(msg)
                     result = True
-                else:
+                elif isinstance(msg, BaseMessage) and msg.qos == 1:
                     result = await self.execute(msg, _protocol_ctx_stack.top)
+                else:
+                    result = msg
             return result
 
         return _
