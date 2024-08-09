@@ -42,7 +42,7 @@ class _MessageManager(BaseService):
                     await bus.put_message(msg)
                     result = True
                 elif isinstance(msg, BaseMessage) and msg.qos == 1:
-                    result = await self.execute(msg, _protocol_ctx_stack.top)
+                    result = await self.execute(msg, bus.apps[message.domain].protocol)
                 else:
                     result = msg
             return result
@@ -63,10 +63,14 @@ class _MessageManager(BaseService):
     def register(self, func):
         # # also could use as decorator
         for name, parameter in inspect.signature(func).parameters.items():
-            if issubclass(parameter.annotation, BaseMessage):
-                self.add_handler(func)
-                self.register_handler(parameter.annotation, func)
-                break
+            try:
+                if inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, BaseMessage):
+                    self.add_handler(func)
+                    self.register_handler(parameter.annotation, func)
+                    break
+            except Exception as e:
+                logger.warning(f'{e}')
+                continue
 
     @classmethod
     def create_message(cls, name, **data):

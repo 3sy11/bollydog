@@ -36,7 +36,8 @@ setup(
         "pydantic==2.5.2",
         "elasticsearch==8.14.0",
         "aiohttp",
-        "environs"
+        "environs",
+        "ptpython"
 
     ],
     extras_require={
