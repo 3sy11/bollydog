@@ -40,9 +40,9 @@ class _MessageManager(BaseService):
             async for msg in func(message):
                 if isinstance(msg, BaseMessage) and msg.qos == 0:
                     await bus.put_message(msg)
-                    result = True
+                    result = msg.model_dump()
                 elif isinstance(msg, BaseMessage) and msg.qos == 1:
-                    result = await self.execute(msg, bus.apps[message.domain].protocol)
+                    result = await self.execute(msg, bus.apps[msg.domain].protocol)
                 else:
                     result = msg
             return result
@@ -153,3 +153,14 @@ class _MessageManager(BaseService):
 
 MessageManager = _MessageManager()
 register = MessageManager.register
+
+
+class Executor(BaseService):
+    futures: MutableMapping[MessageId, Tuple[BaseMessage, asyncio.Future]] = {}
+    tasks: Dict[MessageId, List[Any]] = {}  # # < tasks状态管理，需要释放避免溢出
+
+    async def execute(self, message: BaseMessage):
+        ...
+
+    def task_done_callback(self, task):
+        ...

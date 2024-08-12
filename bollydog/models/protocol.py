@@ -40,3 +40,9 @@ class Protocol(abc.ABC):
         super().__init__()
         self.events = []
         self.unit_of_work = unit_of_work
+
+    def __repr__(self):
+        return f'<Protocol {self.__class__.__name__}>: {self.unit_of_work.url}'
+
+    def __str__(self):
+        return self.__repr__()

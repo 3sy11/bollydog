@@ -30,7 +30,7 @@ class BusService(AppService):
         self.add_service(self.router)
         for app in apps or []:
             self.add_service(app)
-        self.exit_stack.enter_context(_protocol_ctx_stack.push(self.protocol))
+        # self.exit_stack.enter_context(_protocol_ctx_stack.push(self.protocol))
 
     @classmethod
     def create_from(cls, **kwargs):

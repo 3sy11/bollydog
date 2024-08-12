@@ -4,16 +4,17 @@ import logging
 import pathlib
 import sys
 from typing import Dict, Coroutine
-from ptpython.repl import embed
-import fire
-import environs
-from bollydog.bootstrap import Bootstrap
-from bollydog.models.service import AppService
-from bollydog.patch import yaml
-from mode.utils.imports import smart_import
 
+import environs
+import fire
+from mode.utils.imports import smart_import
+from ptpython.repl import embed
+
+from bollydog.bootstrap import Bootstrap
 from bollydog.globals import _bus_ctx_stack, _protocol_ctx_stack  # # noqa
 from bollydog.models.base import ModulePathWithDot, MessageName, BaseMessage
+from bollydog.models.service import AppService
+from bollydog.patch import yaml
 from bollydog.service.app import BusService
 from bollydog.service.message import MessageManager
 
@@ -92,7 +93,7 @@ class CLI:
                     tasks = [group.create_task(h(msg), name=f'{h.__name__}:{msg.iid}') for h in
                              handlers]
                 for task in tasks:
-                    logging.info(f'{task.get_name()} result : {task.result()}')
+                    logging.info(f'{task.get_name()} result: {task.result()}')
 
         asyncio.run(_execute())
 
