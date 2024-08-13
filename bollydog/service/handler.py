@@ -23,15 +23,47 @@ async def task_done(event: TaskDoneE = message, protocol=None):
 
 
 class AppHandler(object):
+    handlers: Dict[MessageName, 'AppHandler'] = {}
 
-    def __new__(cls, *args, **kwargs):
-        return super().__new__(cls)
+    def __init__(self, fun, app) -> None:
+        self.fun = fun
+        self.app = app
+        self.isasyncgenfunction = inspect.isasyncgenfunction(fun)  # # noqa
+        self.callback = None
 
-    def __init__(self, fun: Callable[..., Awaitable]) -> None:
-        self.fun: Callable[..., Awaitable] = fun
-
-    async def __call__(self, obj: Any) -> Any:
-        return await self.fun(obj)
+    async def __call__(self, message) -> Any:
+        async with (_protocol_ctx_stack.push(self.app.protocol), _message_ctx_stack.push(message)):
+            if not inspect.isasyncgenfunction(self.fun):
+                result = await self.fun(message)
+                if isinstance(result, BaseMessage):
+                    return await self.callback(result)
+            async for msg in self.fun(message):
+                if not isinstance(msg, BaseMessage):
+                    return msg
+                result = await self.callback(msg)
+            return result
 
     def __repr__(self) -> str:
-        return repr(self.fun)
+        return f'{self.app}: {self.fun}'
+
+    def __str__(self):
+        return self.__repr__()
+
+    @classmethod
+    def register(cls, fun, app):
+        self = cls(fun, app)
+        self.handlers[get_model_name(fun)] = self
+
+    @classmethod
+    def auto_discover(cls, fun, app):
+        for name, parameter in inspect.signature(fun).parameters.items():
+            try:
+                if inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, BaseMessage):
+                    cls.register(fun, app)
+                    break
+            except Exception as e:
+                logger.warning(f'{e}')
+                continue
+
+
+register = AppHandler.register
