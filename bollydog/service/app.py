@@ -99,6 +99,55 @@ class BusService(AppService):
                     await self.queue.put(app.protocol.events.pop())
             await asyncio.sleep(1)
 
-    # @mode.Service.timer(60)
-    # async def matrix(self):
-    #     self.logger.debug(f' queue size: {self.queue.qsize()}')
+    def task_done_callback(self, task):
+        message, future = self.futures.pop(task.get_name())
+        try:
+            if not future.cancelled():
+                result = task.result()
+                if not future.done():
+                    future.set_result(result)
+        except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
+            if message.delivery_count:
+                message.delivery_count -= 1
+                self._execute(message, task.get_coro())
+            else:
+                self.logger.error(e)
+                future.set_exception(e)
+        except (AssertionError, StopAsyncIteration, RuntimeError) as e:
+            self.logger.error(e)
+            future.set_exception(e)
+        except Exception as e:
+            self.logger.exception(e)
+            future.set_exception(e)
+        finally:
+            self.logger.info(
+                f'{message.trace_id}|\001|{message.name}: {message.iid} from {message.parent_span_id or "0"}')
+            return message.model_dump()
+
+    def get_coro(self, message: Message) -> List[Awaitable]:
+        handlers = message.handlers
+        if message.name in self.app_handler.handlers:
+            handlers += list(self.app_handler.handlers.get(message.name))
+        if not handlers:
+            self.logger.warning(f'No handler found for {message.name}, nothing will be done')
+        coroutines = []
+        for handler in handlers[::-1]:
+            handler.callback = self.put_message if self.state is 'running' and message.qos is 0 else self.execute
+            coroutine = asyncio.wait_for(handler(message), timeout=message.expire_time)
+            self.futures[message.iid] = (message, message.state)
+            coroutines.append(coroutine)
+            message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
+        return coroutines
+
+    def _execute(self, message, coro):
+        task = asyncio.create_task(coro, name=message.iid)
+        task.add_done_callback(self.task_done_callback)
+
+    async def execute(self, message: Message):
+        coroutines = self.get_coro(message)
+        try:
+            for coro in coroutines:
+                self._execute(message, coro)
+        except Exception as e:
+            self.logger.error(f'{e}')
+        return message
