@@ -5,7 +5,8 @@ import time
 from pydantic import Field
 
 from bollydog.models.base import Event, BaseMessage
-from bollydog.service.message import MessageManager, register
+from bollydog.service.handler import register
+from bollydog.service.app import BusService
 
 logger = logging.getLogger(__name__)
 
@@ -45,26 +46,15 @@ async def raise_exception(message: RaiseException):
     raise Exception("test raise_exception")
 
 
-MessageManager.register_handler(LogInfoCommand, log_info)
-MessageManager.register_handler(RaiseException, raise_exception)
-
-
 @pytest.mark.asyncio
 async def test_message():
+    bus = BusService.create_from(apps=[])
     command = LogInfoCommand(info='test', a=1, b=2)
-    tasks = MessageManager.create_tasks(command)
-    for task in tasks:
-        res = await task
-    # event = RaiseException()
-    # tasks = MessageManager.create_tasks(event)
-    # try:
-    #     for task in tasks:
-    #         res = await task
-    # except:
-    #     pass
+    for coro in bus.get_coro(command):
+        res = await coro
     command = GenInfoCommand()
     command.expire_time = 1
-    await MessageManager.execute(command, None)
+    await bus.execute(command)
 
 
 async def try_exception(coro):

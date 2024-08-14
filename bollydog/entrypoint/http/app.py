@@ -9,8 +9,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from bollydog.globals import bus
-from bollydog.models.base import BaseMessage
-from bollydog.service.message import MessageManager
+from bollydog.models.base import BaseMessage, get_model_name
 from .config import (
     SERVICE_DEBUG,
     SERVICE_PORT,
@@ -53,13 +52,14 @@ class HttpService(AppService):
             self.middlewares.append(Middleware(m.pop(_config_middleware_key), **m))
 
     async def on_start(self) -> None:
-        for k, v in MessageManager.messages.items():
-            _methods = self.router_mapping.get(k, ['GET'])
+        for message_model in bus.app_handler.handlers.keys():
+            message_model_name = get_model_name(message_model)
+            _methods = self.router_mapping.get(message_model_name, ['GET'])
             if isinstance(_methods, str):
                 _methods = [_methods]
             self.http_app.router.add_route(
-                '/' + k.replace('.', '/'),
-                CommandHandler(v),
+                '/' + message_model_name.replace('.', '/'),
+                CommandHandler(message_model),
                 methods=_methods,
                 name=None,
                 include_in_schema=True,

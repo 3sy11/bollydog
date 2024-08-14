@@ -20,3 +20,7 @@ class HandlerTimeOutError(Exception):
 
 class HandlerMaxRetryError(Exception):
     pass
+
+
+class HandlerNoneError(Exception):
+    pass
