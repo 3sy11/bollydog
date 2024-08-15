@@ -1,6 +1,7 @@
 import abc
 import asyncio
 import time
+import databases
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Type, Dict, TypeVar, List
 
@@ -124,6 +125,15 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
                 await conn.run_sync(metadata.create_all)
             else:
                 await conn.run_sync(self.metadata.create_all)
+
+
+class DatabasesUnitOfWork(UnitOfWork):
+
+    async def context(self) -> AsyncGenerator:
+        pass
+
+    async def new_session(self):
+        pass
 
 
 class SqlAlchemyBaseProtocol(Protocol):

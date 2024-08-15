@@ -1,14 +1,11 @@
 # TODO
 
-- [X] ftr:支持handlers的类
-- [X] ftr:bollydog service支持exclude
-- [X] ftr:support Message AsyncIterator
 - [ ] opt:Use strong references for free-flying tasks when asyncio.create_task
-- [ ] opt:rm handler arg `protocol`
+- [X] opt:rm handler arg `protocol`
+- [ ] ftr: mv orm to three part database connect,orm, model define
 
-# TODO 按需增加
+# TODO MAYBE
 
-- [X] opt: combine `execute` `command` together
 - [ ] ftr: anonymous message call handler or generator
 - [ ] ftr:entrypoint增加一个开关，能够开启或者关闭接收特定消息
 - [ ] ftr:rete，和开关特性是否一致？

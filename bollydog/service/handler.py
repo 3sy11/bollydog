@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class AppHandler(object):
+    # < BaseService
     messages: Dict[MessageName, Type[BaseMessage]] = {}
     handlers: Dict[Type[BaseMessage], Set['AppHandler']] = {}
 
