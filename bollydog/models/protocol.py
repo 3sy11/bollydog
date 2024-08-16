@@ -10,25 +10,22 @@ class UnitOfWork(BaseService, abstract=True):
     def __init__(self, url: str, *args, **kwargs):
         super().__init__()
         self.url = url
-
-    async def on_start(self) -> None:
-        await super().on_start()
-        await self.new_session()
+        self.unit_of_work = self.create()
 
     async def on_stop(self) -> None:
-        await self.close_session()
+        self.delete()
         await super().on_stop()
 
     @abc.abstractmethod
     @asynccontextmanager
-    async def context(self) -> AsyncGenerator:
+    async def connect(self) -> AsyncGenerator:
         ...
 
     @abc.abstractmethod
-    async def new_session(self):
+    def create(self):
         ...
 
-    async def close_session(self):
+    def delete(self):
         ...
 
 
@@ -39,10 +36,14 @@ class Protocol(abc.ABC):
     def __init__(self, unit_of_work: UnitOfWork, *args, **kwargs):
         super().__init__()
         self.events = []
-        self.unit_of_work = unit_of_work
+        self._unit_of_work = unit_of_work
 
     def __repr__(self):
-        return f'<Protocol {self.__class__.__name__}>: {self.unit_of_work.url}'
+        return f'<Protocol {self.__class__.__name__}>: {self._unit_of_work.url}'
 
     def __str__(self):
         return self.__repr__()
+
+    @property
+    def unit_of_work(self):
+        return self._unit_of_work.unit_of_work

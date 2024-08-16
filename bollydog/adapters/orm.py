@@ -77,19 +77,11 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             url = AnyUrl(url)
         super().__init__(url=url, *args, **kwargs)
         self.metadata = metadata
-        self.engine = create_async_engine(
-            self.url.unicode_string(),
-            echo=IS_DEBUG,
-            echo_pool=IS_DEBUG,
-            hide_parameters=not IS_DEBUG,
-            pool_pre_ping=True,
-            pool_recycle=3600,
-        )
 
     @asynccontextmanager
-    async def context(self) -> AsyncGenerator:
+    async def connect(self) -> AsyncGenerator:
         if not self.async_scoped_session:
-            await self.new_session()
+            await self.create()
         session = self.async_scoped_session()  # # self.session是一个async_scoped_session
         try:
             yield session
@@ -106,7 +98,17 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
     # async def check_async_scoped_session_registry_registry(self):
     #     self.logger.debug(len(self.async_scoped_session.registry.registry))
 
-    async def new_session(self):
+    def create(self):
+        self.unit_of_work = create_async_engine(
+            self.url,
+            echo=IS_DEBUG,
+            echo_pool=IS_DEBUG,
+            hide_parameters=not IS_DEBUG,
+            pool_pre_ping=True,
+            pool_recycle=3600,
+        )
+
+    async def _create(self):
         # # https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#using-asyncio-scoped-session
         async_session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
         if not hasattr(self, 'session') or self.async_scoped_session is None:
@@ -115,7 +117,7 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
                                                              if message else asyncio.current_task().get_name()
                                                              )  # # 一条message对应一个代理对象
 
-    async def close_session(self):
+    async def delete(self):
         if self.async_scoped_session is not None:
             await self.async_scoped_session.close()
 
@@ -129,10 +131,10 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
 
 class DatabasesUnitOfWork(UnitOfWork):
 
-    async def context(self) -> AsyncGenerator:
+    async def connect(self) -> AsyncGenerator:
         pass
 
-    async def new_session(self):
+    async def create(self):
         pass
 
 
@@ -212,12 +214,12 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
         (有关此错误的背景信息：https://sqlalche.me/e/14/xd2s)
         """
 
-        async with self.unit_of_work.context() as session:
+        async with self.unit_of_work.connect() as session:
             session.add(item)
         return item
 
     async def _add_all(self, items, *args, **kwargs):
-        async with self.unit_of_work.context() as session:
+        async with self.unit_of_work.connect() as session:
             session.add_all(items)
         return items
 
@@ -225,7 +227,7 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
         stmt = select(cls)
         for column, value in kwargs.items():
             stmt = stmt.where(getattr(cls, column).is_(value))
-        async with self.unit_of_work.context() as session:
+        async with self.unit_of_work.connect() as session:
             result = await session.execute(stmt)
         return result.scalars().first()
 
@@ -233,7 +235,7 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
         stmt = select(cls)
         for column, value in kwargs.items():
             stmt = stmt.where(getattr(cls, column).is_(value))
-        async with self.unit_of_work.context() as session:
+        async with self.unit_of_work.connect() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
@@ -241,7 +243,7 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
         stmt = update(cls).where(cls.id.is_(item_id))
         stmt = stmt.values(update_time=time.time() * 1000, **kwargs)
         stmt = stmt.returning(cls)
-        async with self.unit_of_work.context() as session:
+        async with self.unit_of_work.connect() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
@@ -250,12 +252,12 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
         for column, value in kwargs.items():
             stmt = stmt.where(getattr(cls, column).is_(value))
         stmt = stmt.returning(cls)
-        async with self.unit_of_work.context() as session:
+        async with self.unit_of_work.connect() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
     async def _search(self, *args, **kwargs):
         query = text(kwargs['query'])
-        async with self.unit_of_work.context() as session:
+        async with self.unit_of_work.connect() as session:
             result = await session.execute(query)
         return result.fetchall()

@@ -48,5 +48,5 @@ async def test_adapter_orm():
     while len(res['hits']['hits']):
         res = await protocol.scroll(scroll='1m', scroll_id=res['_scroll_id'])
         result.extend(res['hits']['hits'])
-    await unit_of_work.client.close()
+    await unit_of_work.client.delete()
     # assert len(result) == 8

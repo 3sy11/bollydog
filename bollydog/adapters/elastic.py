@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 
 class ElasticUnitOfWork(UnitOfWork):
     @asynccontextmanager
-    async def context(self) -> AsyncGenerator:
+    async def connect(self) -> AsyncGenerator:
         try:
             yield self.client
         except Exception as e:
             logger.error(e)
 
-    async def new_session(self):
+    async def create(self):
         ...
 
     def __init__(self,

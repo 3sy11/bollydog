@@ -7,16 +7,16 @@ from bollydog.models.protocol import UnitOfWork, Protocol
 
 class LogUnitOfWork(UnitOfWork):
 
-    async def context(self) -> AsyncGenerator:
+    async def connect(self) -> AsyncGenerator:
         pass
 
     async def create_engine(self):
         pass
 
-    async def new_session(self):
+    async def create(self):
         pass
 
-    async def close_session(self):
+    async def delete(self):
         pass
 
 
@@ -32,16 +32,16 @@ class LogProtocol(Protocol):
 
 class FileUnitOfWork(UnitOfWork):
 
-    async def context(self) -> AsyncGenerator:
+    async def connect(self) -> AsyncGenerator:
         pass
 
     async def create_engine(self):
         pass
 
-    async def new_session(self):
+    async def create(self):
         pass
 
-    async def close_session(self):
+    async def delete(self):
         pass
 
 
@@ -57,16 +57,16 @@ class FileProtocol(Protocol):
 
 class NoneUnitOfWork(UnitOfWork):
     @asynccontextmanager
-    async def context(self) -> AsyncGenerator:
+    async def connect(self) -> AsyncGenerator:
         yield
 
     async def create_engine(self):
         pass
 
-    async def new_session(self):
+    async def create(self):
         pass
 
-    async def close_session(self):
+    async def delete(self):
         pass
 
 
