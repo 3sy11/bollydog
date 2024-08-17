@@ -1,17 +1,15 @@
 import abc
 import asyncio
 import time
-import databases
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Type, Dict, TypeVar, List
 
 from annotated_types import MaxLen
 from bollydog.config import IS_DEBUG
 from bollydog.models.protocol import UnitOfWork, Protocol
-from pydantic import AnyUrl
 from pydantic_core import PydanticUndefined
 from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, JSON, Float, Table, text, Text
-from sqlalchemy.ext.asyncio import create_async_engine, async_scoped_session, async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_scoped_session, async_sessionmaker, AsyncSession
 
 from bollydog.globals import message
 from bollydog.models.base import BaseDomain
@@ -67,36 +65,23 @@ def map_imperatively(cls: Type[BaseDomain], registry):
 
 
 class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
-    async_scoped_session = None
+    async_session = None
 
     def __init__(self,
-                 url: AnyUrl | str,
+                 url: str,
                  metadata: MetaData,
                  *args, **kwargs):
-        if isinstance(url, str):
-            url = AnyUrl(url)
         super().__init__(url=url, *args, **kwargs)
         self.metadata = metadata
 
     @asynccontextmanager
-    async def connect(self) -> AsyncGenerator:
-        if not self.async_scoped_session:
-            await self.create()
-        session = self.async_scoped_session()  # # self.session是一个async_scoped_session
+    async def connect(self) -> AsyncGenerator[AsyncSession, None]:
         try:
-            yield session
+            async with self.async_session.begin() as session:
+                yield session
         except BaseException as e:
-            await self.async_scoped_session.rollback()
-            self.logger.exception(e.__class__.__name__)
-        finally:
-            await self.async_scoped_session.commit()
-            await self.async_scoped_session.remove()
-            self.logger.debug(self.async_scoped_session.registry.registry)
-            # del self.session
-
-    # @UnitOfWork.timer(60)
-    # async def check_async_scoped_session_registry_registry(self):
-    #     self.logger.debug(len(self.async_scoped_session.registry.registry))
+            self.logger.exception(e)
+            raise e
 
     def create(self):
         self.unit_of_work = create_async_engine(
@@ -107,113 +92,20 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             pool_pre_ping=True,
             pool_recycle=3600,
         )
-
-    async def _create(self):
-        # # https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#using-asyncio-scoped-session
-        async_session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
-        if not hasattr(self, 'session') or self.async_scoped_session is None:
-            self.async_scoped_session = async_scoped_session(async_session_factory,
-                                                             scopefunc=lambda: message.iid
-                                                             if message else asyncio.current_task().get_name()
-                                                             )  # # 一条message对应一个代理对象
-
-    async def delete(self):
-        if self.async_scoped_session is not None:
-            await self.async_scoped_session.close()
+        self.async_session = async_sessionmaker(self.unit_of_work, expire_on_commit=True)
 
     async def create_all(self, metadata=None):
-        async with self.engine.begin() as conn:
+        async with self.unit_of_work.begin() as conn:
             if metadata:
                 await conn.run_sync(metadata.create_all)
             else:
                 await conn.run_sync(self.metadata.create_all)
 
 
-class DatabasesUnitOfWork(UnitOfWork):
-
-    async def connect(self) -> AsyncGenerator:
-        pass
-
-    async def create(self):
-        pass
-
-
-class SqlAlchemyBaseProtocol(Protocol):
+class SqlAlchemyProtocol(Protocol):
     unit_of_work: SqlAlchemyAsyncUnitOfWork
 
-    @abc.abstractmethod
-    async def _add(self, item: TypeVar, *args, **kwargs):
-        ...
-
-    @abc.abstractmethod
-    async def _get(self, cls: Type, *args, **kwargs):
-        ...  # pragma: no cover
-
-    @abc.abstractmethod
-    async def _delete(self, cls: Type, item_id, *args, **kwargs):
-        ...
-
-    @abc.abstractmethod
-    async def _list(self, cls: Type, *args, **kwargs):
-        ...
-
-    @abc.abstractmethod
-    async def _update(self, cls: Type, item_id, *args, **kwargs):
-        ...
-
-    @abc.abstractmethod
-    async def _add_all(self, items: List[TypeVar], *args, **kwargs):
-        ...
-
-    @abc.abstractmethod
-    async def _search(self, *args, **kwargs):
-        ...
-
-    async def add(self, item: BaseDomain, *args, **kwargs):
-        _item = orm_class_mapping[item.__class__](**item.model_dump())
-        _item = await self._add(_item, *args, **kwargs)
-        return _item.__dict__
-
-    async def add_all(self, items: List[BaseDomain], *args, **kwargs):
-        _is = [orm_class_mapping[i.__class__](**i.model_dump()) for i in items]
-        return await self._add_all(_is, *args, **kwargs)
-
-    async def get(self, cls: Type[BaseDomain], *args, **kwargs):
-        return await self._get(orm_class_mapping[cls], *args, **kwargs)
-
-    async def delete(self, cls: Type[BaseDomain], item_id, *args, **kwargs):
-        return await self._delete(orm_class_mapping[cls], item_id, *args, **kwargs)
-
-    async def list(self, cls: Type[BaseDomain], *args, **kwargs):
-        return await self._list(orm_class_mapping[cls], *args, **kwargs)
-
-    async def update(self, cls: Type[BaseDomain], item_id, *args, **kwargs):
-        return await self._update(orm_class_mapping[cls], item_id, *args, **kwargs)
-
-    async def search(self, *args, **kwargs):
-        return await self._search(*args, **kwargs)
-
-
-class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
-
     async def _add(self, item, *args, **kwargs):
-        """
-        stmt = (
-        insert(user_table).
-        values(name='username', fullname='Full Username')
-        )
-        如果orm定义的user和domain中定义的User模型的属性不同，上述方法不可用
-
-        ！ greenlet_spawn方法报错，没有复现出来
-        sqlalchemy.exc.IllegalStateChangeError: Method 'close()' can't be called here;
-        method 'close()' is already in progress and this would cause an unexpected state change to
-        <SessionTransactionState.CLOSED: 5>
-
-        ! greenlet_spawn sqlalchemy.exc.MissingGreenlet: greenlet_spawn没有被调用；
-        在这里不能调用await_only()。在一个意想不到的地方尝试过IO吗？
-        (有关此错误的背景信息：https://sqlalche.me/e/14/xd2s)
-        """
-
         async with self.unit_of_work.connect() as session:
             session.add(item)
         return item
@@ -261,3 +153,27 @@ class SqlAlchemyProtocol(SqlAlchemyBaseProtocol):
         async with self.unit_of_work.connect() as session:
             result = await session.execute(query)
         return result.fetchall()
+
+    async def add(self, item: BaseDomain, *args, **kwargs):
+        _item = orm_class_mapping[item.__class__](**item.model_dump())
+        _item = await self._add(_item, *args, **kwargs)
+        return _item.__dict__
+
+    async def add_all(self, items: List[BaseDomain], *args, **kwargs):
+        _is = [orm_class_mapping[i.__class__](**i.model_dump()) for i in items]
+        return await self._add_all(_is, *args, **kwargs)
+
+    async def get(self, cls: Type[BaseDomain], *args, **kwargs):
+        return await self._get(orm_class_mapping[cls], *args, **kwargs)
+
+    async def delete(self, cls: Type[BaseDomain], item_id, *args, **kwargs):
+        return await self._delete(orm_class_mapping[cls], item_id, *args, **kwargs)
+
+    async def list(self, cls: Type[BaseDomain], *args, **kwargs):
+        return await self._list(orm_class_mapping[cls], *args, **kwargs)
+
+    async def update(self, cls: Type[BaseDomain], item_id, *args, **kwargs):
+        return await self._update(orm_class_mapping[cls], item_id, *args, **kwargs)
+
+    async def search(self, *args, **kwargs):
+        return await self._search(*args, **kwargs)
