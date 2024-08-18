@@ -1,37 +1,69 @@
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable
-from bollydog.globals import message
-from .model import TaskList, TaskCount, TaskDoneE
+import inspect
+from typing import Any, Awaitable, Callable, Dict, Type, Set
+from mode.utils.imports import smart_import
+from bollydog.models.base import BaseMessage, ModulePathWithDot, MessageName, get_model_name
+from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack
 
 logger = logging.getLogger(__name__)
 
 
-async def task_list(command: TaskList = message, protocol=None):
-    result = asyncio.all_tasks()
-    result = {task.get_name(): [task._state, str(task.get_coro())] for task in result}  # # noqa
-    return result
-
-
-async def task_count(command: TaskCount = message, protocol=None):
-    result = asyncio.all_tasks()
-    return len(result)
-
-
-async def task_done(event: TaskDoneE = message, protocol=None):
-    logger.info("Task done: %s", event.task_name)
-
-
 class AppHandler(object):
+    # < BaseService
+    messages: Dict[MessageName, Type[BaseMessage]] = {}
+    handlers: Dict[Type[BaseMessage], Set['AppHandler']] = {}
 
-    def __new__(cls, *args, **kwargs):
-        return super().__new__(cls)
+    def __init__(self, fun, app=None) -> None:
+        self.fun = fun
+        self.app = app
+        self.isasyncgenfunction = inspect.isasyncgenfunction(fun)  # # noqa
+        self.callback = None
 
-    def __init__(self, fun: Callable[..., Awaitable]) -> None:
-        self.fun: Callable[..., Awaitable] = fun
-
-    async def __call__(self, obj: Any) -> Any:
-        return await self.fun(obj)
+    async def __call__(self, message) -> Any:
+        with (_protocol_ctx_stack.push(self.app.protocol), _message_ctx_stack.push(message)):
+            if not self.isasyncgenfunction:
+                result = await self.fun(message)
+                if isinstance(result, BaseMessage):
+                    return await self.callback(result)
+                return result
+            async for msg in self.fun(message):
+                if not isinstance(msg, BaseMessage):
+                    return msg
+                result = await self.callback(msg)
+            return result
 
     def __repr__(self) -> str:
-        return repr(self.fun)
+        return f'{self.app}: {self.fun}'
+
+    def __str__(self):
+        return self.__repr__()
+
+    @classmethod
+    def register(cls, fun, app=None):
+        for name, parameter in inspect.signature(fun).parameters.items():
+            try:
+                if inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, BaseMessage):
+                    self = cls(fun, app)
+                    cls.handlers.setdefault(parameter.annotation, set()).add(self)
+                    cls.messages[get_model_name(parameter.annotation)] = parameter.annotation
+                    break
+            except Exception as e:
+                logger.warning(f'{e}')
+                continue
+
+    @classmethod
+    def walk_module(cls, module: ModulePathWithDot, app=None):
+        logger.info(f'Loading handlers from {module}')
+        try:
+            if isinstance(module, str):
+                module = smart_import(module)
+            for name, func in inspect.getmembers(module, inspect.isfunction):
+                cls.register(func, app)
+        except (ModuleNotFoundError, AttributeError) as e:
+            logger.warning(f'Error: {e}, {module} may have error, try to import {module}.py')
+        except Exception as e:
+            logger.exception(e)
+
+
+register = AppHandler.register

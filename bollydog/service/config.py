@@ -1,10 +1,10 @@
 import os
 
-from bollydog.adapters.other import NoneProtocol, NoneUnitOfWork
+from bollydog.adapters.local import NoneProtocol, NoneUnitOfWork
 from bollydog.models.config import default_config, ProtocolConfig, UnitOfWorkConfig
 from mode.utils.imports import smart_import
 
-HANDLERS = os.getenv('BOLLYDOG_HANDLERS', ['bollydog.service.handler', ])
+HANDLERS = os.getenv('BOLLYDOG_HANDLERS', ['bollydog.service.model', ])
 QUEUE_MAX_SIZE = 1000
 PROTOCOL = os.getenv('BOLLYDOG_BUS_SERVICE_PROTOCOL', None)
 PROTOCOL = NoneProtocol if PROTOCOL is None else smart_import(PROTOCOL)

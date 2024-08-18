@@ -16,7 +16,6 @@ from bollydog.models.base import ModulePathWithDot, MessageName, BaseMessage
 from bollydog.models.service import AppService
 from bollydog.patch import yaml
 from bollydog.service.app import BusService
-from bollydog.service.message import MessageManager
 
 
 def _load_config(config: str) -> Dict:
@@ -83,17 +82,16 @@ class CLI:
         if handler:
             handlers = [smart_import(handler)]
         else:
-            handlers = [MessageManager.handlers[h] for h in MessageManager.mapping[message]]
+            handlers = list(bus.app_handler.handlers[message.__class__])
 
         logging.info(f'prepare to execute {msg.iid}')
 
         async def _execute():
-            with (_bus_ctx_stack.push(bus), _protocol_ctx_stack.push(protocol)):
-                async with asyncio.TaskGroup() as group:
-                    tasks = [group.create_task(h(msg), name=f'{h.__name__}:{msg.iid}') for h in
-                             handlers]
-                for task in tasks:
-                    logging.info(f'{task.get_name()} result: {task.result()}')
+            async with asyncio.TaskGroup() as group:
+                tasks = [group.create_task(h(msg), name=f'{h.__name__}:{msg.iid}') for h in
+                         handlers]
+            for task in tasks:
+                logging.info(f'{task.get_name()} result: {task.result()}')
 
         asyncio.run(_execute())
 
@@ -101,9 +99,8 @@ class CLI:
     def shell(config: str, ):
         apps = get_apps(config)
         bus = BusService.create_from(apps=apps.values())
-        mm = MessageManager
-        print(mm.messages)
-        print(mm.handlers)
+        for msg, handlers in bus.app_handler.handlers.items():
+            print(f'{msg} -> {handlers}')
         embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True)  # # noqa
         # print("Starting ptpython asyncio REPL")
         # print('Use "await" directly instead of "asyncio.run()".')

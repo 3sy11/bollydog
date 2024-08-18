@@ -1,15 +1,24 @@
+import asyncio
 from pydantic import Field
+from bollydog.models.base import Command
 
-from bollydog.models.base import Command, Event
+DOMAIN = 'service'
 
 
 class TaskList(Command):
-    pass
+    domain: str = Field(default=DOMAIN)
 
 
 class TaskCount(Command):
-    pass
+    domain: str = Field(default=DOMAIN)
 
 
-class TaskDoneE(Event):
-    pass
+async def task_list(command: TaskList):
+    result = asyncio.all_tasks()
+    result = {task.get_name(): [task._state, str(task.get_coro())] for task in result}  # # noqa
+    return result
+
+
+async def task_count(command: TaskCount):
+    result = asyncio.all_tasks()
+    return len(result)

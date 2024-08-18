@@ -10,7 +10,6 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from bollydog.entrypoint.websocket.config import SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST
 from bollydog.globals import bus
 from bollydog.models.base import BaseMessage, MessageTraceId
-from bollydog.service.message import MessageManager
 
 
 class SocketService(AppService):
@@ -48,7 +47,10 @@ class SocketService(AppService):
                 message = await websocket.receive_text()
                 self.logger.debug(f"Received message from client: {message}")
                 message = json.loads(message)
-                message = MessageManager.create_message(**message)
+                if message['name'] in bus.app_handler.messages:
+                    message = bus.app_handler.messages[message['name']](**message)
+                else:
+                    message = BaseMessage(**message)
                 if message.trace_id in self.session:
                     self.session[message.trace_id].add(websocket)
                 else:

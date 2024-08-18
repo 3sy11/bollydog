@@ -1,19 +1,23 @@
 import asyncio
-from typing import Iterable
-
 import mode
+import uuid
+from typing import Iterable, List, Dict, Awaitable, Tuple, MutableMapping, Any
+
 from bollydog.exception import (
     ServiceRejectException,
     MessageValidationError,
     ServiceMaxSizeOfQueueError,
+    HandlerTimeOutError,
+    HandlerMaxRetryError,
+    HandlerNoneError
 )
 from bollydog.models.config import ServiceConfig
 from bollydog.models.service import AppService
+from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
 
-from bollydog.globals import _protocol_ctx_stack, _bus_ctx_stack, _message_ctx_stack
-from bollydog.models.base import BaseMessage as Message
-from bollydog.service.message import MessageManager
+from bollydog.globals import _bus_ctx_stack
+from bollydog.models.base import BaseMessage as Message, MessageId
 from .config import service_config, QUEUE_MAX_SIZE
 
 
@@ -21,6 +25,9 @@ class BusService(AppService):
     queue: asyncio.Queue
     apps: dict
     router: Router
+    futures: MutableMapping[MessageId, Tuple[Message, asyncio.Future]] = {}
+    tasks: Dict[MessageId, List[Any]] = {}
+    app_handler = AppHandler
 
     def __init__(self, apps: Iterable[AppService] = None, **kwargs):
         super().__init__(**kwargs)
@@ -30,7 +37,7 @@ class BusService(AppService):
         self.add_service(self.router)
         for app in apps or []:
             self.add_service(app)
-        # self.exit_stack.enter_context(_protocol_ctx_stack.push(self.protocol))
+        self.exit_stack.enter_context(_bus_ctx_stack.push(self))  # # mode.Service.stop
 
     @classmethod
     def create_from(cls, **kwargs):
@@ -41,7 +48,6 @@ class BusService(AppService):
 
     async def on_start(self) -> None:
         await super(BusService, self).on_start()
-        self.exit_stack.enter_context(_bus_ctx_stack.push(self))  # # mode.Service.stop
 
     async def on_shutdown(self) -> None:
         await super(BusService, self).on_shutdown()
@@ -52,10 +58,6 @@ class BusService(AppService):
                 continue
             await service.maybe_start()
         self.logger.info(self.apps)
-        self.logger.info(MessageManager.mapping)
-        self.logger.info(MessageManager.messages)
-        self.logger.info(MessageManager.handlers)
-        # self.logger.debug('Debug On !!')
 
     def add_service(self, service: AppService):
         assert service.domain
@@ -87,8 +89,8 @@ class BusService(AppService):
             self.logger.debug(f'{message.module}-{message.domain}-{message.name}')
             app: AppService = self.apps.get(message.domain)
             self.logger.info(
-                f'{message.trace_id}|\001\001|{message.name}:{message.iid} from {message.parent_span_id or "0"}')
-            await MessageManager.execute(message, app.protocol)
+                f'{message.trace_id}|\001\001|{message.name}: {message.iid} from {message.parent_span_id or "0"}')
+            await self.execute(message)
             await self.router.publish(message)
 
     @mode.Service.task
@@ -99,6 +101,60 @@ class BusService(AppService):
                     await self.queue.put(app.protocol.events.pop())
             await asyncio.sleep(1)
 
-    # @mode.Service.timer(60)
-    # async def matrix(self):
-    #     self.logger.debug(f' queue size: {self.queue.qsize()}')
+    def task_done_callback(self, task):
+        message, future = self.futures.pop(task.get_name())
+        try:
+            if not future.cancelled():
+                result = task.result()
+                if not future.done():
+                    future.set_result(result)
+        except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
+            if message.delivery_count:
+                message.delivery_count -= 1
+                self._execute(message, task.get_coro())
+            else:
+                self.logger.error(e)
+                future.set_exception(e)
+        except (AssertionError, StopAsyncIteration, RuntimeError) as e:
+            self.logger.error(e)
+            future.set_exception(e)
+        except Exception as e:
+            self.logger.exception(e)
+            future.set_exception(e)
+        finally:
+            self.logger.info(
+                f'{message.trace_id}|\001|{message.name}: {message.iid} from {message.parent_span_id or "0"}')
+            return message.model_dump()
+
+    def get_coro(self, message: Message) -> List[Awaitable]:
+        # < handler from message
+        handlers = []
+        handlers.extend(message.handlers)
+        if message.__class__ in self.app_handler.handlers:
+            handlers += list(self.app_handler.handlers[message.__class__])
+        coroutines = []
+        for handler in handlers[::-1]:
+            if not handler.app:
+                handler.app = self.apps[message.domain]
+            handler.callback = self.put_message if self.state == 'running' and message.qos == 0 else self.execute
+            coroutine = asyncio.wait_for(handler(message), timeout=message.expire_time)
+            self.futures[message.iid] = (message, message.state)
+            coroutines.append(coroutine)
+            message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
+        return coroutines
+
+    def _execute(self, message, coro):
+        task = asyncio.create_task(coro, name=message.iid)
+        task.add_done_callback(self.task_done_callback)
+
+    async def execute(self, message: Message):
+        coroutines = self.get_coro(message)
+        try:
+            if not coroutines:
+                raise HandlerNoneError(f'No handler found for {message.name}, nothing will be done')
+            for coro in coroutines:
+                self._execute(message, coro)
+        except Exception as e:
+            self.logger.error(f'{e}')
+            message.state.set_result(str(e))
+        return message

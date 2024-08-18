@@ -1,6 +1,7 @@
 import pathlib
 
 import sys
+
 sys.path.append(pathlib.Path(__file__).parent.parent.parent.as_posix())
 print(sys.path)
 
@@ -15,6 +16,7 @@ from bollydog.service.app import BusService
 
 path = pathlib.Path(__file__).parent.parent.joinpath('./config.yml')
 env = pathlib.Path(__file__).parent.parent.joinpath('./.env')
+
 
 @pytest.mark.asyncio
 async def test_run_service():

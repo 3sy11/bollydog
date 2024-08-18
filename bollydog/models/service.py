@@ -4,7 +4,7 @@ from typing import List
 from bollydog.models.config import ServiceConfig, default_config
 
 from bollydog.models.base import BaseService
-from bollydog.service.message import MessageManager
+from bollydog.service.handler import AppHandler
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,7 @@ class AppService(BaseService, abstract=True):
         self.config = config
         self.protocol = protocol
         self.handlers = handlers or []
-        for handler in self.handlers:
-            MessageManager.walk_module(handler)
+
 
     @classmethod
     def create_from(cls, config: ServiceConfig = default_config, **kwargs):
@@ -47,4 +46,6 @@ class AppService(BaseService, abstract=True):
             **config.model_dump(exclude={'protocol'}),
             **kwargs
         )
+        for handler in app_service.handlers:
+            AppHandler.walk_module(handler, app_service)
         return app_service

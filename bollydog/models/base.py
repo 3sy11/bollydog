@@ -26,11 +26,6 @@ DomainName = Annotated[str, 'Domain']
 
 @lru_cache  # ?
 def get_model_name(o) -> str:
-    """
-    函数和类都用这个方法
-    :param o: BaseModel or function
-    :return:
-    """
     if inspect.isfunction(o):
         return f'{o.__module__}.{o.__name__}'
     elif issubclass(o, BaseModel):

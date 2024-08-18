@@ -1,6 +1,6 @@
 from typing import Type, List, Any
 
-from bollydog.adapters.other import NoneProtocol, NoneUnitOfWork
+from bollydog.adapters.local import NoneProtocol, NoneUnitOfWork
 from bollydog.models.protocol import Protocol, UnitOfWork
 from pydantic import BaseModel, Field, ConfigDict, AnyUrl
 
