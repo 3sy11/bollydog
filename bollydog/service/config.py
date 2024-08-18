@@ -1,6 +1,6 @@
 import os
 
-from bollydog.adapters.other import NoneProtocol, NoneUnitOfWork
+from bollydog.adapters.local import NoneProtocol, NoneUnitOfWork
 from bollydog.models.config import default_config, ProtocolConfig, UnitOfWorkConfig
 from mode.utils.imports import smart_import
 

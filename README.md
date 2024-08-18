@@ -2,7 +2,7 @@
 
 - [ ] opt:Use strong references for free-flying tasks when asyncio.create_task
 - [X] opt:rm handler arg `protocol`
-- [ ] ftr: mv orm to three part database connect,orm, model define
+- [ ] ftr: satisfy `databases` protocol
 
 # TODO MAYBE
 

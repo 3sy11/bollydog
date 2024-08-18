@@ -37,8 +37,9 @@ setup(
         "elasticsearch==8.14.0",
         "aiohttp",
         "environs",
-        "ptpython"
-
+        "ptpython",
+        "notion_client",
+        "databases==0.9.0"
     ],
     extras_require={
         "dev": [

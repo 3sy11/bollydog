@@ -7,19 +7,20 @@ from bollydog.models.base import BaseService, BaseMessage
 
 class UnitOfWork(BaseService, abstract=True):
 
-    def __init__(self, url: str, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        self.url = url
-        self.unit_of_work = self.create()
+        self.adapter = self.create()
+
+    def __repr__(self):
+        return f'<UnitOfWork {self.__class__.__name__}>'
 
     async def on_stop(self) -> None:
         self.delete()
         await super().on_stop()
 
-    @abc.abstractmethod
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator:
-        ...
+        yield self.adapter
 
     @abc.abstractmethod
     def create(self):
@@ -36,14 +37,14 @@ class Protocol(abc.ABC):
     def __init__(self, unit_of_work: UnitOfWork, *args, **kwargs):
         super().__init__()
         self.events = []
-        self._unit_of_work = unit_of_work
+        self.unit_of_work = unit_of_work
 
     def __repr__(self):
-        return f'<Protocol {self.__class__.__name__}>: {self._unit_of_work.url}'
+        return f'<Protocol {self.__class__.__name__}>: {self.unit_of_work.__repr__()}'
 
     def __str__(self):
         return self.__repr__()
 
     @property
-    def unit_of_work(self):
-        return self._unit_of_work.unit_of_work
+    def adapter(self):
+        return self.unit_of_work.adapter

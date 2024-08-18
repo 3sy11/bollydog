@@ -12,10 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 class LogInfoCommand(BaseMessage):
+    domain: str = Field(default='service')
     info: str = Field(default='info message')
 
 
 class GenInfoCommand(BaseMessage):
+    domain: str = Field(default='service')
     ...
 
 

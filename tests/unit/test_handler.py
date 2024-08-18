@@ -5,6 +5,7 @@ from pydantic import Field
 from bollydog.models.base import Command, BaseDomain
 from bollydog.globals import protocol as _protocol, message as _message
 from bollydog.service.handler import register
+from bollydog.service.app import BusService
 
 
 class Point(BaseDomain):
@@ -13,11 +14,13 @@ class Point(BaseDomain):
 
 
 class LogPoint(Command):
+    domain: str = Field(default='service')
     point: Point
 
 
 class RandMovePoint(Command):
     point: Point
+    domain: str = Field(default='service')
     x: int = Field(default_factory=lambda: random.randint(0, 1))
     y: int = Field(default_factory=lambda: random.randint(0, 1))
 
@@ -35,13 +38,15 @@ async def move_point(command: RandMovePoint = _message, protocol=_protocol):
     point.y = point.y + command.y
     yield LogPoint(point=point)
 
-# @pytest.mark.asyncio
-# async def test_async_generator_handler():
-#     point = Point(x=0, y=0)
-#     log_point = LogPoint(point=point)
-#     tasks = MessageManager.create_tasks(log_point)
-#     for task in tasks:
-#         await task
-#     tasks = MessageManager.create_tasks(RandMovePoint(point=point))
-#     for task in tasks:
-#         await task
+
+@pytest.mark.asyncio
+async def test_async_generator_handler():
+    bus = BusService.create_from(apps=[])
+    point = Point(x=0, y=0)
+    log_point = LogPoint(point=point)
+    tasks = bus.get_coro(log_point)
+    for task in tasks:
+        await task
+    tasks = bus.get_coro(RandMovePoint(point=point))
+    for task in tasks:
+        await task

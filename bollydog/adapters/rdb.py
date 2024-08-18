@@ -1,17 +1,15 @@
-import abc
-import asyncio
 import time
+import databases
+import sqlalchemy
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Type, Dict, TypeVar, List
-
+from typing import AsyncGenerator, Type, Dict, List
+from pydantic_core import PydanticUndefined
 from annotated_types import MaxLen
+from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, Float, Table, text, Text, inspect
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession, AsyncEngine
+from sqlalchemy.orm import registry
 from bollydog.config import IS_DEBUG
 from bollydog.models.protocol import UnitOfWork, Protocol
-from pydantic_core import PydanticUndefined
-from sqlalchemy import select, delete, update, MetaData, Column, Integer, String, JSON, Float, Table, text, Text
-from sqlalchemy.ext.asyncio import create_async_engine, async_scoped_session, async_sessionmaker, AsyncSession
-
-from bollydog.globals import message
 from bollydog.models.base import BaseDomain
 
 annotation_mapping: Dict[Type, Type] = {
@@ -21,12 +19,14 @@ annotation_mapping: Dict[Type, Type] = {
     dict: Text,
 }
 DEFAULT_STR_LEN = 50
-orm_class_mapping: Dict[Type[BaseDomain], Type] = {}
+sqlalchemy_class_mapping: Dict[Type[BaseDomain], Type] = {}
+# r=registry()
 
 
 def map_imperatively(cls: Type[BaseDomain], registry):
     """
     pydantic model to sqlalchemy model, bind to pydantic model `Config.orm_mapper_registry_class` attribute
+    # < use `ormar` instead
     """
     columns = [
         Column('id', Integer, primary_key=True, autoincrement=True),
@@ -61,7 +61,7 @@ def map_imperatively(cls: Type[BaseDomain], registry):
         orm_cls,  # # noqa
         Table(cls.__name__.lower(), registry.metadata, *columns, )
     )
-    orm_class_mapping[cls] = orm_cls
+    sqlalchemy_class_mapping[cls] = orm_cls
 
 
 class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
@@ -71,8 +71,12 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
                  url: str,
                  metadata: MetaData,
                  *args, **kwargs):
-        super().__init__(url=url, *args, **kwargs)
         self.metadata = metadata
+        self.url = url
+        super().__init__(*args, **kwargs)
+
+    def __repr__(self):
+        return f'<SqlAlchemyAsyncUnitOfWork {self.url}>'
 
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator[AsyncSession, None]:
@@ -83,8 +87,8 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             self.logger.exception(e)
             raise e
 
-    def create(self):
-        self.unit_of_work = create_async_engine(
+    def create(self) -> AsyncEngine:
+        adapter = create_async_engine(
             self.url,
             echo=IS_DEBUG,
             echo_pool=IS_DEBUG,
@@ -92,10 +96,11 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             pool_pre_ping=True,
             pool_recycle=3600,
         )
-        self.async_session = async_sessionmaker(self.unit_of_work, expire_on_commit=True)
+        self.async_session = async_sessionmaker(adapter, expire_on_commit=False)
+        return adapter
 
     async def create_all(self, metadata=None):
-        async with self.unit_of_work.begin() as conn:
+        async with self.adapter.begin() as conn:
             if metadata:
                 await conn.run_sync(metadata.create_all)
             else:
@@ -103,16 +108,22 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
 
 
 class SqlAlchemyProtocol(Protocol):
-    unit_of_work: SqlAlchemyAsyncUnitOfWork
 
     async def _add(self, item, *args, **kwargs):
         async with self.unit_of_work.connect() as session:
+            # table = inspect(item).mapper.local_table
+            # stmt = table.insert()
+            # query = str(stmt.compile())
+            # text(query)
+            # await session.execute(stmt, values=values)
             session.add(item)
+            await session.commit()
         return item
 
     async def _add_all(self, items, *args, **kwargs):
         async with self.unit_of_work.connect() as session:
             session.add_all(items)
+            await session.commit()
         return items
 
     async def _get(self, cls, *args, **kwargs):
@@ -155,25 +166,52 @@ class SqlAlchemyProtocol(Protocol):
         return result.fetchall()
 
     async def add(self, item: BaseDomain, *args, **kwargs):
-        _item = orm_class_mapping[item.__class__](**item.model_dump())
+        _item = sqlalchemy_class_mapping[item.__class__](**item.model_dump())
         _item = await self._add(_item, *args, **kwargs)
         return _item.__dict__
 
     async def add_all(self, items: List[BaseDomain], *args, **kwargs):
-        _is = [orm_class_mapping[i.__class__](**i.model_dump()) for i in items]
+        _is = [sqlalchemy_class_mapping[i.__class__](**i.model_dump()) for i in items]
         return await self._add_all(_is, *args, **kwargs)
 
     async def get(self, cls: Type[BaseDomain], *args, **kwargs):
-        return await self._get(orm_class_mapping[cls], *args, **kwargs)
+        return await self._get(sqlalchemy_class_mapping[cls], *args, **kwargs)
 
     async def delete(self, cls: Type[BaseDomain], item_id, *args, **kwargs):
-        return await self._delete(orm_class_mapping[cls], item_id, *args, **kwargs)
+        return await self._delete(sqlalchemy_class_mapping[cls], item_id, *args, **kwargs)
 
     async def list(self, cls: Type[BaseDomain], *args, **kwargs):
-        return await self._list(orm_class_mapping[cls], *args, **kwargs)
+        return await self._list(sqlalchemy_class_mapping[cls], *args, **kwargs)
 
     async def update(self, cls: Type[BaseDomain], item_id, *args, **kwargs):
-        return await self._update(orm_class_mapping[cls], item_id, *args, **kwargs)
+        return await self._update(sqlalchemy_class_mapping[cls], item_id, *args, **kwargs)
 
     async def search(self, *args, **kwargs):
         return await self._search(*args, **kwargs)
+
+
+class DatabasesUnitOfWork(UnitOfWork):
+
+    def __init__(self, url, metadata,dialect=None):
+        self.url = url
+        self.metadata = metadata
+        self.dialect = dialect
+        super().__init__()
+
+    @asynccontextmanager
+    async def connect(self) -> AsyncGenerator:
+        async with self.adapter.connection() as connect:
+            yield connect
+
+    def create(self):
+        adapter = databases.Database(self.url)
+        self.dialect = getattr(sqlalchemy.dialects,adapter.url.dialect).dialect()
+        return adapter
+
+    async def create_all(self, metadata=None):
+        metadata = metadata or self.metadata
+        async with self.connect() as conn:
+            for table in metadata.tables.values():
+                schema = sqlalchemy.schema.CreateTable(table, if_not_exists=True)
+                query = str(schema.compile(dialect=self.dialect))
+                await conn.execute(query=query)

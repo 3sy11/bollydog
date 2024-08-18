@@ -134,6 +134,8 @@ class BusService(AppService):
             handlers += list(self.app_handler.handlers[message.__class__])
         coroutines = []
         for handler in handlers[::-1]:
+            if not handler.app:
+                handler.app = self.apps[message.domain]
             handler.callback = self.put_message if self.state == 'running' and message.qos == 0 else self.execute
             coroutine = asyncio.wait_for(handler(message), timeout=message.expire_time)
             self.futures[message.iid] = (message, message.state)

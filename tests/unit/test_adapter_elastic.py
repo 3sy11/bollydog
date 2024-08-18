@@ -15,8 +15,8 @@ class Point(BaseDomain):
 
 @pytest.mark.asyncio
 async def test_adapter_orm():
-    unit_of_work = ElasticUnitOfWork(url='http://172.27.0.2:9200/',
-                                     api_key='SGxvMUpKQUJ2eFFMR3ZTOWFBYjk6WExycVZhNThTUGlMSDlkb2I3bEVZUQ==')
+    unit_of_work = ElasticUnitOfWork(url='http://172.27.0.3:9200/',
+                                     api_key='WGljd1pKRUJHMVRVaFZma2c3Tkg6bF9kTE1UaV9TSDZzcUliUWtrZ1Bkdw==')
     protocol = ElasticProtocol(unit_of_work=unit_of_work)
     p1 = Point(x=1, y=2, title='p1').model_dump()
     p2 = Point(x=3, y=4, title='p2').model_dump()
@@ -48,5 +48,5 @@ async def test_adapter_orm():
     while len(res['hits']['hits']):
         res = await protocol.scroll(scroll='1m', scroll_id=res['_scroll_id'])
         result.extend(res['hits']['hits'])
-    await unit_of_work.client.delete()
+    unit_of_work.delete()
     # assert len(result) == 8
