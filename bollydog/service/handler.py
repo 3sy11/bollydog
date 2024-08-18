@@ -4,7 +4,7 @@ import inspect
 from typing import Any, Awaitable, Callable, Dict, Type, Set
 from mode.utils.imports import smart_import
 from bollydog.models.base import BaseMessage, ModulePathWithDot, MessageName, get_model_name
-from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack
+from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack, bus
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,6 @@ class AppHandler(object):
         self.fun = fun
         self.app = app
         self.isasyncgenfunction = inspect.isasyncgenfunction(fun)  # # noqa
-        self.callback = None
 
     async def __call__(self, message) -> Any:
         with (_protocol_ctx_stack.push(self.app.protocol), _message_ctx_stack.push(message)):
@@ -29,7 +28,7 @@ class AppHandler(object):
                 return result
             async for msg in self.fun(message):
                 if not isinstance(msg, BaseMessage):
-                    return msg
+                    return msg # # msg->handler->create_task or await
                 result = await self.callback(msg)
             return result
 
@@ -39,8 +38,12 @@ class AppHandler(object):
     def __str__(self):
         return self.__repr__()
 
+    @property
+    def callback(self):
+        return bus.put_message if bus.state == 'running' and _message_ctx_stack.top.qos == 0 else bus.execute
+
     @classmethod
-    def register(cls, fun, app=None):
+    def register(cls, fun, app):
         for name, parameter in inspect.signature(fun).parameters.items():
             try:
                 if inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, BaseMessage):
@@ -64,6 +67,3 @@ class AppHandler(object):
             logger.warning(f'Error: {e}, {module} may have error, try to import {module}.py')
         except Exception as e:
             logger.exception(e)
-
-
-register = AppHandler.register

@@ -82,13 +82,13 @@ class CLI:
         if handler:
             handlers = [smart_import(handler)]
         else:
-            handlers = list(bus.app_handler.handlers[message.__class__])
+            handlers = list(bus.app_handler.handlers[msg.__class__])
 
         logging.info(f'prepare to execute {msg.iid}')
 
         async def _execute():
             async with asyncio.TaskGroup() as group:
-                tasks = [group.create_task(h(msg), name=f'{h.__name__}:{msg.iid}') for h in
+                tasks = [group.create_task(h(msg), name=f'{str(h)}:{msg.iid}') for h in
                          handlers]
             for task in tasks:
                 logging.info(f'{task.get_name()} result: {task.result()}')

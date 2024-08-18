@@ -4,7 +4,7 @@ from bollydog.models.protocol import UnitOfWork, Protocol
 
 class NotionUnitOfWork(UnitOfWork):
 
-    def __init__(self, token, root_page_id, **kwargs):
+    def __init__(self, token, root_page_id=None, **kwargs):
         self.token = token
         self.root_page_id = root_page_id
         super(NotionUnitOfWork, self).__init__(**kwargs)
