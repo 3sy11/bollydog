@@ -1,7 +1,8 @@
 import asyncio
-import mode
 import uuid
 from typing import Iterable, List, Dict, Awaitable, Tuple, MutableMapping, Any
+
+import mode
 
 from bollydog.exception import (
     ServiceRejectException,
@@ -11,13 +12,12 @@ from bollydog.exception import (
     HandlerMaxRetryError,
     HandlerNoneError
 )
+from bollydog.globals import _bus_ctx_stack
+from bollydog.models.base import BaseMessage as Message, MessageId
 from bollydog.models.config import ServiceConfig
 from bollydog.models.service import AppService
 from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
-
-from bollydog.globals import _bus_ctx_stack
-from bollydog.models.base import BaseMessage as Message, MessageId
 from .config import service_config, QUEUE_MAX_SIZE
 
 
@@ -40,17 +40,8 @@ class BusService(AppService):
         self.exit_stack.enter_context(_bus_ctx_stack.push(self))  # # mode.Service.stop
 
     @classmethod
-    def create_from(cls, **kwargs):
+    def create_from(cls, **kwargs) -> 'BusService':
         return super().create_from(config=service_config, **kwargs)
-
-    async def on_first_start(self) -> None:
-        await super(BusService, self).on_first_start()
-
-    async def on_start(self) -> None:
-        await super(BusService, self).on_start()
-
-    async def on_shutdown(self) -> None:
-        await super(BusService, self).on_shutdown()
 
     async def on_started(self) -> None:
         for service in self.apps.values():
@@ -65,11 +56,10 @@ class BusService(AppService):
         self.apps[service.domain] = service
 
     async def _is_valid(self, message: Message):
-
         if not self.apps.get(message.domain):
             raise MessageValidationError(f'{message.domain} is not a valid domain')
 
-    async def put_message(self, message: Message):
+    async def put_message(self, message: Message) -> Message:
         if self.should_stop:
             raise ServiceRejectException()
         if self.queue.qsize() > QUEUE_MAX_SIZE:
@@ -135,22 +125,23 @@ class BusService(AppService):
         coroutines = []
         for handler in handlers[::-1]:
             coroutine = asyncio.wait_for(handler(message), timeout=message.expire_time)
-            self.futures[message.iid] = (message, message.state)
             coroutines.append(coroutine)
             message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
+        if not coroutines:
+            raise HandlerNoneError(f'No handler found for {message.name}, nothing will be done')
         return coroutines
 
     def _execute(self, message, coro):
         task = asyncio.create_task(coro, name=message.iid)
         task.add_done_callback(self.task_done_callback)
+        self.futures[message.iid] = (message, message.state)
+        return task
 
-    async def execute(self, message: Message):
+    async def execute(self, message: Message) -> Message:
         coroutines = self.get_coro(message)
         try:
-            if not coroutines:
-                raise HandlerNoneError(f'No handler found for {message.name}, nothing will be done')
-            for coro in coroutines:
-                self._execute(message, coro)
+            tasks = [self._execute(message, coro) for coro in coroutines]
+            await asyncio.wait(tasks)
         except Exception as e:
             self.logger.error(f'{e}')
             message.state.set_result(str(e))

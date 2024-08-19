@@ -14,7 +14,7 @@ class AppHandler(object):
     messages: Dict[MessageName, Type[BaseMessage]] = {}
     handlers: Dict[Type[BaseMessage], Set['AppHandler']] = {}
 
-    def __init__(self, fun, app=None) -> None:
+    def __init__(self, fun, app) -> None:
         self.fun = fun
         self.app = app
         self.isasyncgenfunction = inspect.isasyncgenfunction(fun)  # # noqa
@@ -24,12 +24,15 @@ class AppHandler(object):
             if not self.isasyncgenfunction:
                 result = await self.fun(message)
                 if isinstance(result, BaseMessage):
-                    return await self.callback(result)
-                return result
-            async for msg in self.fun(message):
-                if not isinstance(msg, BaseMessage):
-                    return msg # # msg->handler->create_task or await
-                result = await self.callback(msg)
+                    msg = await self.callback(result)
+                    result = await msg.state
+            else:
+                async for msg in self.fun(message):
+                    if not isinstance(msg, BaseMessage):
+                        result = msg
+                        break
+                    msg = self.callback(msg)
+                    result = await msg.state
             return result
 
     def __repr__(self) -> str:

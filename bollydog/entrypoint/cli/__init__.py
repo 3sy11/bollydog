@@ -12,7 +12,7 @@ from ptpython.repl import embed
 
 from bollydog.bootstrap import Bootstrap
 from bollydog.globals import _bus_ctx_stack, _protocol_ctx_stack  # # noqa
-from bollydog.models.base import ModulePathWithDot, MessageName, BaseMessage
+from bollydog.models.base import MessageName, BaseMessage
 from bollydog.models.service import AppService
 from bollydog.patch import yaml
 from bollydog.service.app import BusService
@@ -33,7 +33,7 @@ def _load_config(config: str) -> Dict:
 def get_apps(config: str) -> Dict[str, AppService]:
     work_dir = pathlib.Path(config).parent
     logging.info(
-        f'loading env from {work_dir.as_posix()}:{environs.Env().read_env(work_dir.joinpath(".env").as_posix())}'
+        f'loading env from {work_dir.as_posix()}: {environs.Env().read_env(work_dir.joinpath(".env").as_posix())}'
     )
     sys.path.insert(0, work_dir.as_posix())
     config = _load_config(config)
@@ -68,30 +68,16 @@ class CLI:
     def execute(
             config: str,
             message: MessageName,  # # instance or class name
-            app: str = None,
-            handler: ModulePathWithDot = None,
             **kwargs):
         apps = get_apps(config)
-        app = app or message.split('.')[0]
-        protocol = apps[app].protocol
         bus = BusService.create_from(apps=apps.values())
-
         msg = smart_import(message)
-        if issubclass(msg, BaseMessage):
-            msg = msg(**kwargs)
-        if handler:
-            handlers = [smart_import(handler)]
-        else:
-            handlers = list(bus.app_handler.handlers[msg.__class__])
-
+        assert issubclass(msg, BaseMessage)
+        msg = msg(**kwargs)
         logging.info(f'prepare to execute {msg.iid}')
 
         async def _execute():
-            async with asyncio.TaskGroup() as group:
-                tasks = [group.create_task(h(msg), name=f'{str(h)}:{msg.iid}') for h in
-                         handlers]
-            for task in tasks:
-                logging.info(f'{task.get_name()} result: {task.result()}')
+            await bus.execute(msg)
 
         asyncio.run(_execute())
 
