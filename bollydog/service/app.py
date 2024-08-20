@@ -57,16 +57,18 @@ class BusService(AppService):
 
     async def _is_valid(self, message: Message):
         if not self.apps.get(message.domain):
-            raise MessageValidationError(f'{message.domain} is not a valid domain')
+            raise MessageValidationError(
+                f'{message.trace_id}|\001\001|{message.name}|\001\001|{message.domain} is not a valid domain')
 
     async def put_message(self, message: Message) -> Message:
         if self.should_stop:
             raise ServiceRejectException()
         if self.queue.qsize() > QUEUE_MAX_SIZE:
-            raise ServiceMaxSizeOfQueueError('Queue is full')
+            raise ServiceMaxSizeOfQueueError(f'{message.trace_id}|\001\001|Queue is full')
         await self._is_valid(message)
         await self.queue.put(message)
-        self.logger.debug(f'{message.iid} from {message.parent_span_id or "0"}')
+        self.logger.info(
+            f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|put {message.name}')
         return message
 
     @mode.Service.task
@@ -76,10 +78,10 @@ class BusService(AppService):
                 await asyncio.sleep(0.1)
                 continue
             message: Message = await self.queue.get()
-            self.logger.debug(f'{message.module}-{message.domain}-{message.name}')
+            self.logger.debug(f'{message.trace_id}|\001\001|get {message.model_dump()}')
             app: AppService = self.apps.get(message.domain)
             self.logger.info(
-                f'{message.trace_id}|\001\001|{message.name}: {message.iid} from {message.parent_span_id or "0"}')
+                f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|execute {message.name}')
             await self.execute(message)
             await self.router.publish(message)
 
@@ -98,10 +100,13 @@ class BusService(AppService):
                 result = task.result()
                 if not future.done():
                     future.set_result(result)
+                self.logger.info(
+                    f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|done')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
             if message.delivery_count:
+                self.logger.info(
+                    f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|retrying {message.delivery_count}')
                 message.delivery_count -= 1
-                self._execute(message, task.get_coro())
             else:
                 self.logger.error(e)
                 future.set_exception(e)
@@ -112,8 +117,6 @@ class BusService(AppService):
             self.logger.exception(e)
             future.set_exception(e)
         finally:
-            self.logger.info(
-                f'{message.trace_id}|\001|{message.name}: {message.iid} from {message.parent_span_id or "0"}')
             return message.model_dump()
 
     def get_coro(self, message: Message) -> List[Awaitable]:

@@ -58,7 +58,7 @@ def patch_logging():
 patch_logging()
 
 # ---yaml---
-pattern = re.compile(".*?(\${\w+}).*?")  # # noqa
+pattern = re.compile(r".*?(\${\w+}).*?")
 
 
 def env_var_constructor(loader, node):

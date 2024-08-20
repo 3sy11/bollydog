@@ -74,12 +74,14 @@ class CLI:
         msg = smart_import(message)
         assert issubclass(msg, BaseMessage)
         msg = msg(**kwargs)
-        logging.info(f'prepare to execute {msg.iid}')
+        logging.info(
+            f'{msg.trace_id}|\001\001|{msg.span_id}|\001\001|{msg.iid}|\001\001|FROM:{msg.parent_span_id}|\001\001|prepare to execute')
 
         async def _execute():
             await bus.execute(msg)
 
         asyncio.run(_execute())
+        logging.info(f'{json.dumps(msg.model_dump(), ensure_ascii=False)}')
 
     @staticmethod
     def shell(config: str, ):

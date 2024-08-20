@@ -2,6 +2,7 @@ import abc
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, List
 
+from bollydog.entrypoint.http.middleware import base_auth_backend
 from bollydog.models.base import BaseService, BaseMessage
 
 

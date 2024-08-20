@@ -11,6 +11,7 @@ class TaskList(Command):
 
 class TaskCount(Command):
     domain: str = Field(default=DOMAIN)
+    delivery_count: int = Field(default=1)
 
 
 async def task_list(command: TaskList):
@@ -20,5 +21,7 @@ async def task_list(command: TaskList):
 
 
 async def task_count(command: TaskCount):
+    if command.delivery_count:
+        raise TimeoutError
     result = asyncio.all_tasks()
     return len(result)
