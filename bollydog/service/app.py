@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from functools import partial
 from typing import Iterable, List, Dict, Awaitable, Tuple, MutableMapping, Any
 
 import mode
@@ -26,7 +27,7 @@ class BusService(AppService):
     apps: dict
     router: Router
     futures: MutableMapping[MessageId, Tuple[Message, asyncio.Future]] = {}
-    tasks: Dict[MessageId, List[Any]] = {}
+    tasks: Dict[MessageId, Any] = {}
     app_handler = AppHandler
 
     def __init__(self, apps: Iterable[AppService] = None, **kwargs):
@@ -125,26 +126,37 @@ class BusService(AppService):
         handlers.extend(message.handlers)
         if message.__class__ in self.app_handler.handlers:
             handlers += list(self.app_handler.handlers[message.__class__])
+        if not handlers:
+            raise HandlerNoneError(f'No handler found for {message.name}, nothing will be done')
         coroutines = []
         for handler in handlers[::-1]:
-            coroutine = asyncio.wait_for(handler(message), timeout=message.expire_time)
-            coroutines.append(coroutine)
+            coroutines.append(handler(message))
             message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
-        if not coroutines:
-            raise HandlerNoneError(f'No handler found for {message.name}, nothing will be done')
         return coroutines
 
-    def _execute(self, message, coro):
-        task = asyncio.create_task(coro, name=message.iid)
-        task.add_done_callback(self.task_done_callback)
+    def create_task(self,message, coro):
+        f = asyncio.Future()
         self.futures[message.iid] = (message, message.state)
-        return task
+
+        def _create_task():
+            c = asyncio.wait_for(coro, timeout=message.expire_time)
+            t = asyncio.create_task(c, name=message.iid)
+            # t.add_done_callback(self.task_done_callback)
+            t.add_done_callback(lambda task: f.set_result(True))
+            self.tasks[message.iid] = t
+            return t
+
+        async def _call_back():
+            await f
+
 
     async def execute(self, message: Message) -> Message:
         coroutines = self.get_coro(message)
         try:
-            tasks = [self._execute(message, coro) for coro in coroutines]
-            await asyncio.wait(tasks)
+            async with asyncio.TaskGroup as task_group:
+                for coro in coroutines:
+                    task_group.create_task(coro)
+
         except Exception as e:
             self.logger.error(f'{e}')
             message.state.set_result(str(e))
