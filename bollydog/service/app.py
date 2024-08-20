@@ -134,29 +134,31 @@ class BusService(AppService):
             message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
         return coroutines
 
-    def create_task(self,message, coro):
+    def create_task(self, message, coro, tg):
         f = asyncio.Future()
         self.futures[message.iid] = (message, message.state)
 
         def _create_task():
             c = asyncio.wait_for(coro, timeout=message.expire_time)
-            t = asyncio.create_task(c, name=message.iid)
+            t = tg.create_task(c, name=message.iid)
             # t.add_done_callback(self.task_done_callback)
             t.add_done_callback(lambda task: f.set_result(True))
             self.tasks[message.iid] = t
             return t
 
         async def _call_back():
+            _create_task()
             await f
 
+        tg.create_task(_call_back())
 
     async def execute(self, message: Message) -> Message:
         coroutines = self.get_coro(message)
         try:
-            async with asyncio.TaskGroup as task_group:
+            async with asyncio.TaskGroup() as tg:
                 for coro in coroutines:
-                    task_group.create_task(coro)
-
+                    self.create_task(message, coro, tg)
+            await asyncio.sleep(0)
         except Exception as e:
             self.logger.error(f'{e}')
             message.state.set_result(str(e))
