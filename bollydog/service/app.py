@@ -102,12 +102,11 @@ class BusService(AppService):
                 if not future.done():
                     future.set_result(result)
                 self.logger.info(
-                    f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|done')
+                    f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|finish')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
             if message.delivery_count:
                 self.logger.info(
                     f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|retrying {message.delivery_count}')
-                message.delivery_count -= 1
                 self.futures[message.iid] = (message, future)
             else:
                 self.logger.error(e)
@@ -118,8 +117,7 @@ class BusService(AppService):
         except Exception as e:
             self.logger.exception(e)
             future.set_exception(e)
-        finally:
-            return message.model_dump()
+
 
     def get_coro(self, message: Message) -> List[Awaitable]:
         # < handler from message
@@ -137,11 +135,17 @@ class BusService(AppService):
 
     async def _execute(self, message, coro):
         self.futures[message.iid] = (message, message.state)
-        while message.delivery_count:
+        done = asyncio.Event()
+        while not message.state.done() and not message.state.cancelled():
+            done.clear()
             c = asyncio.wait_for(coro(), timeout=message.expire_time)
             t = asyncio.create_task(c, name=message.iid)
             t.add_done_callback(self.task_done_callback)
-            await asyncio.sleep(0)
+            t.add_done_callback(lambda _: done.set())
+            await done.wait()
+            if message.state.cancelled() or message.state.done():
+                break
+            message.delivery_count -= 1
 
     async def execute(self, message: Message) -> Message:
         coroutines = self.get_coro(message)
