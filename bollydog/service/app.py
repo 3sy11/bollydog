@@ -118,7 +118,6 @@ class BusService(AppService):
             self.logger.exception(e)
             future.set_exception(e)
 
-
     def get_coro(self, message: Message) -> List[Awaitable]:
         # < handler from message
         handlers = []

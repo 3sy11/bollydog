@@ -31,7 +31,7 @@ class AppHandler(object):
                     if not isinstance(msg, BaseMessage):
                         result = msg
                         break
-                    msg = self.callback(msg)
+                    msg = await self.callback(msg)
                     result = await msg.state
             return result
 

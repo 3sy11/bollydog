@@ -117,7 +117,7 @@ class BaseMessage(_ModelMixin):
         self.data['model_fields_set'] = list(self.model_fields_set)  # # `set` type not satisfy database
         self.data['model_extra'] = self.model_extra
         if message:
-            self.state = message.state  # # 特性
+            # self.state = message.state
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
 
