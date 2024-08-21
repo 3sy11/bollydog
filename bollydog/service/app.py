@@ -108,6 +108,7 @@ class BusService(AppService):
                 self.logger.info(
                     f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|retrying {message.delivery_count}')
                 message.delivery_count -= 1
+                self.futures[message.iid] = (message, future)
             else:
                 self.logger.error(e)
                 future.set_exception(e)
@@ -130,34 +131,24 @@ class BusService(AppService):
             raise HandlerNoneError(f'No handler found for {message.name}, nothing will be done')
         coroutines = []
         for handler in handlers[::-1]:
-            coroutines.append(handler(message))
+            coroutines.append(partial(handler, message=message))
             message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
         return coroutines
 
-    def create_task(self, message, coro, tg):
-        f = asyncio.Future()
+    async def _execute(self, message, coro):
         self.futures[message.iid] = (message, message.state)
-
-        def _create_task():
-            c = asyncio.wait_for(coro, timeout=message.expire_time)
-            t = tg.create_task(c, name=message.iid)
-            # t.add_done_callback(self.task_done_callback)
-            t.add_done_callback(lambda task: f.set_result(True))
-            self.tasks[message.iid] = t
-            return t
-
-        async def _call_back():
-            _create_task()
-            await f
-
-        tg.create_task(_call_back())
+        while message.delivery_count:
+            c = asyncio.wait_for(coro(), timeout=message.expire_time)
+            t = asyncio.create_task(c, name=message.iid)
+            t.add_done_callback(self.task_done_callback)
+            await asyncio.sleep(0)
 
     async def execute(self, message: Message) -> Message:
         coroutines = self.get_coro(message)
         try:
             async with asyncio.TaskGroup() as tg:
                 for coro in coroutines:
-                    self.create_task(message, coro, tg)
+                    tg.create_task(self._execute(message, coro))
             await asyncio.sleep(0)
         except Exception as e:
             self.logger.error(f'{e}')
