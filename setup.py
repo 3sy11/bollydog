@@ -1,12 +1,12 @@
 from setuptools import setup, find_packages
 
 long_description = """
-Bollydog.com
+bollydog.com
 """
 
 setup(
     name="bollydog",
-    version="0.1.0",
+    version="0.1.1",
     author="3sy11",
     author_email="",
     description="bollydog framework",
@@ -19,7 +19,7 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires='>=3.8',
+    python_requires='>=3.11',
     install_requires=[
         "loguru==0.6.0",
         "uvicorn==0.21.1",
@@ -27,19 +27,16 @@ setup(
         "starlette==0.36.3",
         # "starlette-authentication",
         "itsdangerous==2.1.2",
-        "sqlalchemy==2.0.13",
-        "greenlet==3.0.1",
         "mode-streaming==0.4.1",
         "fire==0.5.0",
         "pyyaml==6.0.1",
         "websockets==12.0",
-        "pydantic==2.5.2",
         "elasticsearch==8.14.0",
         "aiohttp",
         "environs",
         "ptpython",
         "notion_client",
-        "databases==0.9.0"
+        "databases",
     ],
     extras_require={
         "dev": [
@@ -52,7 +49,6 @@ setup(
             "aiomonitor",
             "aiosqlite",
             "pycli",
-            "ptpython",
             "mycli",
             "iredis",
             "httpx"

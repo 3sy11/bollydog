@@ -4,15 +4,12 @@ authlib
 aiohttp
 starlette-authentication
 itsdangerous
-sqlalchemy==2.0.13
-greenlet
 mode-streaming==0.4.1  # # services
 fire  # # command line tool
 pyyaml
-py_rete
 redis
 websockets
-pydantic
 environs
 notion_client
 databases==0.9.0
+sqlmodel
