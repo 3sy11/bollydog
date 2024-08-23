@@ -55,7 +55,7 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             pool_pre_ping=True,
             pool_recycle=3600,
         )
-        self.async_session = async_sessionmaker(adapter, expire_on_commit=False)
+        self.async_session = async_sessionmaker(adapter, expire_on_commit=True)
         return adapter
 
     async def create_all(self, metadata=None):
@@ -69,18 +69,26 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
 class SqlAlchemyProtocol(Protocol):
 
     async def add(self, item: SQLModelDomain, *args, **kwargs):
+        cls = inspect(item).mapper.local_table
         async with self.unit_of_work.connect() as session:
-            stmt = insert(inspect(item).mapper.local_table).values([item.model_dump()])
-            await session.execute(stmt)
+            stmt = insert(cls).values(**item.model_dump())
+            stmt = stmt.returning(cls.c.id)
+            res = await session.execute(stmt)
             await session.commit()
+            res = res.scalars().first()
+            item.id = res
         return item
 
     async def add_all(self, items: List[SQLModelDomain], *args, **kwargs):
         table = inspect(items[0]).mapper.local_table  # <
         async with self.unit_of_work.connect() as session:
-            stmt = insert(table)
-            await session.execute(stmt, values=[item.model_dump() for item in items])
+            stmt = insert(table).values([item.model_dump() for item in items])
+            stmt = stmt.returning(table.c.id)
+            res = await session.execute(stmt)
+            res = res.fetchall()
             await session.commit()
+        for i, r in zip(items, res):
+            i.id = r.id
         return items
 
     async def get(self, cls: Type[SQLModelDomain], *args, **kwargs):
@@ -89,7 +97,9 @@ class SqlAlchemyProtocol(Protocol):
             stmt = stmt.where(getattr(cls, column).is_(value))
         async with self.unit_of_work.connect() as session:
             result = await session.execute(stmt)
-        return result.scalars().first()
+            res = result.scalars().first()
+            res = res.model_dump()
+        return res
 
     async def list(self, cls: Type[SQLModelDomain], *args, **kwargs):
         stmt = select(cls)

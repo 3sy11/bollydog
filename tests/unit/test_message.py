@@ -1,11 +1,10 @@
 import logging
 import asyncio
 import pytest
-import time
 from pydantic import Field
 
 from bollydog.models.base import Event, BaseMessage
-from bollydog.service.handler import register
+from bollydog.service.handler import AppHandler
 from bollydog.service.app import BusService
 
 logger = logging.getLogger(__name__)
@@ -32,7 +31,6 @@ async def timeout_log_info(message: LogInfoCommand, *args):
     return message.model_dump()
 
 
-@register
 async def async_gen(message: GenInfoCommand, *args):
     yield LogInfoCommand(info='yield 1')
     yield RaiseException()
@@ -45,15 +43,19 @@ class RaiseException(Event):
 
 
 async def raise_exception(message: RaiseException):
-    raise Exception("test raise_exception")
+    raise TimeoutError("test raise_exception")
 
 
 @pytest.mark.asyncio
 async def test_message():
     bus = BusService.create_from(apps=[])
+    AppHandler.register(async_gen, bus)
+    AppHandler.register(log_info, bus)
+    AppHandler.register(raise_exception, bus)
+    AppHandler.register(timeout_log_info, bus)
     command = LogInfoCommand(info='test', a=1, b=2)
     for coro in bus.get_coro(command):
-        res = await coro
+        res = await coro()
     command = GenInfoCommand()
     command.expire_time = 1
     await bus.execute(command)

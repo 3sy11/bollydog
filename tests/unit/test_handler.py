@@ -1,10 +1,9 @@
 import random
 import pytest
-from typing import AsyncGenerator, AsyncIterator, AsyncIterable
 from pydantic import Field
 from bollydog.models.base import Command, BaseDomain
 from bollydog.globals import protocol as _protocol, message as _message
-from bollydog.service.handler import register
+from bollydog.service.handler import AppHandler
 from bollydog.service.app import BusService
 
 
@@ -25,12 +24,10 @@ class RandMovePoint(Command):
     y: int = Field(default_factory=lambda: random.randint(0, 1))
 
 
-@register
 async def print_point(command: LogPoint = _message, protocol=_protocol):
     print(f"Point: {command.point.x}, {command.point.y}")
 
 
-@register
 async def move_point(command: RandMovePoint = _message, protocol=_protocol):
     yield LogPoint(point=command.point)
     point = command.point
@@ -42,11 +39,13 @@ async def move_point(command: RandMovePoint = _message, protocol=_protocol):
 @pytest.mark.asyncio
 async def test_async_generator_handler():
     bus = BusService.create_from(apps=[])
+    AppHandler.register(print_point, bus)
+    AppHandler.register(move_point, bus)
     point = Point(x=0, y=0)
     log_point = LogPoint(point=point)
     tasks = bus.get_coro(log_point)
     for task in tasks:
-        await task
+        await task()
     tasks = bus.get_coro(RandMovePoint(point=point))
     for task in tasks:
-        await task
+        await task()
