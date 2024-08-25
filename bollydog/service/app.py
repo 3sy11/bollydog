@@ -59,7 +59,7 @@ class BusService(AppService):
     async def _is_valid(self, message: Message):
         if not self.apps.get(message.domain):
             raise MessageValidationError(
-                f'{message.trace_id}|\001\001|{message.name}|\001\001|{message.domain} is not a valid domain')
+                f'{message.trace_id[:4]}|\001\001|{message.name}|\001\001|{message.domain} is not a valid domain')
 
     async def put_message(self, message: Message) -> Message:
         if self.should_stop:
@@ -69,7 +69,7 @@ class BusService(AppService):
         await self._is_valid(message)
         await self.queue.put(message)
         self.logger.info(
-            f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|put {message.name}')
+            f'{message.trace_id[:4]}|\001\001|{message.span_id[:4]}|\001\001|{message.iid[:4]}|\001\001|FROM:{message.parent_span_id[:4]}|\001\001|put {message.name}')
         return message
 
     @mode.Service.task
@@ -82,7 +82,7 @@ class BusService(AppService):
             self.logger.debug(f'{message.trace_id}|\001\001|get {message.model_dump()}')
             app: AppService = self.apps.get(message.domain)
             self.logger.info(
-                f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|execute {message.name}')
+                f'{message.trace_id[:4]}|\001\001|{message.span_id[:4]}|\001\001|{message.iid[:4]}|\001\001|FROM:{message.parent_span_id[:4]}|\001\001|execute {message.name}')
             await self.execute(message)
             await self.router.publish(message)
 
@@ -102,17 +102,17 @@ class BusService(AppService):
                 if not future.done():
                     future.set_result(result)
                 self.logger.info(
-                    f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|finish')
+                    f'{message.trace_id[:4]}|\001\001|{message.span_id[:4]}|\001\001|{message.iid[:4]}|\001\001|FROM:{message.parent_span_id[:4]}|\001\001|{message.name} finish')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
             if message.delivery_count:
                 self.logger.info(
-                    f'{message.trace_id}|\001\001|{message.span_id}|\001\001|{message.iid}|\001\001|FROM:{message.parent_span_id}|\001\001|retrying {message.delivery_count}')
+                    f'{message.trace_id[:4]}|\001\001|{message.span_id[:4]}|\001\001|{message.iid[:4]}|\001\001|FROM:{message.parent_span_id[:4]}|\001\001|retrying {message.delivery_count}')
                 self.futures[message.iid] = (message, future)
             else:
-                self.logger.error(e)
+                self.logger.error(f'{message.trace_id[:4]}|\001\001|{message.span_id[:4]}|\001\001|{message.iid[:4]}|\001\001|FROM:{message.parent_span_id[:4]}|\001\001|{message.name} got {e.__class__}:{str(e)}')
                 future.set_exception(e)
         except (AssertionError, StopAsyncIteration, RuntimeError) as e:
-            self.logger.error(e)
+            self.logger.error(f'{message.trace_id[:4]}|\001\001|{message.span_id[:4]}|\001\001|{message.iid[:4]}|\001\001|FROM:{message.parent_span_id[:4]}|\001\001|{message.name} got {e.__class__}:{str(e)}')
             future.set_exception(e)
         except Exception as e:
             self.logger.exception(e)
@@ -149,11 +149,9 @@ class BusService(AppService):
     async def execute(self, message: Message) -> Message:
         coroutines = self.get_coro(message)
         try:
-            async with asyncio.TaskGroup() as tg:
-                for coro in coroutines:
-                    tg.create_task(self._execute(message, coro))
-            await asyncio.sleep(0)
+            for coroutine in coroutines:
+                task = asyncio.create_task(self._execute(message, coroutine))
         except Exception as e:
-            self.logger.error(f'{e}')
+            self.logger.error(f'{message.trace_id[:4]}|\001\001|{message.span_id[:4]}|\001\001|{message.iid[:4]}|\001\001|FROM:{message.parent_span_id[:4]}|\001\001|{message.name} got {e.__class__}:{str(e)}')
             message.state.set_result(str(e))
         return message

@@ -10,8 +10,7 @@ from bollydog.models.base import BaseMessage, ModulePathWithDot
 class UnitOfWorkConfig(BaseModel):
     model_config = ConfigDict(extra='allow')
     module: Type[UnitOfWork] = Field(default=None)
-    url: str = Field(default=None)
-    engine: Any = Field(default=None)
+    adapter: Any = Field(default=None)
 
 
 class ProtocolConfig(BaseModel):

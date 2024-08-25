@@ -32,7 +32,10 @@ class AppHandler(object):
                         result = msg
                         break
                     msg = await self.callback(msg)
-                    result = await msg.state
+                    if msg.qos:
+                        result = await msg.state
+                    else:
+                        result = msg
             return result
 
     def __repr__(self) -> str:

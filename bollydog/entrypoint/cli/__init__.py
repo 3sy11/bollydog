@@ -75,12 +75,18 @@ class CLI:
         assert issubclass(msg, BaseMessage)
         msg = msg(**kwargs)
         logging.info(
-            f'{msg.trace_id}|\001\001|{msg.span_id}|\001\001|{msg.iid}|\001\001|FROM:{msg.parent_span_id}|\001\001|prepare to execute')
+            f'{msg.trace_id}|\001\001|{msg.span_id}|\001\001|{msg.iid}|\001\001|FROM:{msg.parent_span_id}|\001\001|{msg.name} prepare to execute')
 
-        async def _execute():
-            await bus.execute(msg)
+        async def _run():
+            try:
+                coroutines = bus.get_coro(msg)
+                for coroutine in coroutines:
+                    await bus._execute(msg, coroutine)
+            except Exception as e:
+                logging.error(f'{e.__class__}:{str(e)}')
+                msg.state.set_result(str(e))
 
-        asyncio.run(_execute())
+        asyncio.run(_run())
         logging.info(f'{json.dumps(msg.model_dump(), ensure_ascii=False)}')
 
     @staticmethod
