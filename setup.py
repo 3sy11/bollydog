@@ -37,6 +37,7 @@ setup(
         "ptpython",
         "notion_client",
         "databases",
+        "sqlmodel",
     ],
     extras_require={
         "dev": [

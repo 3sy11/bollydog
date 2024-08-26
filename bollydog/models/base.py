@@ -99,7 +99,7 @@ class BaseMessage(_ModelMixin):
     # # trace
     trace_id: str = Field(default_factory=lambda: getattr(message, 'trace_id', uuid.uuid4().hex))
     span_id: str = Field(default=None)
-    parent_span_id: str = Field(default=getattr(message, 'span_id', None))
+    parent_span_id: str = Field(default=getattr(message, 'span_id', '0000'))
 
     # # data
     data: dict = Field(default_factory=dict)

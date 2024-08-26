@@ -15,7 +15,7 @@ from bollydog.utils.base import get_hostname
 # bollydog.models.base._ModelMixin
 class SQLModelDomain(sqlmodel.SQLModel, BaseDomain):
     __abstract__ = True
-    id: int = sqlmodel.Field(default=None, primary_key=True)
+    id: int = sqlmodel.Field(primary_key=True)
     iid: str = sqlmodel.Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
     created_time: float = sqlmodel.Field(default_factory=lambda: int(time.time() * 1000), index=True)
     update_time: float = sqlmodel.Field(default_factory=lambda: int(time.time() * 1000))
@@ -80,6 +80,8 @@ class SqlAlchemyProtocol(Protocol):
         return item
 
     async def add_all(self, items: List[SQLModelDomain], *args, **kwargs):
+        if not items:
+            return items
         table = inspect(items[0]).mapper.local_table  # <
         async with self.unit_of_work.connect() as session:
             stmt = insert(table).values([item.model_dump() for item in items])
