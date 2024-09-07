@@ -34,7 +34,7 @@ class CommandHandler:
             message = await bus.put_message(message)
             result = await message.state  # ? 对future.result的异常做处理
         except Exception as e:
-            result = {'error': f'{e.__class__}:{str(e)}'}
+            result = {'error': str(e)}
         response = JSONResponse(result)
         await response(scope, receive, send)
 
