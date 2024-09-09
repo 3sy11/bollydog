@@ -6,7 +6,7 @@ from bollydog.models.service import AppService
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, HTMLResponse
 
 from bollydog.globals import bus
 from bollydog.models.base import BaseMessage, get_model_name
@@ -35,7 +35,10 @@ class CommandHandler:
             result = await message.state  # ? 对future.result的异常做处理
         except Exception as e:
             result = {'error': str(e)}
-        response = JSONResponse(result)
+        if isinstance(result, str):
+            response = HTMLResponse(result)
+        else:
+            response = JSONResponse(result)
         await response(scope, receive, send)
 
 
