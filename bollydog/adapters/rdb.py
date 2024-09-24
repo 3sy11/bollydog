@@ -1,6 +1,8 @@
 import time
 import sqlmodel
 import uuid
+import duckdb
+from sqlalchemy.schema import CreateTable
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Type, List
 
@@ -10,7 +12,6 @@ from bollydog.config import IS_DEBUG
 from bollydog.models.protocol import UnitOfWork, Protocol
 from bollydog.models.base import BaseDomain
 from bollydog.utils.base import get_hostname
-
 
 # bollydog.models.base._ModelMixin
 class SQLModelDomain(sqlmodel.SQLModel, BaseDomain):
@@ -133,3 +134,34 @@ class SqlAlchemyProtocol(Protocol):
         async with self.unit_of_work.connect() as session:
             result = await session.execute(query)
         return result.fetchall()
+
+
+# < try to use SqlAlchemyProtocol
+class DuckDBUnitOfWork(UnitOfWork):
+    def __init__(self, url: str = ':default:', metadata: MetaData = None, *args, **kwargs):
+        self.url = url
+        self.metadata = metadata
+        self.connection = None
+        super().__init__(*args, **kwargs)
+
+    def __repr__(self):
+        return f'<DuckDBAsyncUnitOfWork {self.url}>'
+
+    @asynccontextmanager
+    async def connect(self) -> AsyncGenerator[duckdb.DuckDBPyConnection, None]:
+        if not self.connection:
+            self.connection = duckdb.connect(self.url)
+        yield self.connection
+
+    def create(self):
+        self.connection = duckdb.connect(self.url)
+        return self.connection
+
+    async def create_all(self, metadata=None):
+        metadata = metadata or self.metadata
+        for table in metadata.sorted_tables:
+            create_stmt = str(CreateTable(table).compile())
+            self.connection.execute(create_stmt)
+            self.connection.execute(f"CREATE SEQUENCE {table.name}idseq START 1;")  # # add autoincrement id
+            self.connection.execute(
+                f"ALTER TABLE {table.name} ALTER COLUMN id SET DEFAULT NEXTVAL('{table.name}idseq');")
