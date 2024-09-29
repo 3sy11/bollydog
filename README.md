@@ -1,8 +1,8 @@
 # TODO
 
-- [ ] opt:Use strong references for free-flying tasks when asyncio.create_task
+- [X] opt:Use strong references for free-flying tasks when asyncio.create_task
 - [X] opt:rm handler arg `protocol`
-- [ ] ftr: satisfy `databases` protocol
+- [X] ftr: satisfy `databases` protocol
 
 # TODO MAYBE
 
