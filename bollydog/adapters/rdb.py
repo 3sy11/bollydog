@@ -153,8 +153,9 @@ class DuckDBUnitOfWork(UnitOfWork):
             self.connection = duckdb.connect(self.url)
         yield self.connection
 
-    def create(self):
-        self.connection = duckdb.connect(self.url)
+    def create(self, url=None):
+        url = url or self.url
+        self.connection = duckdb.connect(url)
         return self.connection
 
     async def create_all(self, metadata=None):
