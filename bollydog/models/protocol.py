@@ -1,19 +1,22 @@
 import abc
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, List
+from typing import AsyncGenerator, List, Any
 
-from bollydog.entrypoint.http.middleware import base_auth_backend
 from bollydog.models.base import BaseService, BaseMessage
 
 
 class UnitOfWork(BaseService, abstract=True):
 
+    adapter: Any
+
     def __init__(self, *args, **kwargs):
         super().__init__()
-        self.adapter = self.create()
 
     def __repr__(self):
         return f'<UnitOfWork {self.__class__.__name__}>'
+
+    async def on_start(self) -> None:
+        self.adapter = self.create()
 
     async def on_stop(self) -> None:
         self.delete()
