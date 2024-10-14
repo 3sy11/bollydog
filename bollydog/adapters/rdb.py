@@ -138,8 +138,8 @@ class SqlAlchemyProtocol(Protocol):
 
 # < try to use SqlAlchemyProtocol
 class DuckDBUnitOfWork(UnitOfWork):
-    def __init__(self, url: str = ':default:', metadata: MetaData = None, *args, **kwargs):
-        self.url = url
+    def __init__(self, url, metadata: MetaData = None, *args, **kwargs):
+        self.url = url or ':default:'
         self.metadata = metadata
         self.connection = None
         super().__init__(*args, **kwargs)

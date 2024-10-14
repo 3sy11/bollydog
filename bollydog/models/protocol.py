@@ -16,7 +16,8 @@ class UnitOfWork(BaseService, abstract=True):
         return f'<UnitOfWork {self.__class__.__name__}>'
 
     async def on_start(self) -> None:
-        self.adapter = self.create()
+        if not self.adapter:
+            self.adapter = self.create()
 
     async def on_stop(self) -> None:
         self.delete()
@@ -27,7 +28,9 @@ class UnitOfWork(BaseService, abstract=True):
         yield self.adapter
 
     @abc.abstractmethod
-    def create(self):
+    def create(self)->Any:
+        # implementation depends on the adapter
+        # assert self.adapter
         ...
 
     def delete(self):
@@ -42,6 +45,7 @@ class Protocol(abc.ABC):
         super().__init__()
         self.events = []
         self.unit_of_work = unit_of_work
+        self.unit_of_work.create()
 
     def __repr__(self):
         return f'<Protocol {self.__class__.__name__}>: {self.unit_of_work.__repr__()}'
