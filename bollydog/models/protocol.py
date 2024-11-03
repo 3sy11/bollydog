@@ -6,7 +6,6 @@ from bollydog.models.base import BaseService, BaseMessage
 
 
 class UnitOfWork(BaseService, abstract=True):
-
     adapter: Any
 
     def __init__(self, *args, **kwargs):
@@ -28,7 +27,7 @@ class UnitOfWork(BaseService, abstract=True):
         yield self.adapter
 
     @abc.abstractmethod
-    def create(self)->Any:
+    def create(self) -> Any:
         # implementation depends on the adapter
         # assert self.adapter
         ...

@@ -7,7 +7,7 @@ from bollydog.models.protocol import UnitOfWork, Protocol
 
 class LogUnitOfWork(UnitOfWork):
 
-    async def create(self):
+    def create(self):
         ...
 
 
@@ -21,7 +21,7 @@ class FileUnitOfWork(UnitOfWork):
         self.path = path
         super().__init__()
 
-    async def create(self):
+    def create(self):
         return open(self.path, 'w+')
 
 
@@ -31,7 +31,7 @@ class FileProtocol(Protocol):
 
 class NoneUnitOfWork(UnitOfWork):
 
-    async def create(self):
+    def create(self):
         ...
 
 
