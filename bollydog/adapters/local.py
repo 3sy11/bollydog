@@ -8,7 +8,7 @@ from bollydog.models.protocol import UnitOfWork, Protocol
 class LogUnitOfWork(UnitOfWork):
 
     def create(self):
-        ...
+        return True
 
 
 class LogProtocol(Protocol):
@@ -32,7 +32,7 @@ class FileProtocol(Protocol):
 class NoneUnitOfWork(UnitOfWork):
 
     def create(self):
-        ...
+        return True
 
 
 class NoneProtocol(Protocol):

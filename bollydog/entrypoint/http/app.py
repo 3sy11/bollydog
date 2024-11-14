@@ -8,8 +8,8 @@ from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
 
-from bollydog.globals import bus
-from bollydog.models.base import BaseMessage, get_model_name
+from bollydog.globals import bus, _session_ctx_stack
+from bollydog.models.base import BaseMessage, get_model_name, Session
 from .config import (
     SERVICE_DEBUG,
     SERVICE_PORT,
@@ -29,17 +29,18 @@ class CommandHandler:
 
     async def __call__(self, scope, receive, send):
         request = Request(scope, receive=receive, send=send)
-        try:
-            message: BaseMessage = self.message(**request.query_params)  # < 入参校验
-            message = await bus.put_message(message)
-            result = await message.state  # ? 对future.result的异常做处理
-        except Exception as e:
-            result = {'error': str(e)}
-        if isinstance(result, str):
-            response = HTMLResponse(result)
-        else:
-            response = JSONResponse(result)
-        await response(scope, receive, send)
+        with _session_ctx_stack.push(Session(username=scope['user'].display_name)):
+            try:
+                message: BaseMessage = self.message(**request.query_params)  # < 入参校验
+                message = await bus.put_message(message)
+                result = await message.state  # ? 对future.result的异常做处理
+            except Exception as e:
+                result = {'error': str(e)}
+            if isinstance(result, str):
+                response = HTMLResponse(result)
+            else:
+                response = JSONResponse(result)
+            await response(scope, receive, send)
 
 
 class HttpService(AppService):

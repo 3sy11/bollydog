@@ -25,3 +25,17 @@ async def task_count(command: TaskCount):
         raise TimeoutError
     result = asyncio.all_tasks()
     return len(result)
+
+
+class _Collection(Command):
+    domain: str = Field(default=DOMAIN)
+    messages: list = Field(default_factory=list)
+
+
+# < implement in service.handler, turn a list of message to Collection command to callback
+async def _collection(command: _Collection):
+    for message in command.messages:
+        yield message
+    for message in command.messages:
+        await message.state
+    yield True

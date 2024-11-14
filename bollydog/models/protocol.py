@@ -14,10 +14,6 @@ class UnitOfWork(BaseService, abstract=True):
     def __repr__(self):
         return f'<UnitOfWork {self.__class__.__name__}>'
 
-    async def on_start(self) -> None:
-        if not self.adapter:
-            self.adapter = self.create()
-
     async def on_stop(self) -> None:
         self.delete()
         await super().on_stop()
@@ -44,7 +40,8 @@ class Protocol(abc.ABC):
         super().__init__()
         self.events = []
         self.unit_of_work = unit_of_work
-        self.unit_of_work.create()
+        self.unit_of_work.adapter = self.unit_of_work.create()
+        assert self.unit_of_work.adapter
 
     def __repr__(self):
         return f'<Protocol {self.__class__.__name__}>: {self.unit_of_work.__repr__()}'

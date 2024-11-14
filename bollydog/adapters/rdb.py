@@ -48,7 +48,7 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             raise e
 
     def create(self) -> AsyncEngine:
-        adapter = create_async_engine(
+        self.adapter = create_async_engine(
             self.url,
             echo=IS_DEBUG,
             echo_pool=IS_DEBUG,
@@ -56,8 +56,8 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             pool_pre_ping=True,
             pool_recycle=3600,
         )
-        self.async_session = async_sessionmaker(adapter, expire_on_commit=True)
-        return adapter
+        self.async_session = async_sessionmaker(self.adapter, expire_on_commit=True)
+        return self.adapter
 
     async def create_all(self, metadata=None):
         async with self.adapter.begin() as conn:
@@ -151,12 +151,19 @@ class DuckDBUnitOfWork(UnitOfWork):
     async def connect(self) -> AsyncGenerator[duckdb.DuckDBPyConnection, None]:
         if not self.connection:
             self.connection = duckdb.connect(self.url)
+        # < load_extension
         yield self.connection
+        self.connection.close()
+        self.connection = None
 
     def create(self, url=None):
+        # check connection is closed, because duckdb feature, using self.connection to execute create tables;
         url = url or self.url
         self.connection = duckdb.connect(url)
-        return self.connection
+        self.connection.commit()
+        self.connection.close()
+        self.connection = None
+        return url
 
     async def create_all(self, metadata=None):
         metadata = metadata or self.metadata

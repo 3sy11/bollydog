@@ -161,3 +161,8 @@ class BaseService(mode.Service):
 
     def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
         self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)  # < 3
+
+
+class Session(BaseModel):
+    uid: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    username: str = Field(default=HOSTNAME)

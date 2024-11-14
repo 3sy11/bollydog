@@ -39,6 +39,7 @@ class BaseAuthBackend(AuthenticationBackend):
 base_auth_backend = BaseAuthBackend()
 
 
+# BaseMiddleware
 class ASGIMiddleware:
     def __init__(self, app):
         self.app = app

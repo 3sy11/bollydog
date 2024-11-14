@@ -1,8 +1,11 @@
 # TODO
 
-- [X] opt:Use strong references for free-flying tasks when asyncio.create_task
-- [X] opt:rm handler arg `protocol`
-- [X] ftr: satisfy `databases` protocol
+- [ ] ftr: support handler message be waited in collection from other handlers message by ctx
+- [ ] ftr: files database on hard disk
+- [X] ftr: global session on entrypoint
+- [X] fix: adapters create logic
+- [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
+- [ ] opt: websockets middleware
 
 # TODO MAYBE
 
@@ -16,11 +19,12 @@
 - [ ] ftr:热重载
 - [ ] ftr:标签label
 - [ ] ftr:otlp
+- [ ] opt: structlog
 - [ ] ftr:优先级
 
-# 环境变量
+# .env
 
-全局
+global  
 BOLLYDOG_MESSAGE_EXPIRE_TIME
 BOLLYDOG_IS_DEBUG
 BOLLYDOG_HANDLERS
@@ -28,10 +32,10 @@ BOLLYDOG_BUS_SERVICE_PROTOCOL
 BOLLYDOG_BUS_SERVICE_PROTOCOL_UNIT_OF_WORK
 BOLLYDOG_BUS_SERVICE_PROTOCOL_UNIT_OF_WORK_URL
 
-loguru 日志配置
+logger  
 LOGURU_FORMAT
 
-http api服务
+http api  
 BOLLYDOG_HTTP_SERVICE_HOST
 BOLLYDOG_HTTP_SERVICE_DEBUG
 BOLLYDOG_HTTP_SERVICE_PORT
@@ -39,29 +43,23 @@ BOLLYDOG_HTTP_SERVICE_LOG_LEVEL
 BOLLYDOG_HTTP_SERVICE_PRIVATE_KEY
 BOLLYDOG_HTTP_SERVICE_PUBLIC_KEY
 
-websocket
+websocket  
 BOLLYDOG_WS_SERVICE_HOST
 BOLLYDOG_WS_SERVICE_DEBUG
 BOLLYDOG_WS_SERVICE_PORT
 BOLLYDOG_WS_SERVICE_LOG_LEVEL
 
 
-# 工程结构
+# design 
 
-> 遵照python的DDD的范式实现
-> 参考来自 [__Architecture Patterns with Python__](https://www.cosmicpython.com/book/preface.html)
-> 参考来自 [__Faust__](https://github.com/robinhood/faust)
-> 参考来自 [twisted](https://github.com/twisted/twisted)
+> [__Architecture Patterns with Python__](https://www.cosmicpython.com/book/preface.html)
+> [mode](https://github.com/faust-streaming/mode)
 
+# cli
 
-# 使用说明
-
- `bollydog command` 实例化一条message并调用对应handler执行  
- `bollydog execute` 执行一条实例化好的message并调用对应的handler执行
- `bollydog service` 启动编排好的各项服务，只有通过服务处理的事件才会被发布，订阅者才能感知, 允许protocol为空  
- `python -m fire bollydog.entrypoint.cli CLI shell`  
-
-# 交互式客户端
+ `bollydog execute --config='./config.yaml' --message=service.model.TaskCount` run a command
+ `bollydog service --config "./config.yaml"` start up service as config.yml  
+ `bollydog shell --config "./config.yaml" ` 
 
 ```shell
 ptpython --asyncio

@@ -9,12 +9,13 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from bollydog.entrypoint.websocket.config import SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST
 from bollydog.globals import bus
-from bollydog.models.base import BaseMessage, MessageTraceId
+from bollydog.models.base import BaseMessage, MessageTraceId, Session
 
 
 class SocketService(AppService):
     subscribers = set()
-    session: Dict[MessageTraceId, Set[WebSocket]] = {}
+    listening: Dict[MessageTraceId, Set[WebSocket]] = {}
+    sessions: Dict[Session, WebSocket] = {}
 
     async def subscribe(self, websocket: WebSocket):
         await websocket.accept()
@@ -23,15 +24,15 @@ class SocketService(AppService):
 
     async def unsubscribe(self, websocket: WebSocket):  # < ping pong remove
         self.subscribers.remove(websocket)
-        _ids = [_id for _id, ws in self.session.items() if websocket in ws]
+        _ids = [_id for _id, ws in self.listening.items() if websocket in ws]
         for _id in _ids:
-            self.session[_id].remove(websocket)
-            if not len(self.session[_id]):
-                self.session.pop(_id)
+            self.listening[_id].remove(websocket)
+            if not len(self.listening[_id]):
+                self.listening.pop(_id)
         self.logger.debug(f"A subscriber unsubscribed, total subscribers: {len(self.subscribers)}")
 
     async def publish(self, message: BaseMessage):
-        subscribers = self.session.get(message.trace_id, [])
+        subscribers = self.listening.get(message.trace_id, [])
         for subscriber in subscribers:
             try:
                 await message.state
@@ -51,10 +52,10 @@ class SocketService(AppService):
                     message = bus.app_handler.messages[message['name']](**message)
                 else:
                     message = BaseMessage(**message)
-                if message.trace_id in self.session:
-                    self.session[message.trace_id].add(websocket)
+                if message.trace_id in self.listening:
+                    self.listening[message.trace_id].add(websocket)
                 else:
-                    self.session[message.trace_id] = {websocket}
+                    self.listening[message.trace_id] = {websocket}
                 await bus.put_message(message)
                 await websocket.send_text(message.model_dump_json())
                 await self.publish(message)  # < 或者改为再提交一个消息，上面的用于执行，这个用于获取结果的view消息
