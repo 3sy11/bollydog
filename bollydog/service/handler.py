@@ -27,12 +27,18 @@ class AppHandler(object):
                     msg = await self.callback(result)
                     result = await msg.state
             else:
-                async for msg in self.fun(message):
-                    if not isinstance(msg, BaseMessage):
-                        result = msg
-                        break
-                    msg = await self.callback(msg)
-                    result = await msg.state
+                async_gen = self.fun(message)
+                result = None
+                try:
+                    while True:
+                        msg = await async_gen.asend(result)
+                        if not isinstance(msg, BaseMessage):
+                            result = msg
+                            break
+                        msg = await self.callback(msg)
+                        result = await msg.state
+                except StopAsyncIteration:
+                    pass
             return result
 
     def __repr__(self) -> str:

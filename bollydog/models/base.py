@@ -166,3 +166,4 @@ class BaseService(mode.Service):
 class Session(BaseModel):
     uid: str = Field(default_factory=lambda: uuid.uuid4().hex)
     username: str = Field(default=HOSTNAME)
+    collection: dict = Field(default_factory=dict)

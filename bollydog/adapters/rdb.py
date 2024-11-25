@@ -6,7 +6,7 @@ from sqlalchemy.schema import CreateTable
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Type, List
 
-from sqlalchemy import select, insert, delete, update, MetaData, text, inspect, orm
+from sqlalchemy import select, insert, delete, update, MetaData, text, inspect, orm, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession, AsyncEngine
 from bollydog.config import IS_DEBUG
 from bollydog.models.protocol import UnitOfWork, Protocol
@@ -23,6 +23,9 @@ class SQLModelDomain(sqlmodel.SQLModel, BaseDomain):
     sign: int = sqlmodel.Field(default=0)
     created_by: str = sqlmodel.Field(default=get_hostname(), max_length=50)
 
+    __table_args__ = (
+        UniqueConstraint("iid"),
+    )
 
 class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
     async_session = None

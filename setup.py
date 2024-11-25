@@ -6,7 +6,7 @@ bollydog.com
 
 setup(
     name="bollydog",
-    version="0.1.1",
+    version="0.1.2",
     author="3sy11",
     author_email="",
     description="bollydog framework",
@@ -31,12 +31,9 @@ setup(
         "fire==0.5.0",
         "pyyaml==6.0.1",
         "websockets==12.0",
-        "elasticsearch==8.14.0",
         "aiohttp",
         "environs",
         "ptpython",
-        "notion_client",
-        "databases",
         "sqlmodel",
     ],
     extras_require={
@@ -52,7 +49,9 @@ setup(
             "pycli",
             "mycli",
             "iredis",
-            "httpx"
+            "httpx",
+            "notion_client",
+            "elasticsearch==8.14.0",
         ],
     },
     entry_points={
