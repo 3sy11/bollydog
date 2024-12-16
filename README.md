@@ -7,7 +7,7 @@
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
 - [ ] opt: websockets middleware
 - [ ] ftr: on 0.1.3, `command` can decorate a function to be a command implicit
-
+ 
 # TODO MAYBE
 
 - [ ] ftr: anonymous message call handler or generator

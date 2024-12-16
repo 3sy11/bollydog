@@ -4,7 +4,7 @@ import inspect
 from typing import Any, Awaitable, Callable, Dict, Type, Set
 from mode.utils.imports import smart_import
 from bollydog.models.base import BaseMessage, ModulePathWithDot, MessageName, get_model_name
-from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack, bus
+from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack, bus, _app_ctx_stack
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,11 @@ class AppHandler(object):
         self.isasyncgenfunction = inspect.isasyncgenfunction(fun)  # # noqa
 
     async def __call__(self, message) -> Any:
-        with (_protocol_ctx_stack.push(self.app.protocol), _message_ctx_stack.push(message)):
+        with (
+            _protocol_ctx_stack.push(self.app.protocol),
+            _message_ctx_stack.push(message),
+            _app_ctx_stack.push(self.app),
+        ):
             if not self.isasyncgenfunction:
                 result = await self.fun(message)
                 if isinstance(result, BaseMessage):
