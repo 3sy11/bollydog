@@ -1,9 +1,7 @@
 # TODO
 
 - [ ] ftr: support handler message be waited in collection from other handlers message by ctx
-- [ ] ftr: files database on hard disk
-- [X] ftr: global session on entrypoint
-- [X] fix: adapters create logic
+- [X] ftr: files database on hard disk
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
 - [ ] opt: websockets middleware
 - [ ] ftr: on 0.1.3, `command` can decorate a function to be a command implicit
@@ -58,7 +56,7 @@ BOLLYDOG_WS_SERVICE_LOG_LEVEL
 
 # cli
 
- `bollydog execute --config='./config.yaml' --message=service.model.TaskCount` run a command
+ `bollydog execute --config='./config.yaml' --message=service.model.TaskCount` execute a command
  `bollydog service --config "./config.yaml"` start up service as config.yml  
  `bollydog shell --config "./config.yaml" ` 
 

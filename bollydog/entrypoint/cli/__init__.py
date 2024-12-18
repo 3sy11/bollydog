@@ -1,20 +1,23 @@
 import asyncio
 import json
 import logging
+import os
 import pathlib
 import sys
 from typing import Dict, Coroutine
-
 import environs
 import fire
 from mode.utils.imports import smart_import
 from ptpython.repl import embed
 
+logging.info(f'load .env from {os.getcwd()}')
+environs.Env().read_env(os.getcwd() + '/.env', recurse=False, verbose=True)
+
+from bollydog.patch import yaml
 from bollydog.bootstrap import Bootstrap
 from bollydog.globals import _bus_ctx_stack, _protocol_ctx_stack, _session_ctx_stack  # # noqa
-from bollydog.models.base import MessageName, BaseMessage, Session
 from bollydog.models.service import AppService
-from bollydog.patch import yaml
+from bollydog.models.base import MessageName, BaseMessage, Session
 from bollydog.service.app import BusService
 
 
@@ -32,9 +35,6 @@ def _load_config(config: str) -> Dict:
 
 def get_apps(config: str) -> Dict[str, AppService]:
     work_dir = pathlib.Path(config).parent
-    logging.info(
-        f'loading env from {work_dir.as_posix()}: {environs.Env().read_env(work_dir.joinpath(".env").as_posix())}'
-    )
     sys.path.insert(0, work_dir.as_posix())
     config = _load_config(config)
     apps = {}

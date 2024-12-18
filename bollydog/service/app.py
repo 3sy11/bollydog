@@ -110,6 +110,7 @@ class BusService(AppService):
                 self.futures[message.iid] = (message, future)
             else:
                 self.logger.error(e)
+                self.logger.error('Timeout or MaxRetry')
                 future.set_exception(e)
         except (AssertionError, StopAsyncIteration, RuntimeError) as e:
             self.logger.error(e)
