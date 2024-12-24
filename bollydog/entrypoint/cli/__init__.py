@@ -61,7 +61,7 @@ class CLI:
         if include:
             apps = {k: v for k, v in apps.items() if k in include}
         bus = BusService.create_from(apps=apps.values())
-        worker = Bootstrap(bus)
+        worker = Bootstrap(bus,override_logging=False)
         raise worker.execute_from_commandline()
 
     @staticmethod

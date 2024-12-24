@@ -2,6 +2,7 @@ import os
 import re
 
 import yaml
+from bollydog.patch.logging import *  # noqa
 from bollydog.config import IS_DEBUG
 from mode.utils.imports import smart_import
 
@@ -55,7 +56,7 @@ def patch_logging():
     setattr(logging.Logger, '_log', _log)
 
 
-patch_logging()
+# patch_logging()
 
 # ---yaml---
 pattern = re.compile(r".*?(\${\w+}).*?")
