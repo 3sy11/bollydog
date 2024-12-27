@@ -3,6 +3,7 @@ from typing import Type
 import mode
 import uvicorn
 from bollydog.models.service import AppService
+# from bollydog.patch.logging import redirect_stdouts
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
@@ -54,6 +55,9 @@ class HttpService(AppService):
         self.middlewares = []
         for m in middlewares or []:
             self.middlewares.append(Middleware(m.pop(_config_middleware_key), **m))
+
+    # async def on_first_start(self) -> None:
+    #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     async def on_start(self) -> None:
         for message_model in bus.app_handler.handlers.keys():
