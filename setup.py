@@ -21,7 +21,7 @@ setup(
     ],
     python_requires='>=3.11',
     install_requires=[
-        "loguru==0.6.0",
+        # "loguru==0.6.0",
         "uvicorn==0.21.1",
         "authlib==1.3.1",
         "starlette==0.36.3",
@@ -35,6 +35,7 @@ setup(
         "environs",
         "ptpython",
         "sqlmodel",
+        "structlog"
     ],
     extras_require={
         "dev": [

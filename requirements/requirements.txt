@@ -13,3 +13,4 @@ environs
 notion_client
 databases==0.9.0
 sqlmodel
+structlog
