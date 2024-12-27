@@ -8,7 +8,6 @@ from typing import AsyncGenerator, Type, List
 
 from sqlalchemy import select, insert, delete, update, MetaData, text, inspect, orm, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession, AsyncEngine
-from bollydog.config import IS_DEBUG
 from bollydog.models.protocol import UnitOfWork, Protocol
 from bollydog.models.base import BaseDomain
 from bollydog.utils.base import get_hostname
@@ -53,9 +52,9 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
     def create(self) -> AsyncEngine:
         self.adapter = create_async_engine(
             self.url,
-            echo=IS_DEBUG,
-            echo_pool=IS_DEBUG,
-            hide_parameters=not IS_DEBUG,
+            echo=False,
+            echo_pool=False,
+            hide_parameters=not False,
             pool_pre_ping=True,
             pool_recycle=3600,
         )

@@ -1,11 +1,16 @@
 import sys
 import logging
+import os
 from logging import config
 import structlog
 from bollydog.globals import message
 
 def _trace_message_processor(_, __, ed):
-    ed['trace'] = getattr(message, 'trace_id', '0000')+getattr(message, 'span_id', '0000')+getattr(message, 'parent_span_id', '0000')+':'+getattr(message, 'iid', '0000')
+    ed['trace'] = getattr(message, 'trace_id', '-')+getattr(message, 'span_id', '-')+getattr(message, 'parent_span_id', '-')+':'+getattr(message, 'iid', '-')
+    return ed
+
+def _pre_processor(_, __, ed):
+    ed['levelname'] = ed['_record'].levelname.upper()[0]
     return ed
 
 def _metrics_processor(_, __, ed):
@@ -19,7 +24,7 @@ columns=[
         "levelname",
         structlog.dev.LogLevelColumnFormatter(
             width=0,
-            level_styles=structlog.dev.ConsoleRenderer.get_default_level_styles(),
+            level_styles={k[0].upper():v for k, v in structlog.dev.ConsoleRenderer.get_default_level_styles().items()},
             reset_style=''
         ),
     ),
@@ -33,6 +38,35 @@ columns=[
         ),
     ),
     structlog.dev.Column(
+        "trace",
+        structlog.dev.KeyValueColumnFormatter(
+            key_style=None,
+            value_style=structlog.dev.BRIGHT + structlog.dev.MAGENTA,
+            reset_style=structlog.dev.RESET_ALL,
+            value_repr=str,
+        ),
+    ),
+    structlog.dev.Column(
+        "funcName",
+        structlog.dev.KeyValueColumnFormatter(
+            key_style=None,
+            value_style=structlog.dev.GREEN,
+            reset_style=structlog.dev.RESET_ALL,
+            value_repr=str,
+        ),
+    ),
+    structlog.dev.Column(
+        "lineno",
+        structlog.dev.KeyValueColumnFormatter(
+            key_style=None,
+            value_style=structlog.dev.GREEN,
+            reset_style=structlog.dev.RESET_ALL,
+            value_repr=str,
+            postfix='>>',
+        ),
+    ),
+
+    structlog.dev.Column(
         "event",
         structlog.dev.KeyValueColumnFormatter(
             key_style=None,
@@ -44,10 +78,11 @@ columns=[
     structlog.dev.Column(
         "",
         structlog.dev.KeyValueColumnFormatter(
-            key_style=structlog.dev.CYAN,
+            key_style=None,
             value_style=structlog.dev.GREEN,
             reset_style=structlog.dev.RESET_ALL,
             value_repr=str,
+            prefix='|',
         ),
     ),
 ]
@@ -60,7 +95,7 @@ LOGGING_DICT_CONFIG = {
             "()": structlog.stdlib.ProcessorFormatter,
             "processors": [
                 _trace_message_processor,
-                structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
+                structlog.processors.TimeStamper(fmt="%Y%m%d-%H:%M:%S"),
                 structlog.stdlib.ExtraAdder(allow=structlog.stdlib._LOG_RECORD_KEYS),
                 structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                 structlog.processors.JSONRenderer(),
@@ -70,8 +105,9 @@ LOGGING_DICT_CONFIG = {
             "()": structlog.stdlib.ProcessorFormatter,
             "processors": [
                 _trace_message_processor,
-                structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S"),
-                structlog.stdlib.ExtraAdder(allow=['name', 'funcName', 'levelname', 'taskName', 'lineno']),
+                _pre_processor,
+                structlog.processors.TimeStamper(fmt="%Y%m%d-%H:%M:%S"),
+                structlog.stdlib.ExtraAdder(allow=['funcName', 'lineno']),
                 structlog.stdlib.ProcessorFormatter.remove_processors_meta,
                 structlog.dev.ConsoleRenderer(colors=True, columns=columns),
             ],
@@ -88,7 +124,7 @@ LOGGING_DICT_CONFIG = {
             "encoding": "utf-8",
         },
         "console": {
-            "level": "DEBUG",
+            "level": "DEBUG" if os.environ.get("BOLLYDOG_LOG_LEVEL", None) else "INFO",
             "class": "logging.StreamHandler",
             "formatter": "console",
         },
