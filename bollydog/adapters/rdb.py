@@ -1,7 +1,7 @@
 import time
 import sqlmodel
 import uuid
-import duckdb
+import importlib
 from sqlalchemy.schema import CreateTable
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Type, List
@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from bollydog.models.protocol import UnitOfWork, Protocol
 from bollydog.models.base import BaseDomain
 from bollydog.utils.base import get_hostname
+
+duckdb = importlib.import_module('duckdb', package=None)
 
 # bollydog.models.base._ModelMixin
 class SQLModelDomain(sqlmodel.SQLModel, BaseDomain):
@@ -167,7 +169,7 @@ class DuckDBUnitOfWork(UnitOfWork):
         self.connection = None
         return url
 
-    async def create_all(self, metadata=None):
+    def create_all(self, metadata=None):
         metadata = metadata or self.metadata
         for table in metadata.sorted_tables:
             create_stmt = str(CreateTable(table).compile())

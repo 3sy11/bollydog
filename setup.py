@@ -51,10 +51,14 @@ setup(
             "mycli",
             "iredis",
             "httpx",
+        ],
+        "optional":[
+            "duckdb",
             "notion_client",
             "elasticsearch==8.14.0",
-        ],
+        ]
     },
+
     entry_points={
         'console_scripts': [
             'bollydog=bollydog.cli:main',
