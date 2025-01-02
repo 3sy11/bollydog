@@ -6,7 +6,7 @@ import structlog
 from bollydog.globals import message
 
 def _trace_message_processor(_, __, ed):
-    ed['trace'] = getattr(message, 'trace_id', '-')+getattr(message, 'span_id', '-')+getattr(message, 'parent_span_id', '-')+':'+getattr(message, 'iid', '-')
+    ed['trace'] = getattr(message, 'trace_id', '--')[:2]+getattr(message, 'span_id', '--')[:2]+getattr(message, 'parent_span_id', '--')[:2]+':'+getattr(message, 'iid', '--')[:2]
     return ed
 
 def _pre_processor(_, __, ed):
@@ -62,7 +62,7 @@ columns=[
             value_style=structlog.dev.GREEN,
             reset_style=structlog.dev.RESET_ALL,
             value_repr=str,
-            postfix='>>',
+            postfix=':',
         ),
     ),
 

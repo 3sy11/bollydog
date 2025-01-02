@@ -75,7 +75,7 @@ class CLI:
         assert issubclass(msg, BaseMessage)
         msg = msg(**kwargs)
         logging.info(
-            f'{msg.trace_id}|\001\001|{msg.span_id}|\001\001|{msg.iid}|\001\001|FROM:{msg.parent_span_id}|\001\001|prepare to execute')
+            f'{msg.trace_id[:2]}{msg.span_id[:2]}{msg.parent_span_id[:2]}-{msg.iid[:2]} prepare to execute')
 
         async def _execute():
             with _session_ctx_stack.push(Session()):
