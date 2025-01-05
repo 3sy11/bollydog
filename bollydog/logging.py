@@ -5,12 +5,30 @@ from logging import config
 import structlog
 from bollydog.globals import message
 
+COLORS = {
+    'RESET': "\033[0m",
+    'BOLD': "\033[1m",
+    'BLUE': "\033[34m",
+    'ORANGE': "\033[38;5;214m",
+    'YELLOW': "\033[33m",
+    'PURPLE': "\033[35m",
+    'GRAY': "\033[37m"
+}
+
+level_styles = {
+    'DEBUG': COLORS['GRAY'],
+    'INFO': COLORS['RESET'],
+    'WARNING': COLORS['YELLOW'],
+    'ERROR': COLORS['ORANGE'],
+    'CRITICAL': COLORS['PURPLE'] + COLORS['BOLD'],
+}
+
 def _trace_message_processor(_, __, ed):
     ed['trace'] = getattr(message, 'trace_id', '--')[:2]+getattr(message, 'span_id', '--')[:2]+getattr(message, 'parent_span_id', '--')[:2]+':'+getattr(message, 'iid', '--')[:2]
     return ed
 
 def _pre_processor(_, __, ed):
-    ed['levelname'] = ed['_record'].levelname.upper()[0]
+    ed['levelname'] = ed['_record'].levelname.upper()
     return ed
 
 def _metrics_processor(_, __, ed):
@@ -24,16 +42,16 @@ columns=[
         "levelname",
         structlog.dev.LogLevelColumnFormatter(
             width=0,
-            level_styles={k[0].upper():v for k, v in structlog.dev.ConsoleRenderer.get_default_level_styles().items()},
-            reset_style=''
+            level_styles={k.upper():v for k, v in level_styles.items()},
+            reset_style=COLORS['RESET'],
         ),
     ),
     structlog.dev.Column(
         "timestamp",
         structlog.dev.KeyValueColumnFormatter(
             key_style=None,
-            value_style=structlog.dev.YELLOW,
-            reset_style=structlog.dev.RESET_ALL,
+            value_style=COLORS['YELLOW'],
+            reset_style=COLORS['RESET'],
             value_repr=str,
         ),
     ),
@@ -41,8 +59,8 @@ columns=[
         "trace",
         structlog.dev.KeyValueColumnFormatter(
             key_style=None,
-            value_style=structlog.dev.BRIGHT + structlog.dev.MAGENTA,
-            reset_style=structlog.dev.RESET_ALL,
+            value_style=COLORS['BOLD'] + COLORS['PURPLE'],
+            reset_style=COLORS['RESET'],
             value_repr=str,
         ),
     ),
@@ -50,8 +68,8 @@ columns=[
         "funcName",
         structlog.dev.KeyValueColumnFormatter(
             key_style=None,
-            value_style=structlog.dev.GREEN,
-            reset_style=structlog.dev.RESET_ALL,
+            value_style=COLORS['BLUE'],
+            reset_style=COLORS['RESET'],
             value_repr=str,
         ),
     ),
@@ -59,8 +77,8 @@ columns=[
         "lineno",
         structlog.dev.KeyValueColumnFormatter(
             key_style=None,
-            value_style=structlog.dev.GREEN,
-            reset_style=structlog.dev.RESET_ALL,
+            value_style=COLORS['BLUE'],
+            reset_style=COLORS['RESET'],
             value_repr=str,
             postfix=':',
         ),
@@ -70,8 +88,8 @@ columns=[
         "event",
         structlog.dev.KeyValueColumnFormatter(
             key_style=None,
-            value_style=structlog.dev.BRIGHT + structlog.dev.MAGENTA,
-            reset_style=structlog.dev.RESET_ALL,
+            value_style=COLORS['RESET'],
+            reset_style=COLORS['RESET'],
             value_repr=str,
         ),
     ),
@@ -79,8 +97,8 @@ columns=[
         "",
         structlog.dev.KeyValueColumnFormatter(
             key_style=None,
-            value_style=structlog.dev.GREEN,
-            reset_style=structlog.dev.RESET_ALL,
+            value_style=COLORS['RESET'],
+            reset_style=COLORS['RESET'],
             value_repr=str,
             prefix='|',
         ),

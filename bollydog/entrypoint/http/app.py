@@ -60,13 +60,15 @@ class HttpService(AppService):
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     async def on_start(self) -> None:
-        for message_model in bus.app_handler.handlers.keys():
+        for message_model,handler in bus.app_handler.handlers.items():
             message_model_name = get_model_name(message_model)
+            # service_name=handler.app.__name__
+            # domain = handler.app.domain
             _methods = self.router_mapping.get(message_model_name, ['GET'])
             if isinstance(_methods, str):
                 _methods = [_methods]
             self.http_app.router.add_route(
-                '/' + message_model_name.replace('.', '/'),
+                f'/' + message_model_name.replace('.', '/'),
                 CommandHandler(message_model),
                 methods=_methods,
                 name=None,
