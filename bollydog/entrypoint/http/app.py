@@ -1,5 +1,5 @@
 from typing import Type
-
+import logging
 import mode
 import uvicorn
 from bollydog.models.service import AppService
@@ -32,11 +32,18 @@ class CommandHandler:
         request = Request(scope, receive=receive, send=send)
         with _session_ctx_stack.push(Session(username=scope['user'].display_name)):
             try:
-                message: BaseMessage = self.message(**request.query_params)  # < 入参校验
+                if request.method == 'GET':
+                    message: BaseMessage = self.message(**request.query_params)  # < 入参校验
+                elif request.method == 'POST':
+                    data = await request.json() or await request.form()
+                    message: BaseMessage = self.message(**data)  # < 入参校验
+                else:
+                    raise NotImplementedError
                 message = await bus.put_message(message)
                 result = await message.state  # ? 对future.result的异常做处理
             except Exception as e:
                 result = {'error': str(e)}
+                logging.error(e)
             if isinstance(result, str):
                 response = HTMLResponse(result)
             else:

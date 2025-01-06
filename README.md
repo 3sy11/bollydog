@@ -1,25 +1,22 @@
 # CORE
 
 - [ ] ftr: support handler message be waited in collection from other handlers message by ctx
-- [X] ftr: files database on hard disk
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
 - [ ] ftr: on 0.1.3, `command` can decorate a function to be a command implicit
 - [ ] ftr: opentelemetry processer on strcutlog
-- [ ] ~~ftr: anonymous message call handler or generator~~
+- [ ] opt: duckdb unit_of_work create_all ignore exist table
+- [ ] opt: redo `DOMAIN` argument
 - [ ] ftr: rete?
 - [ ] ftr: pydantic plugin 校验入参的预留关键词
 - [ ] ftr: router_mapping增加别名的路由地址
-- [X] ftr: orm适配器同时支持domain和原生model base
 - [ ] ftr: 热重载
 - [ ] ftr: 标签label
-- [X] opt: structlog
 - [ ] ftr: 优先级
 
 # MODULE
 
 - [ ] opt: websockets middleware
 - [ ] ftr: entrypoint增加一个开关，能够开启或者关闭接收特定消息
-- ~~[ ] ftr:redis适配器，以支持发布订阅和事件提交~~
 
 # .env
 
