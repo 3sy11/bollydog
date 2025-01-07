@@ -3,7 +3,7 @@ import logging
 import os
 from logging import config
 import structlog
-from bollydog.globals import message
+from bollydog.globals import message, app
 
 COLORS = {
     'RESET': "\033[0m",
@@ -24,6 +24,7 @@ level_styles = {
 }
 
 def _trace_message_processor(_, __, ed):
+    ed['domain'] = getattr(message, 'domain', '*')+'.'+ getattr(app,'name', '*')
     ed['trace'] = getattr(message, 'trace_id', '--')[:2]+getattr(message, 'span_id', '--')[:2]+getattr(message, 'parent_span_id', '--')[:2]+':'+getattr(message, 'iid', '--')[:2]
     return ed
 
@@ -56,10 +57,19 @@ columns=[
         ),
     ),
     structlog.dev.Column(
-        "trace",
+        "domain",
         structlog.dev.KeyValueColumnFormatter(
             key_style=None,
             value_style=COLORS['BOLD'] + COLORS['PURPLE'],
+            reset_style=COLORS['RESET'],
+            value_repr=str,
+        ),
+    ),
+    structlog.dev.Column(
+        "trace",
+        structlog.dev.KeyValueColumnFormatter(
+            key_style=None,
+            value_style=COLORS['PURPLE'],
             reset_style=COLORS['RESET'],
             value_repr=str,
         ),

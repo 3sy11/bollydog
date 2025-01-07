@@ -4,7 +4,7 @@ import pathlib
 import time
 import uuid
 from functools import lru_cache
-from typing import Dict, Type, List, Any
+from typing import Dict, Type, List, Any, ClassVar
 
 import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
@@ -12,10 +12,11 @@ from pydantic_core import PydanticUndefined
 from typing_extensions import Annotated
 
 from bollydog.config import MESSAGE_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION
-from bollydog.globals import message
+from bollydog.globals import message, session
 
 _DEFAULT_SIGN = 1
 _DELIVERY_COUNT = 0
+_DEFAULT_QOS = 1
 # ModulePathWithDot = Annotated[str, lambda path: smart_import(path)]
 ModulePathWithDot = Annotated[str, lambda path: '.' in path]
 MessageName = Annotated[str, 'MessageName']
@@ -48,7 +49,7 @@ class _ModelMixin(BaseModel):
     update_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     iid: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
     sign: int = Field(default=_DEFAULT_SIGN)
-    created_by: str = Field(default=HOSTNAME, max_length=50)
+    created_by: str = Field(default_factory=lambda :getattr(session,'username',HOSTNAME), max_length=50)
 
 
 Domains: Dict[DomainName, Type['BaseDomain']] = {}
@@ -67,19 +68,19 @@ class BaseMessage(_ModelMixin):
     model_config = ConfigDict(extra='allow')
 
     # # system
-    host: str = Field(default=HOSTNAME, frozen=True, )
-    version: str = Field(default=REPOSITORY_VERSION, frozen=True)
-    expire_time: float = Field(default=MESSAGE_EXPIRE_TIME)
-    module: str = Field(default=None)
-    domain: DomainName = Field(default=None, description='继承时可以被修改')
-    name: str = Field(default=None, description='继承时可以被修改')
+    host: ClassVar[str] = HOSTNAME
+    version: ClassVar[str] = REPOSITORY_VERSION
+    module: ClassVar[str]
+    domain: ClassVar[DomainName]
+    name: ClassVar[MessageName]
+    expire_time: ClassVar[float] = MESSAGE_EXPIRE_TIME
     # destination: str = Field(default=None)  # <
 
     # # state
     handlers: List[ModulePathWithDot] = Field(default_factory=list)
-    delivery_count: int = Field(default=_DELIVERY_COUNT)
+    delivery_count: ClassVar[int] = _DELIVERY_COUNT
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
-    qos: int = Field(default=1)
+    qos: ClassVar[int] = _DEFAULT_QOS
 
     # conditions: Dict = Field(default=None)  # <
 
@@ -110,9 +111,6 @@ class BaseMessage(_ModelMixin):
 
     def model_post_init(self, __context: Any) -> None:
         # self.state = asyncio.Future()
-        self.module = self.__module__
-        self.domain = self.domain or get_class_domain(self.__class__)
-        self.name = self.name or get_model_name(self.__class__)
         self.span_id = self.span_id or self.iid
         self.data['model_fields_set'] = list(self.model_fields_set)  # # `set` type not satisfy database
         self.data['model_extra'] = self.model_extra
@@ -123,7 +121,9 @@ class BaseMessage(_ModelMixin):
 
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
-        super().__pydantic_init_subclass__(**kwargs)  # <
+        super().__pydantic_init_subclass__(**kwargs)
+        cls.name = cls.__name__.lower()
+        cls.module = cls.__module__
 
 
 class Command(BaseMessage):
@@ -139,7 +139,13 @@ class Event(BaseMessage):
 class BaseService(mode.Service):
     abstract = True
     domain: DomainName
+    name: str
     path: pathlib.Path
+
+    def add_dependency(self, service: 'BaseService') -> 'BaseService':
+        service.domain = f'{self.domain}.{service.name}'
+        super().add_dependency(service)
+        return service
 
     async def on_first_start(self) -> None:
         supervisor = mode.OneForOneSupervisor()
@@ -152,8 +158,8 @@ class BaseService(mode.Service):
 
     def __init_subclass__(cls, abstract=False, **kwargs):
         super(BaseService, cls).__init_subclass__()
-        if not abstract and not hasattr(cls, 'domain'):
-            cls.domain = get_class_domain(cls)
+        if not abstract and not hasattr(cls, 'name'):
+            cls.name = cls.__name__.lower()
         cls.path = pathlib.Path(inspect.getmodule(cls).__file__).parent
 
     def __repr__(self) -> str:

@@ -171,7 +171,11 @@ class DuckDBUnitOfWork(UnitOfWork):
 
     def create_all(self, metadata=None):
         metadata = metadata or self.metadata
+        tables = self.connection.execute('SHOW TABLES').fetchall()
         for table in metadata.sorted_tables:
+            if table.name in tables:
+                self.logger.warning(f'Table {table.name} already exists, skipping...')
+                continue
             create_stmt = str(CreateTable(table).compile())
             self.connection.execute(create_stmt)
             self.connection.execute(f"CREATE SEQUENCE {table.name}idseq START 1;")  # # add autoincrement id

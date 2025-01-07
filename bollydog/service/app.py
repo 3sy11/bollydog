@@ -23,6 +23,8 @@ from .config import service_config, QUEUE_MAX_SIZE
 
 
 class BusService(AppService):
+    domain = 'bollydog'
+    name = 'bus'
     queue: asyncio.Queue
     apps: dict
     router: Router
@@ -34,8 +36,8 @@ class BusService(AppService):
         super().__init__(**kwargs)
         self.queue = asyncio.Queue()
         self.router = Router.create_from(config=ServiceConfig())
+        self.add_dependency(self.router)
         self.apps = {self.domain: self}
-        self.add_service(self.router)
         for app in apps or []:
             self.add_service(app)
         self.exit_stack.enter_context(_bus_ctx_stack.push(self))  # # mode.Service.stop

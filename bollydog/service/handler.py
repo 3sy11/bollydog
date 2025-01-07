@@ -63,6 +63,7 @@ class AppHandler(object):
                     self = cls(fun, app)
                     cls.handlers.setdefault(parameter.annotation, set()).add(self)
                     cls.messages[get_model_name(parameter.annotation)] = parameter.annotation
+                    parameter.annotation.domain = app.domain
                     break
             except Exception as e:
                 logger.warning(f'{e}')

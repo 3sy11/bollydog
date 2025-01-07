@@ -10,6 +10,8 @@ import fire
 from mode.utils.imports import smart_import
 from ptpython.repl import embed
 
+# import warnings
+# warnings.filterwarnings("ignore", category=UserWarning)
 logging.info(f'load .env from {os.getcwd()}')
 environs.Env().read_env(os.getcwd() + '/.env', recurse=False, verbose=True)
 
@@ -38,9 +40,12 @@ def get_apps(config: str) -> Dict[str, AppService]:
     sys.path.insert(0, work_dir.as_posix())
     config = _load_config(config)
     apps = {}
-    for app_name, app_config in config.items():
+    for domain, app_config in config.items():
+        if domain in apps:
+            raise ValueError(f'duplicate domain: {domain}')
         app = app_config.pop('app')
-        apps[app_name] = app.create_from(**app_config)
+        app = app.create_from(domain=domain,**app_config)
+        apps[domain] = app
     return apps
 
 
@@ -61,7 +66,7 @@ class CLI:
         if include:
             apps = {k: v for k, v in apps.items() if k in include}
         bus = BusService.create_from(apps=apps.values())
-        worker = Bootstrap(bus,override_logging=False)
+        worker = Bootstrap(bus, override_logging=False)
         raise worker.execute_from_commandline()
 
     @staticmethod
