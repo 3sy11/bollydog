@@ -65,7 +65,7 @@ class CLI:
                 apps.pop(app_name)
         if include:
             apps = {k: v for k, v in apps.items() if k in include}
-        bus = BusService.create_from(apps=apps.values())
+        bus = BusService(apps=apps.values())
         worker = Bootstrap(bus, override_logging=False)
         raise worker.execute_from_commandline()
 
@@ -75,12 +75,12 @@ class CLI:
             message: MessageName,  # # instance or class name
             **kwargs):
         apps = get_apps(config)
-        bus = BusService.create_from(apps=apps.values())
+        bus = BusService(apps=apps.values())
         msg = smart_import(message)
         assert issubclass(msg, BaseMessage)
         msg = msg(**kwargs)
         logging.info(
-            f'{msg.trace_id[:2]}{msg.span_id[:2]}{msg.parent_span_id[:2]}-{msg.iid[:2]} prepare to execute')
+            f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare to execute')
 
         async def _execute():
             with _session_ctx_stack.push(Session()):
@@ -92,7 +92,7 @@ class CLI:
     @staticmethod
     def shell(config: str, ):
         apps = get_apps(config)
-        bus = BusService.create_from(apps=apps.values())
+        bus = BusService(apps=apps.values())
         for msg, handlers in bus.app_handler.handlers.items():
             print(f'{msg} -> {handlers}')
         embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True)  # # noqa

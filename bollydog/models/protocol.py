@@ -9,7 +9,7 @@ class UnitOfWork(BaseService, abstract=True):
     adapter: Any
 
     def __init__(self, *args, **kwargs):
-        super().__init__()
+        super().__init__(*args, **kwargs)
 
     def __repr__(self):
         return f'<UnitOfWork {self.__class__.__name__}>'

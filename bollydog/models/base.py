@@ -99,8 +99,8 @@ class BaseMessage(_ModelMixin):
 
     # # trace
     trace_id: str = Field(default_factory=lambda: getattr(message, 'trace_id', uuid.uuid4().hex))
-    span_id: str = Field(default=None)
-    parent_span_id: str = Field(default=getattr(message, 'span_id', '0000'))
+    span_id: str = Field(default='--')
+    parent_span_id: str = Field(default=getattr(message, 'span_id', '--'))
 
     # # data
     data: dict = Field(default_factory=dict)
@@ -111,7 +111,7 @@ class BaseMessage(_ModelMixin):
 
     def model_post_init(self, __context: Any) -> None:
         # self.state = asyncio.Future()
-        self.span_id = self.span_id or self.iid
+        self.span_id = self.span_id if self.span_id != '--' else self.iid
         self.data['model_fields_set'] = list(self.model_fields_set)  # # `set` type not satisfy database
         self.data['model_extra'] = self.model_extra
         if message:
@@ -138,12 +138,18 @@ class Event(BaseMessage):
 
 class BaseService(mode.Service):
     abstract = True
-    domain: DomainName
-    name: str
+    domain: DomainName = None
+    name: str = None
     path: pathlib.Path
 
+    def __init__(self, domain, name=None, *args, **kwargs):
+        super().__init__()
+        self.domain = domain or self.domain
+        self.name = name or self.name or self.__class__.__name__.lower()
+        self.name = f'{self.domain}.{self.name}'
+
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
-        service.domain = f'{self.domain}.{service.name}'
+        service.name = f'{self.name}.{service.name}'
         super().add_dependency(service)
         return service
 
@@ -158,8 +164,6 @@ class BaseService(mode.Service):
 
     def __init_subclass__(cls, abstract=False, **kwargs):
         super(BaseService, cls).__init_subclass__()
-        if not abstract and not hasattr(cls, 'name'):
-            cls.name = cls.__name__.lower()
         cls.path = pathlib.Path(inspect.getmodule(cls).__file__).parent
 
     def __repr__(self) -> str:

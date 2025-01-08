@@ -15,16 +15,16 @@ from bollydog.exception import (
 )
 from bollydog.globals import _bus_ctx_stack
 from bollydog.models.base import BaseMessage as Message, MessageId
-from bollydog.models.config import ServiceConfig
 from bollydog.models.service import AppService
 from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
-from .config import service_config, QUEUE_MAX_SIZE
+from bollydog.config import QUEUE_MAX_SIZE
 
+_DOMAIN='bollydog'
+_NAME='bus'
+_HANDLERS = ['bollydog.service.model', ]
 
 class BusService(AppService):
-    domain = 'bollydog'
-    name = 'bus'
     queue: asyncio.Queue
     apps: dict
     router: Router
@@ -32,19 +32,17 @@ class BusService(AppService):
     tasks: Dict[MessageId, Any] = {}
     app_handler = AppHandler
 
-    def __init__(self, apps: Iterable[AppService] = None, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, domain=_DOMAIN, name=_NAME, handlers=_HANDLERS, apps: Iterable[AppService] = None, **kwargs):
+        super().__init__(domain=domain, name=name, **kwargs)
         self.queue = asyncio.Queue()
-        self.router = Router.create_from(config=ServiceConfig())
+        self.router = Router(domain=domain)
         self.add_dependency(self.router)
-        self.apps = {self.domain: self}
+        self.apps = {self.name: self}
         for app in apps or []:
             self.add_service(app)
+        for handler in handlers:
+            AppHandler.walk_module(handler, self)
         self.exit_stack.enter_context(_bus_ctx_stack.push(self))  # # mode.Service.stop
-
-    @classmethod
-    def create_from(cls, **kwargs) -> 'BusService':
-        return super().create_from(config=service_config, **kwargs)
 
     async def on_started(self) -> None:
         for service in self.apps.values():
@@ -54,24 +52,18 @@ class BusService(AppService):
         self.logger.info(self.apps)
 
     def add_service(self, service: AppService):
-        assert service.domain
-        assert service.domain not in self.apps
-        self.apps[service.domain] = service
-
-    async def _is_valid(self, message: Message):
-        if not self.apps.get(message.domain):
-            raise MessageValidationError(
-                f'{message.trace_id[:2]}{message.span_id[:2]}{message.parent_span_id[:2]}-{message.iid[:2]} is not a valid domain')
+        assert service.name
+        assert service.name not in self.apps
+        self.apps[service.name] = service
 
     async def put_message(self, message: Message) -> Message:
         if self.should_stop:
             raise ServiceRejectException()
         if self.queue.qsize() > QUEUE_MAX_SIZE:
-            raise ServiceMaxSizeOfQueueError(f'{message.trace_id}|\001\001|Queue is full')
-        await self._is_valid(message)
+            raise ServiceMaxSizeOfQueueError(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} Queue is full')
         await self.queue.put(message)
         self.logger.info(
-            f'{message.trace_id[:2]}{message.span_id[:2]}{message.parent_span_id[:2]}-{message.iid[:2]} put {message.name}')
+            f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} put {message.name}')
         return message
 
     @mode.Service.task
@@ -81,10 +73,10 @@ class BusService(AppService):
                 await asyncio.sleep(0.1)
                 continue
             message: Message = await self.queue.get()
-            self.logger.debug(f'{message.trace_id}|\001\001|get {message.model_dump()}')
+            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} get {message.model_dump()}')
             app: AppService = self.apps.get(message.domain)
             self.logger.info(
-                f'{message.trace_id[:2]}{message.span_id[:2]}{message.parent_span_id[:2]}-{message.iid[:2]} execute {message.name}')
+                f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} execute {message.name}')
             await self.execute(message)
             await self.router.publish(message)
 
@@ -104,11 +96,11 @@ class BusService(AppService):
                 if not future.done():
                     future.set_result(result)
                 self.logger.info(
-                    f'{message.trace_id[:2]}{message.span_id[:2]}{message.parent_span_id[:2]}-{message.iid[:2]} finish')
+                    f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} finish')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
             if message.delivery_count:
                 self.logger.info(
-                    f'{message.trace_id[:2]}{message.span_id[:2]}{message.parent_span_id[:2]}-{message.iid[:2]} retrying {message.delivery_count}')
+                    f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} retrying {message.delivery_count}')
                 self.futures[message.iid] = (message, future)
             else:
                 self.logger.error(e)

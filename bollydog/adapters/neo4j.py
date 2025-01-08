@@ -7,7 +7,7 @@ class Neo4jUnitOfWork(UnitOfWork):
     adapter: Any
 
     def __init__(self, url:str, auth:tuple[str,str],*args, **kwargs):
-        super().__init__()
+        super().__init__(*args, **kwargs)
         self.url=url
         self.auth=tuple(auth)
 

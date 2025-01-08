@@ -24,8 +24,8 @@ level_styles = {
 }
 
 def _trace_message_processor(_, __, ed):
-    ed['domain'] = getattr(message, 'domain', '*')+'.'+ getattr(app,'name', '*')
-    ed['trace'] = getattr(message, 'trace_id', '--')[:2]+getattr(message, 'span_id', '--')[:2]+getattr(message, 'parent_span_id', '--')[:2]+':'+getattr(message, 'iid', '--')[:2]
+    ed['domain'] = getattr(app,'name', '*')
+    ed['trace'] = getattr(message, 'trace_id', '--')[:2]+getattr(message, 'parent_span_id', '--')[:2]+':'+getattr(message, 'span_id', '--')[:2]
     return ed
 
 def _pre_processor(_, __, ed):
