@@ -25,6 +25,7 @@ class AppService(BaseService, abstract=True):
 
     @classmethod
     def create_from(cls, domain, unit_of_work=None, protocol=None, handlers=None, **kwargs):
+        assert (unit_of_work is None) == (protocol is None)
         if unit_of_work:
             unit_of_work = unit_of_work['module'](domain=domain, **unit_of_work)
             protocol = protocol['module'](unit_of_work=unit_of_work, **protocol)

@@ -69,7 +69,7 @@ class HttpService(AppService):
     async def on_start(self) -> None:
         for message_model,handlers in bus.app_handler.handlers.items():
             for handler in handlers:
-                entrypoint=f'{handler.app.name}.{message_model.__name__}'
+                entrypoint=f'{handler.app.name}.{message_model.name}'
                 _methods = self.router_mapping.get(entrypoint, ['GET'])
                 if isinstance(_methods, str):
                     _methods = [_methods]

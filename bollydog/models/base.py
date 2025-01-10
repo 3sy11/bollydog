@@ -122,7 +122,8 @@ class BaseMessage(_ModelMixin):
     @classmethod
     def __pydantic_init_subclass__(cls, **kwargs):
         super().__pydantic_init_subclass__(**kwargs)
-        cls.name = cls.__name__.lower()
+        if not hasattr(cls,'name'):
+            cls.name = cls.__name__.lower()
         cls.module = cls.__module__
 
 

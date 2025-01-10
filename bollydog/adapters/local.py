@@ -18,12 +18,12 @@ class LogProtocol(Protocol):
 
 class FileUnitOfWork(UnitOfWork):
 
-    def __init__(self, path: str | pathlib.Path):
+    def __init__(self, path: str | pathlib.Path, **kwargs) -> None:
         if isinstance(path, str):
             self.path = pathlib.Path(path)
         else:
             self.path = path
-        super().__init__()
+        super().__init__(**kwargs)
 
     def create(self):
         return True

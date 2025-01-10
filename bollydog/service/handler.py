@@ -56,14 +56,19 @@ class AppHandler(object):
         return bus.put_message if bus.state == 'running' and _message_ctx_stack.top.qos == 0 else bus.execute
 
     @classmethod
-    def register(cls, fun, app):
+    def register(cls, cmd, fun, app):
+        self = cls(fun, app)
+        cls.handlers.setdefault(cmd, set()).add(self)
+        cls.messages[get_model_name(cmd)] = cmd
+        cmd.domain = app.domain
+        fun.__name__ = cmd.name
+
+    @classmethod
+    def walk_annotation(cls, fun, app):
         for name, parameter in inspect.signature(fun).parameters.items():
             try:
                 if inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, BaseMessage):
-                    self = cls(fun, app)
-                    cls.handlers.setdefault(parameter.annotation, set()).add(self)
-                    cls.messages[get_model_name(parameter.annotation)] = parameter.annotation
-                    parameter.annotation.domain = app.domain
+                    cls.register(parameter.annotation, fun, app)
                     break
             except Exception as e:
                 logger.warning(f'{e}')
@@ -76,7 +81,10 @@ class AppHandler(object):
             if isinstance(module, str):
                 module = smart_import(module)
             for name, func in inspect.getmembers(module, inspect.isfunction):
-                cls.register(func, app)
+                cls.walk_annotation(func, app)
+            for name, command in inspect.getmembers(module, inspect.isclass):
+                if issubclass(command, BaseMessage) and hasattr(command, '__call__') and inspect.iscoroutinefunction(command.__call__):
+                    cls.register(command, command.__call__, app)
         except (ModuleNotFoundError, AttributeError) as e:
             logger.warning(f'Error: {e}, {module} may have error, try to import {module}.py')
         except Exception as e:

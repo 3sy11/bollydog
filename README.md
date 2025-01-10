@@ -5,7 +5,7 @@
 - [ ] ftr: on 0.1.3, `command` can decorate a function to be a command implicit
 - [ ] ftr: opentelemetry processer on strcutlog
 - [X] opt: duckdb unit_of_work create_all ignore exist table
-- [ ] opt: redo `DOMAIN` argument
+- [X] opt: redo `DOMAIN` argument
 - [ ] ftr: rete?
 - [ ] ftr: pydantic plugin 校验入参的预留关键词
 - [ ] ftr: router_mapping增加别名的路由地址
@@ -17,6 +17,7 @@
 
 - [ ] opt: websockets middleware
 - [ ] ftr: entrypoint增加一个开关，能够开启或者关闭接收特定消息
+- [ ] ftr: http messages debounce or qos
 
 # .env
 

@@ -22,7 +22,7 @@ class SQLModelDomain(sqlmodel.SQLModel, BaseDomain):
     created_time: float = sqlmodel.Field(default_factory=lambda: int(time.time() * 1000), index=True)
     update_time: float = sqlmodel.Field(default_factory=lambda: int(time.time() * 1000), index=True)
     sign: int = sqlmodel.Field(default=0)
-    created_by: str = sqlmodel.Field(default=get_hostname(), max_length=50)
+    created_by: str = sqlmodel.Field(default=get_hostname(), max_length=50, index=True)
 
     __table_args__ = (
         UniqueConstraint("iid"),
@@ -118,7 +118,8 @@ class SqlAlchemyProtocol(Protocol):
 
     async def update(self, cls: Type[SQLModelDomain], item_id, *args, **kwargs):
         stmt = update(cls).where(cls.id == item_id)
-        stmt = stmt.values(update_time=time.time() * 1000, **kwargs)
+        update_time = kwargs.pop('update_time', None) or time.time() * 1000
+        stmt = stmt.values(update_time=update_time, **kwargs)
         stmt = stmt.returning(cls)
         async with self.unit_of_work.connect() as session:
             result = await session.execute(stmt)
@@ -153,12 +154,17 @@ class DuckDBUnitOfWork(UnitOfWork):
 
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator[duckdb.DuckDBPyConnection, None]:
-        if not self.connection:
-            self.connection = duckdb.connect(self.url)
-        # < load_extension
-        yield self.connection
-        self.connection.close()
-        self.connection = None
+        try:
+            if not self.connection:
+                self.connection = duckdb.connect(self.url)
+            # < load_extension
+            yield self.connection
+        except BaseException as e:
+            self.logger.exception(e)
+            raise e
+        finally:
+            self.connection.close()
+            self.connection = None
 
     def create(self, url=None):
         # check connection is closed, because duckdb feature, using self.connection to execute create tables;
@@ -173,11 +179,12 @@ class DuckDBUnitOfWork(UnitOfWork):
         metadata = metadata or self.metadata
         tables = self.connection.execute('SHOW TABLES').fetchall()
         for table in metadata.sorted_tables:
-            if table.name in tables:
+            if (table.name,) in tables:
                 self.logger.warning(f'Table {table.name} already exists, skipping...')
                 continue
             create_stmt = str(CreateTable(table).compile())
+            print(create_stmt)
             self.connection.execute(create_stmt)
-            self.connection.execute(f"CREATE SEQUENCE {table.name}idseq START 1;")  # # add autoincrement id
+            self.connection.execute(f"CREATE OR REPLACE SEQUENCE {table.name}idseq START 1;")  # # add autoincrement id
             self.connection.execute(
                 f"ALTER TABLE {table.name} ALTER COLUMN id SET DEFAULT NEXTVAL('{table.name}idseq');")
