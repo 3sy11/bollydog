@@ -48,9 +48,11 @@ class _ModelMixin(BaseModel):
     created_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     update_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     iid: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
-    sign: int = Field(default=_DEFAULT_SIGN)
-    created_by: str = Field(default_factory=lambda :getattr(session,'username',HOSTNAME), max_length=50)
+    sign: int = Field(default=_DEFAULT_SIGN, description='1:normal, -1:deleted')
+    created_by: str = Field(default=None, max_length=50)
 
+    def model_post_init(self, __context: Any) -> None:
+        self.created_by = getattr(session,'username',None) or HOSTNAME
 
 Domains: Dict[DomainName, Type['BaseDomain']] = {}
 
@@ -111,6 +113,7 @@ class BaseMessage(_ModelMixin):
 
     def model_post_init(self, __context: Any) -> None:
         # self.state = asyncio.Future()
+        super().model_post_init(__context)
         self.span_id = self.span_id if self.span_id != '--' else self.iid
         self.data['model_fields_set'] = list(self.model_fields_set)  # # `set` type not satisfy database
         self.data['model_extra'] = self.model_extra

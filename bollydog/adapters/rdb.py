@@ -21,8 +21,8 @@ class SQLModelDomain(sqlmodel.SQLModel, BaseDomain):
     iid: str = sqlmodel.Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
     created_time: float = sqlmodel.Field(default_factory=lambda: int(time.time() * 1000), index=True)
     update_time: float = sqlmodel.Field(default_factory=lambda: int(time.time() * 1000), index=True)
-    sign: int = sqlmodel.Field(default=0)
-    created_by: str = sqlmodel.Field(default=get_hostname(), max_length=50, index=True)
+    sign: int = sqlmodel.Field(default=1)
+    created_by: str = sqlmodel.Field(default='', max_length=50, index=True)
 
     __table_args__ = (
         UniqueConstraint("iid"),

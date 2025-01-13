@@ -33,10 +33,10 @@ class HttpHandler:
         with _session_ctx_stack.push(Session(username=scope['user'].display_name)):
             try:
                 if request.method == 'GET':
-                    message: BaseMessage = self.message(**request.query_params)  # < 入参校验
+                    message: BaseMessage = self.message(**request.query_params, **request.path_params)  # < 入参校验
                 elif request.method == 'POST':
                     data = await request.json() or await request.form()
-                    message: BaseMessage = self.message(**data)  # < 入参校验
+                    message: BaseMessage = self.message(**data, **request.path_params)  # < 入参校验
                 else:
                     raise NotImplementedError
                 message = await bus.put_message(message)

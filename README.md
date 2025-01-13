@@ -4,8 +4,6 @@
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
 - [ ] ftr: on 0.1.3, `command` can decorate a function to be a command implicit
 - [ ] ftr: opentelemetry processer on strcutlog
-- [X] opt: duckdb unit_of_work create_all ignore exist table
-- [X] opt: redo `DOMAIN` argument
 - [ ] ftr: rete?
 - [ ] ftr: pydantic plugin 校验入参的预留关键词
 - [ ] ftr: router_mapping增加别名的路由地址

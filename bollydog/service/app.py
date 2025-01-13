@@ -63,7 +63,7 @@ class BusService(AppService):
             raise ServiceMaxSizeOfQueueError(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} Queue is full')
         await self.queue.put(message)
         self.logger.info(
-            f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} put {message.name}')
+            f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name}')
         return message
 
     @mode.Service.task
@@ -73,10 +73,10 @@ class BusService(AppService):
                 await asyncio.sleep(0.1)
                 continue
             message: Message = await self.queue.get()
-            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} get {message.model_dump()}')
+            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name} {message.model_dump()}')
             app: AppService = self.apps.get(message.domain)
             self.logger.info(
-                f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} execute {message.name}')
+                f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name}')
             await self.execute(message)
             await self.router.publish(message)
 
@@ -95,12 +95,12 @@ class BusService(AppService):
                 result = task.result()
                 if not future.done():
                     future.set_result(result)
-                self.logger.info(
-                    f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} finish')
+                self.logger.debug(
+                    f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name}')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
             if message.delivery_count:
                 self.logger.info(
-                    f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} retrying {message.delivery_count}')
+                    f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name} retrying {message.delivery_count}')
                 self.futures[message.iid] = (message, future)
             else:
                 self.logger.error(e)
