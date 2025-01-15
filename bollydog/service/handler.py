@@ -83,8 +83,9 @@ class AppHandler(object):
             for name, func in inspect.getmembers(module, inspect.isfunction):
                 cls.walk_annotation(func, app)
             for name, command in inspect.getmembers(module, inspect.isclass):
-                if issubclass(command, BaseMessage) and hasattr(command, '__call__') and inspect.iscoroutinefunction(command.__call__):
-                    cls.register(command, command.__call__, app)
+                if issubclass(command, BaseMessage) and hasattr(command, '__call__') and command not in cls.handlers:
+                    if inspect.iscoroutinefunction(command.__call__) or inspect.isasyncgenfunction(command.__call__):
+                        cls.register(command, command.__call__, app)
         except (ModuleNotFoundError, AttributeError) as e:
             logger.warning(f'Error: {e}, {module} may have error, try to import {module}.py')
         except Exception as e:

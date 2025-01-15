@@ -2,7 +2,7 @@
 
 - [ ] ftr: support handler message be waited in collection from other handlers message by ctx
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
-- [ ] ftr: on 0.1.3, `command` can decorate a function to be a command implicit
+- [ ] ftr: on 0.1.3, `command` combine to one handler, `event` combine to multi or rewrite, opt autodiscover
 - [ ] ftr: opentelemetry processer on strcutlog
 - [ ] ftr: rete?
 - [ ] ftr: pydantic plugin 校验入参的预留关键词
