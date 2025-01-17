@@ -31,7 +31,7 @@ class FileUnitOfWork(UnitOfWork):
     @asynccontextmanager
     async def connect(self, filename) -> AsyncGenerator:
         file = self.path / filename
-        with open(file.as_posix(), 'a+') as f:
+        with open(file.as_posix(), 'a+',encoding='utf-8') as f:
             yield f
 
 
@@ -45,9 +45,11 @@ class FileProtocol(Protocol):
     async def read(self, filename):
         file = self.unit_of_work.path / filename
         if not file.exists():
-            return None
+            raise FileNotFoundError(file.as_posix())
         async with self.unit_of_work.connect(filename) as f:
-            return f.read()
+            f.seek(0)
+            text = f.read()
+        return text
 
 
 class NoneUnitOfWork(UnitOfWork):
