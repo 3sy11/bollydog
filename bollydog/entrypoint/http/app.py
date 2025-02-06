@@ -67,19 +67,18 @@ class HttpService(AppService):
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     async def on_start(self) -> None:
-        for message_model,handlers in bus.app_handler.handlers.items():
-            for handler in handlers:
-                entrypoint=f'{handler.app.name}.{message_model.name}'
-                _methods = self.router_mapping.get(entrypoint, ['GET'])
-                if isinstance(_methods, str):
-                    _methods = [_methods]
-                self.http_app.router.add_route(
-                    f'/' + entrypoint.replace('.', '/'),
-                    HttpHandler(message_model),
-                    methods=_methods,
-                    name=None,
-                    include_in_schema=True,
-                )
+        for message_model,handler in bus.app_handler.handlers.items():
+            entrypoint=f'{handler.app.name}.{message_model.name}'
+            _methods = self.router_mapping.get(entrypoint, ['GET'])
+            if isinstance(_methods, str):
+                _methods = [_methods]
+            self.http_app.router.add_route(
+                f'/' + entrypoint.replace('.', '/'),
+                HttpHandler(message_model),
+                methods=_methods,
+                name=None,
+                include_in_schema=True,
+            )
         for r in self.http_app.routes:
             self.logger.info(r)
         self.http_app.user_middleware = self.middlewares

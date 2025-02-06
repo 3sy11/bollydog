@@ -14,7 +14,7 @@ from bollydog.exception import (
     HandlerNoneError
 )
 from bollydog.globals import _bus_ctx_stack
-from bollydog.models.base import BaseMessage as Message, MessageId
+from bollydog.models.base import BaseMessage as Message, MessageId, Command
 from bollydog.models.service import AppService
 from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
@@ -114,18 +114,15 @@ class BusService(AppService):
             future.set_exception(e)
 
     def get_coro(self, message: Message) -> List[Awaitable]:
-        # < handler from message
-        handlers = []
-        handlers.extend(message.handlers)
-        if message.__class__ in self.app_handler.handlers:
-            handlers += list(self.app_handler.handlers[message.__class__])
-        if not handlers:
-            raise HandlerNoneError(f'No handler found for {message.name}, nothing will be done')
-        coroutines = []
-        for handler in handlers[::-1]:
-            coroutines.append(partial(handler, message=message))
-            message = message.model_copy(update={'iid': uuid.uuid4().hex, 'future': asyncio.Future()})
-        return coroutines
+        # 确保消息类型是 Command
+        if not isinstance(message, Command):
+            raise HandlerNoneError(f'Message type {type(message).__name__} is not supported, only Command is allowed')
+            
+        handler = self.app_handler.handlers.get(message.__class__)
+        if not handler:
+            raise HandlerNoneError(f'No handler found for command {message.name}')
+            
+        return [partial(handler, message=message)]
 
     async def _execute(self, message, coro):
         self.futures[message.iid] = (message, message.state)

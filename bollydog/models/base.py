@@ -54,6 +54,7 @@ class _ModelMixin(BaseModel):
     def model_post_init(self, __context: Any) -> None:
         self.created_by = getattr(session,'username',None) or HOSTNAME
 
+
 Domains: Dict[DomainName, Type['BaseDomain']] = {}
 
 
@@ -68,7 +69,6 @@ class BaseDomain(_ModelMixin):
 
 class BaseMessage(_ModelMixin):
     model_config = ConfigDict(extra='allow')
-
     # # system
     host: ClassVar[str] = HOSTNAME
     version: ClassVar[str] = REPOSITORY_VERSION
@@ -79,7 +79,7 @@ class BaseMessage(_ModelMixin):
     # destination: str = Field(default=None)  # <
 
     # # state
-    handlers: List[ModulePathWithDot] = Field(default_factory=list)
+    # handlers: List[ModulePathWithDot] = Field(default_factory=list)
     delivery_count: ClassVar[int] = _DELIVERY_COUNT
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
     qos: ClassVar[int] = _DEFAULT_QOS
@@ -122,22 +122,23 @@ class BaseMessage(_ModelMixin):
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
 
-    @classmethod
-    def __pydantic_init_subclass__(cls, **kwargs):
-        super().__pydantic_init_subclass__(**kwargs)
-        if not hasattr(cls,'name'):
+    def __init_subclass__(cls, abstract: bool = False, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if not abstract and not hasattr(cls,'name'):
             cls.name = cls.__name__.lower()
         cls.module = cls.__module__
 
 
-class Command(BaseMessage):
+class Command(BaseMessage, abstract=True):
+    handler: ModulePathWithDot = Field(default=None)
 
     def model_post_init(self, __context: Any) -> None:
         super().model_post_init(__context)
 
 
-class Event(BaseMessage):
-    ...
+class Event(BaseMessage, abstract=True):
+    handlers: List[ModulePathWithDot] = Field(default=None)
+    _abstract = True
 
 
 class BaseService(mode.Service):

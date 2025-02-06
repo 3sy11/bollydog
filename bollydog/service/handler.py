@@ -1,9 +1,9 @@
 import asyncio
 import logging
 import inspect
-from typing import Any, Awaitable, Callable, Dict, Type, Set
+from typing import Any, Dict, Type
 from mode.utils.imports import smart_import
-from bollydog.models.base import BaseMessage, ModulePathWithDot, MessageName, get_model_name
+from bollydog.models.base import Command, ModulePathWithDot, MessageName, get_model_name
 from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack, bus, _app_ctx_stack
 
 logger = logging.getLogger(__name__)
@@ -11,13 +11,13 @@ logger = logging.getLogger(__name__)
 
 class AppHandler(object):
     # < BaseService
-    messages: Dict[MessageName, Type[BaseMessage]] = {}
-    handlers: Dict[Type[BaseMessage], Set['AppHandler']] = {}
+    messages: Dict[MessageName, Type[Command]] = {}
+    handlers: Dict[Type[Command], 'AppHandler'] = {}
 
     def __init__(self, fun, app) -> None:
         self.fun = fun
         self.app = app
-        self.isasyncgenfunction = inspect.isasyncgenfunction(fun)  # # noqa
+        self.isasyncgenfunction = inspect.isasyncgenfunction(fun)
 
     async def __call__(self, message) -> Any:
         with (
@@ -27,7 +27,7 @@ class AppHandler(object):
         ):
             if not self.isasyncgenfunction:
                 result = await self.fun(message)
-                if isinstance(result, BaseMessage):
+                if isinstance(result, Command):
                     msg = await self.callback(result)
                     result = await msg.state
             else:
@@ -36,7 +36,7 @@ class AppHandler(object):
                 try:
                     while True:
                         msg = await async_gen.asend(result)
-                        if not isinstance(msg, BaseMessage):
+                        if not isinstance(msg, Command):
                             result = msg
                             break
                         msg = await self.callback(msg)
@@ -56,9 +56,13 @@ class AppHandler(object):
         return bus.put_message if bus.state == 'running' and _message_ctx_stack.top.qos == 0 else bus.execute
 
     @classmethod
-    def register(cls, cmd, fun, app):
+    def register(cls, cmd: Type[Command], fun, app):
+        if cmd in cls.handlers:
+            logger.warning(f'Command {cmd.__name__} already has a handler, skipping registration')
+            return
+            
         self = cls(fun, app)
-        cls.handlers.setdefault(cmd, set()).add(self)
+        cls.handlers[cmd] = self
         cls.messages[get_model_name(cmd)] = cmd
         cmd.domain = app.domain
         fun.__name__ = cmd.name
@@ -67,7 +71,7 @@ class AppHandler(object):
     def walk_annotation(cls, fun, app):
         for name, parameter in inspect.signature(fun).parameters.items():
             try:
-                if inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, BaseMessage):
+                if inspect.isclass(parameter.annotation) and issubclass(parameter.annotation, Command):
                     cls.register(parameter.annotation, fun, app)
                     break
             except Exception as e:
@@ -80,12 +84,12 @@ class AppHandler(object):
         try:
             if isinstance(module, str):
                 module = smart_import(module)
-            for name, func in inspect.getmembers(module, inspect.isfunction):
-                cls.walk_annotation(func, app)
             for name, command in inspect.getmembers(module, inspect.isclass):
-                if issubclass(command, BaseMessage) and hasattr(command, '__call__') and command not in cls.handlers:
+                if issubclass(command, Command) and hasattr(command, '__call__') and command not in cls.handlers:
                     if inspect.iscoroutinefunction(command.__call__) or inspect.isasyncgenfunction(command.__call__):
                         cls.register(command, command.__call__, app)
+            for name, func in inspect.getmembers(module, inspect.isfunction):
+                cls.walk_annotation(func, app)
         except (ModuleNotFoundError, AttributeError) as e:
             logger.warning(f'Error: {e}, {module} may have error, try to import {module}.py')
         except Exception as e:
