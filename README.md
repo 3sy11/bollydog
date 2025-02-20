@@ -10,6 +10,7 @@
 - [ ] ftr: 热重载
 - [ ] ftr: 标签label
 - [ ] ftr: 优先级
+- [ ] ftr: IOC agent can be injected as a entrypoint, react like api and can call all handlers
 
 # MODULE
 
