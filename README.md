@@ -1,3 +1,7 @@
+# WHY
+
+deconstructable monolithic application framework
+
 # CORE
 
 - [ ] ftr: support handler message be waited in collection from other handlers message by ctx
@@ -45,7 +49,8 @@ BOLLYDOG_WS_SERVICE_LOG_LEVEL
 
 # DESIGN
 
-> [__Architecture Patterns with Python__](https://www.cosmicpython.com/book/preface.html)  
+> [__Architecture Patterns with Python__](https://www.cosmicpython.com/book/preface.html)
+
 > [__`mode` module__](https://github.com/faust-streaming/mode)
 
 # CLI
