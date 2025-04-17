@@ -1,0 +1,4 @@
+example:
+  app: !module example.app.ExampleService
+  handlers:
+    - example.handler

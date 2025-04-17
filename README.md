@@ -53,9 +53,16 @@ BOLLYDOG_WS_SERVICE_LOG_LEVEL
 
 > [__`mode` module__](https://github.com/faust-streaming/mode)
 
+# HOW
+
+```shell
+pip install -e .
+cd bollydog/example
+```
+
 # CLI
 
- `bollydog execute --config='./config.yaml' --message=service.model.TaskCount` execute a command  
+ `bollydog execute --config='./config.yaml' --message=example.handler.TaskCount` execute a command  
  `bollydog service --config "./config.yaml"` start up service as config.yml  
  `bollydog shell --config "./config.yaml" `   
 
