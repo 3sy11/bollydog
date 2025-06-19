@@ -2,3 +2,24 @@ example:
   app: !module example.app.ExampleService
   handlers:
     - example.handler
+http:
+  app: !module bollydog.entrypoint.http.app.HttpService
+  middlewares:
+    -   middleware: !module starlette.middleware.sessions.SessionMiddleware
+        secret_key: ${HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY}
+    -   middleware: !module starlette.middleware.authentication.AuthenticationMiddleware
+        backend: !module bollydog.entrypoint.http.middleware.base_auth_backend
+    -   middleware: !module starlette.middleware.cors.CORSMiddleware
+        allow_origins:
+          - "*"
+        allow_methods:
+          - "*"
+        allow_headers:
+          - "*"
+        max_age: 1728000
+  router_mapping:
+    answers.api.{item}.{command}:
+      - POST
+      - GET
+ws:
+  app: !module bollydog.entrypoint.websocket.app.SocketService
