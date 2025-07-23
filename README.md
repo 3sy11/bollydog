@@ -28,7 +28,7 @@
 - [ ] ftr: label support
 - [ ] ftr: priority system
 - [ ] ftr: IOC agent can be injected as an entrypoint, behaves like an API and can invoke all handlers
-- [ ] ftr: `.wheel` install support
+- [ ] ftr: `.wheel` install support & `uv` install
 - [ ] opt: rename `bus` to `hub`
 
 # MODULE TODO LIST
