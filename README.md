@@ -28,7 +28,7 @@
 - [ ] ftr: label support
 - [ ] ftr: priority system
 - [ ] ftr: IOC agent can be injected as an entrypoint, behaves like an API and can invoke all handlers
-- [ ] ftr: `.wheel` install support & `uv` install
+- [X] ftr: `.wheel` install support & `uv` install
 - [ ] opt: rename `bus` to `hub`
 
 # MODULE TODO LIST
@@ -76,9 +76,28 @@ Defines the core execution logic.
 
 # HOW
 
+## pip
+
 ```shell
 git clone https://github.com/3sy11/bollydog.git
 pip install -e .
+```
+
+## uv 
+
+```shell
+git clone https://github.com/3sy11/bollydog.git
+cd bollydog
+uv sync
+uv sync --dev
+```
+
+## build
+
+```shell
+uv build --all
+uv run uv pip install dist/bollydog-*.whl
+bollydog --help
 
 ```
 
@@ -100,6 +119,7 @@ curl http://0.0.0.0:8000/example/exampleservice/taskcount
 # ptpython shell
 bollydog shell --config "./config.yaml"
 ```
+
 ```python
 locals()
 from example.handler import TaskList,task_list
