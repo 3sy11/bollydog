@@ -9,7 +9,7 @@ from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
 
-from bollydog.globals import bus, _session_ctx_stack
+from bollydog.globals import hub, _session_ctx_stack
 from bollydog.models.base import BaseMessage, get_model_name, Session
 from .config import (
     SERVICE_DEBUG,
@@ -39,7 +39,7 @@ class HttpHandler:
                     message: BaseMessage = self.message(**data, **request.path_params)  # < 入参校验
                 else:
                     raise NotImplementedError
-                message = await bus.put_message(message)
+                message = await hub.put_message(message)
                 result = await message.state  # ? 对future.result的异常做处理
             except Exception as e:
                 result = {'error': str(e)}
@@ -67,7 +67,7 @@ class HttpService(AppService):
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     async def on_start(self) -> None:
-        for message_model,handler in bus.app_handler.handlers.items():
+        for message_model,handler in hub.app_handler.handlers.items():
             entrypoint=f'{handler.app.name}.{message_model.name}'
             _methods = self.router_mapping.get(entrypoint, ['GET'])
             if isinstance(_methods, str):

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 from pydantic_core import PydanticUndefined
 from typing_extensions import Annotated
 
-from bollydog.config import MESSAGE_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION
+from bollydog.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, EVENT_EXPIRE_TIME
 from bollydog.globals import message, session
 
 _DEFAULT_SIGN = 1
@@ -25,19 +25,53 @@ MessageTraceId = Annotated[str, 'MessageTraceId']
 DomainName = Annotated[str, 'Domain']
 
 
-@lru_cache  # ?
+@lru_cache
 def get_model_name(o) -> str:
+    """
+    Get a standardized name for a model, function, or class.
+    
+    This function provides a consistent naming convention for different types of objects:
+    - For functions: returns 'module.function_name'
+    - For Pydantic models: returns the model's 'name' field if defined, otherwise 'module.class_name'
+    - For other classes: returns 'module.class_name'
+    
+    The function is cached with @lru_cache for performance optimization.
+    
+    Examples:
+        # For a function
+        def my_handler():
+            pass
+        get_model_name(my_handler)  # Returns: 'my_module.my_handler'
+        
+        # For a Pydantic model with explicit name
+        class TaskCount(BaseMessage):
+            name = 'task.count'
+        get_model_name(TaskCount)  # Returns: 'task.count'
+        
+        # For a Pydantic model without explicit name
+        class UserProfile(BaseMessage):
+            pass
+        get_model_name(UserProfile)  # Returns: 'my_module.userprofile'
+        
+        # For a regular class
+        class MyService:
+            pass
+        get_model_name(MyService)  # Returns: 'my_module.myservice'
+    
+    Args:
+        o: The object to get the name for (function, class, or Pydantic model)
+        
+    Returns:
+        str: A standardized name string in the format 'module.name' or custom name for Pydantic models
+    """
     if inspect.isfunction(o):
         return f'{o.__module__}.{o.__name__}'
-    elif issubclass(o, BaseModel):
+    if issubclass(o, BaseModel):
         if 'name' in o.model_fields \
                 and o.model_fields['name'].default \
                 and o.model_fields['name'].default != PydanticUndefined:
             return o.model_fields['name'].default
-        else:
-            return f'{o.__module__}.{o.__name__}'
-    else:
-        return f'{o.__module__}.{o.__name__}'
+    return f'{o.__module__}.{o.__name__}'
 
 
 def get_class_domain(cls: Type) -> str:
@@ -75,11 +109,11 @@ class BaseMessage(_ModelMixin):
     module: ClassVar[str]
     domain: ClassVar[DomainName]
     name: ClassVar[MessageName]
-    expire_time: ClassVar[float] = MESSAGE_EXPIRE_TIME
+    expire_time: ClassVar[float] = COMMAND_EXPIRE_TIME
     # destination: str = Field(default=None)  # <
 
     # # state
-    # handlers: List[ModulePathWithDot] = Field(default_factory=list)
+    handler: ModulePathWithDot = Field(default=None)
     delivery_count: ClassVar[int] = _DELIVERY_COUNT
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
     qos: ClassVar[int] = _DEFAULT_QOS
@@ -130,15 +164,12 @@ class BaseMessage(_ModelMixin):
 
 
 class Command(BaseMessage, abstract=True):
-    handler: ModulePathWithDot = Field(default=None)
-
-    def model_post_init(self, __context: Any) -> None:
-        super().model_post_init(__context)
+    ...
 
 
 class Event(BaseMessage, abstract=True):
-    handlers: List[ModulePathWithDot] = Field(default=None)
-    _abstract = True
+    expire_time: ClassVar[float] = EVENT_EXPIRE_TIME
+    qos: ClassVar[int] = not _DEFAULT_QOS
 
 
 class BaseService(mode.Service):

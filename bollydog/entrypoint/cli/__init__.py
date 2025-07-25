@@ -17,10 +17,10 @@ environs.Env().read_env(os.getcwd() + '/.env', recurse=False, verbose=True)
 
 from bollydog.patch import yaml
 from bollydog.bootstrap import Bootstrap
-from bollydog.globals import _bus_ctx_stack, _protocol_ctx_stack, _session_ctx_stack  # # noqa
+from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _session_ctx_stack  # # noqa
 from bollydog.models.service import AppService
 from bollydog.models.base import MessageName, BaseMessage, Session
-from bollydog.service.app import BusService
+from bollydog.service.app import HubService
 
 
 def _load_config(config: str) -> Dict:
@@ -65,8 +65,8 @@ class CLI:
                 apps.pop(app_name)
         if include:
             apps = {k: v for k, v in apps.items() if k in include}
-        bus = BusService(apps=apps.values())
-        worker = Bootstrap(bus, override_logging=False)
+        hub = HubService(apps=apps.values())
+        worker = Bootstrap(hub, override_logging=False)
         raise worker.execute_from_commandline()
 
     @staticmethod
@@ -75,7 +75,7 @@ class CLI:
             message: MessageName,  # # instance or class name
             **kwargs):
         apps = get_apps(config)
-        bus = BusService(apps=apps.values())
+        hub = HubService(apps=apps.values())
         msg = smart_import(message)
         assert issubclass(msg, BaseMessage)
         msg = msg(**kwargs)
@@ -84,7 +84,7 @@ class CLI:
 
         async def _execute():
             with _session_ctx_stack.push(Session()):
-                await bus.execute(msg)
+                await hub.execute(msg)
 
         asyncio.run(_execute())
         logging.info(f'{json.dumps(msg.model_dump(), ensure_ascii=False)}')
@@ -92,8 +92,8 @@ class CLI:
     @staticmethod
     def shell(config: str, ):
         apps = get_apps(config)
-        bus = BusService(apps=apps.values())
-        for msg, handlers in bus.app_handler.handlers.items():
+        hub = HubService(apps=apps.values())
+        for msg, handlers in hub.app_handler.handlers.items():
             print(f'{msg} -> {handlers}')
         embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True)  # # noqa
         # print("Starting ptpython asyncio REPL")

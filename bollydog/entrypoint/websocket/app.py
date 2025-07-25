@@ -8,7 +8,7 @@ from starlette.applications import Starlette
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from bollydog.entrypoint.websocket.config import SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST
-from bollydog.globals import bus
+from bollydog.globals import hub
 from bollydog.models.base import BaseMessage, MessageTraceId, Session
 
 
@@ -48,15 +48,15 @@ class SocketService(AppService):
                 message = await websocket.receive_text()
                 self.logger.debug(f"Received message from client: {message}")
                 message = json.loads(message)
-                if message['name'] in bus.app_handler.messages:
-                    message = bus.app_handler.messages[message['name']](**message)
+                if message['name'] in hub.app_handler.messages:
+                    message = hub.app_handler.messages[message['name']](**message)
                 else:
                     message = BaseMessage(**message)
                 if message.trace_id in self.listening:
                     self.listening[message.trace_id].add(websocket)
                 else:
                     self.listening[message.trace_id] = {websocket}
-                await bus.put_message(message)
+                await hub.put_message(message)
                 await websocket.send_text(message.model_dump_json())
                 await self.publish(message)  # < 或者改为再提交一个消息，上面的用于执行，这个用于获取结果的view消息
 
@@ -73,7 +73,7 @@ class SocketService(AppService):
         super().__init__(**kwargs)
 
     async def on_first_start(self) -> None:
-        bus.router.register('*', self.publish)  # ?
+        hub.router.register('*', self.publish)  # ?
 
     async def on_start(self) -> None:
         self.socket_app.add_websocket_route("/", self.websocket_endpoint)

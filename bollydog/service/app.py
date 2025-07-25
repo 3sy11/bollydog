@@ -13,7 +13,7 @@ from bollydog.exception import (
     HandlerMaxRetryError,
     HandlerNoneError
 )
-from bollydog.globals import _bus_ctx_stack
+from bollydog.globals import _hub_ctx_stack
 from bollydog.models.base import BaseMessage as Message, MessageId, Command
 from bollydog.models.service import AppService
 from bollydog.service.handler import AppHandler
@@ -21,10 +21,10 @@ from bollydog.service.router import Router
 from bollydog.config import QUEUE_MAX_SIZE
 
 _DOMAIN='bollydog'
-_NAME='bus'
+_NAME='hub'
 _HANDLERS = ['bollydog.service.model', ]
 
-class BusService(AppService):
+class HubService(AppService):
     queue: asyncio.Queue
     apps: dict
     router: Router
@@ -42,7 +42,7 @@ class BusService(AppService):
             self.add_service(app)
         for handler in handlers:
             AppHandler.walk_module(handler, self)
-        self.exit_stack.enter_context(_bus_ctx_stack.push(self))  # # mode.Service.stop
+        self.exit_stack.enter_context(_hub_ctx_stack.push(self))  # # mode.Service.stop
 
     async def on_started(self) -> None:
         for service in self.apps.values():

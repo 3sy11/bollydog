@@ -30,7 +30,7 @@
 - [ ] ftr: 优先级
 - [ ] ftr: IOC agent can be injected as a entrypoint, react like api and can call all handlers
 - [ ] ftr: .wheel install
-- [ ] opt: rename `bus` to `hub`
+- [X] opt: rename `bus` to `hub`
 
 # MODULE TODO LIST
 
@@ -41,12 +41,10 @@
 # .env
 
 global  
-BOLLYDOG_MESSAGE_EXPIRE_TIME  
+BOLLYDOG_COMMAND_EXPIRE_TIME
+BOLLYDOG_EVENT_EXPIRE_TIME    
 BOLLYDOG_LOG_LEVEL  
 BOLLYDOG_HANDLERS  
-BOLLYDOG_BUS_SERVICE_PROTOCOL  
-BOLLYDOG_BUS_SERVICE_PROTOCOL_UNIT_OF_WORK  
-BOLLYDOG_BUS_SERVICE_PROTOCOL_UNIT_OF_WORK_URL
 
 http api  
 BOLLYDOG_HTTP_SERVICE_HOST  
