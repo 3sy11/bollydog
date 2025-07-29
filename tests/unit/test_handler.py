@@ -38,9 +38,9 @@ async def move_point(command: RandMovePoint = _message, protocol=_protocol):
 
 @pytest.mark.asyncio
 async def test_async_generator_handler():
-    hub = HubService.create_from(apps=[])
-    AppHandler.register(print_point, hub)
-    AppHandler.register(move_point, hub)
+    hub = HubService.create_from(domain='test', apps=[])
+    AppHandler.register(LogPoint, print_point, app=hub)
+    AppHandler.register(RandMovePoint, move_point, app=hub)
     point = Point(x=0, y=0)
     log_point = LogPoint(point=point)
     tasks = hub.get_coro(log_point)

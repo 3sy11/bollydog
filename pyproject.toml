@@ -27,10 +27,8 @@ dependencies = [
     "ptpython",
     "sqlmodel",
     "structlog",
-    "loguru",
     "redis",
     "starlette-authentication",
-    "notion_client",
     "databases==0.9.0",
 ]
 

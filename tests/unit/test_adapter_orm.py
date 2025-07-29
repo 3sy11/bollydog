@@ -44,11 +44,11 @@ class Point(SQLModelDomain, table=True):
 
 @pytest.mark.asyncio
 async def test_adapter_rdb_duckdb_unit_of_work():
-    unit_of_work = DuckDBUnitOfWork(url=':memory:', metadata=metadata)
+    unit_of_work = DuckDBUnitOfWork(domain='test',url=':memory:', metadata=metadata)
     unit_of_work.create()
 
     async with unit_of_work.connect() as conn:
-        await unit_of_work.create_all(metadata)
+        unit_of_work.create_all(metadata)
         # 添加数据
         points = [
             Point(x=1, y=2, title='Point A'),
@@ -61,25 +61,25 @@ async def test_adapter_rdb_duckdb_unit_of_work():
 
         # 测试查询
         select_all_stmt = select(Point)
-        result = conn.execute(str(select_all_stmt.compile(compile_kwargs={"literal_binds": True}))).fetchall()
-        assert len(result) == 3
+        result = conn.execute(str(select_all_stmt.compile(compile_kwargs={"literal_binds": True})))
+        assert len(result.fetchall()) == 3
 
         select_x1_stmt = select(Point).where(Point.x == 1)
-        result = conn.execute(str(select_x1_stmt.compile(compile_kwargs={"literal_binds": True}))).fetchall()
-        assert len(result) == 2
+        result = conn.execute(str(select_x1_stmt.compile(compile_kwargs={"literal_binds": True})))
+        assert len(result.fetchall()) == 2
 
         # 测试更新
         update_stmt = update(Point).where(Point.x == 3).values(y=5)
         conn.execute(str(update_stmt.compile(compile_kwargs={"literal_binds": True})))
 
         select_updated_stmt = select(Point.y).where(Point.x == 3)
-        result = conn.execute(str(select_updated_stmt.compile(compile_kwargs={"literal_binds": True}))).fetchone()
-        assert result[0] == 5
+        result = conn.execute(str(select_updated_stmt.compile(compile_kwargs={"literal_binds": True})))
+        assert result.fetchone()[0] == 5
 
         # 测试删除
         delete_stmt = delete(Point).where(Point.x == 3)
         conn.execute(str(delete_stmt.compile(compile_kwargs={"literal_binds": True})))
 
         select_after_delete_stmt = select(Point)
-        result = conn.execute(str(select_after_delete_stmt.compile(compile_kwargs={"literal_binds": True}))).fetchall()
-        assert len(result) == 2
+        result = conn.execute(str(select_after_delete_stmt.compile(compile_kwargs={"literal_binds": True})))
+        assert len(result.fetchall()) == 2

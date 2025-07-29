@@ -1,24 +1,24 @@
 import logging
 import inspect
-from typing import Any, Dict, Type, Callable, Union, Awaitable, AsyncGenerator, List
+from typing import Any, Dict, Type, Callable, Union, Awaitable, AsyncGenerator, List, TYPE_CHECKING
 from mode.utils.imports import smart_import
 from bollydog.models.base import (Command,Event,BaseMessage,ModulePathWithDot,MessageName,get_model_name,)
-from bollydog.models.service import AppService
 from bollydog.globals import (_protocol_ctx_stack,_message_ctx_stack,hub,_app_ctx_stack,)
 
+if TYPE_CHECKING:
+    from bollydog.models.service import AppService
+
 logger = logging.getLogger(__name__)
-
 HandlerFunction = Callable[[BaseMessage],Union[Awaitable[Union[Command, Event, Any]],AsyncGenerator[Union[Command, Event, Any], Any],],]
-
 
 class AppHandler(object):
     messages: Dict[MessageName, Type[BaseMessage]] = {}
     commands: Dict[Type[Command], "AppHandler"] = {}
     events: Dict[Type[Event], List["AppHandler"]] = {}
 
-    def __init__(self, fun: HandlerFunction, app: AppService) -> None:
+    def __init__(self, fun: HandlerFunction, app: "AppService") -> None:
         self.fun: HandlerFunction = fun
-        self.app: AppService = app
+        self.app: "AppService" = app
         self.isasyncgenfunction: bool = inspect.isasyncgenfunction(fun)
 
     async def __call__(self, message: BaseMessage) -> Any:
@@ -43,8 +43,12 @@ class AppHandler(object):
     async def _handle_async_generator(self, message: BaseMessage) -> Any:
         result = None
         try:
+            gen = self.fun(message)
             while True:
-                result = await self.fun(message).asend(result)
+                if result is None:
+                    result = await gen.__anext__()
+                else:
+                    result = await gen.asend(result)
                 if not isinstance(result, (Command, Event)):
                     return result
                 result = await self.callback(result)
@@ -67,7 +71,7 @@ class AppHandler(object):
 
     @classmethod
     def register(
-        cls, message: Type[BaseMessage], fun: HandlerFunction, app: AppService
+        cls, message: Type[BaseMessage], fun: HandlerFunction, app: "AppService"
     ) -> None:
         if not issubclass(message, (Command, Event)):
             logger.warning(f"Unknown message type {message}, skipping registration")
@@ -93,7 +97,7 @@ class AppHandler(object):
             cls.events[message].append(cls(fun, app))
 
     @classmethod
-    def walk_annotation(cls, fun: HandlerFunction, app: AppService) -> None:
+    def walk_annotation(cls, fun: HandlerFunction, app: "AppService") -> None:
         signature = inspect.signature(fun)
         for name, parameter in signature.parameters.items():
             try:
@@ -111,7 +115,7 @@ class AppHandler(object):
                 continue
 
     @classmethod
-    def walk_module(cls, module: ModulePathWithDot, app: AppService = None) -> None:
+    def walk_module(cls, module: ModulePathWithDot, app: "AppService" = None) -> None:
         logger.info(f"Loading handlers from {module}")
         try:
             if isinstance(module, str):
