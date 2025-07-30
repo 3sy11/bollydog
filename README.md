@@ -19,7 +19,7 @@
 
 - [ ] ftr: support handler message be waited in collection from other handlers message by ctx
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
-- [ ] ftr: on 0.1.3, `command` combine to one handler, `event` combine to multi or rewrite, opt autodiscover
+- [X] ftr: on 0.1.3, `command` combine to one handler, `event` combine to multi or rewrite, opt autodiscover
 - [ ] ftr: opentelemetry processor on structlog
 - [ ] ftr: rete?
 - [ ] ftr: pydantic plugin to validate reserved keywords in input parameters

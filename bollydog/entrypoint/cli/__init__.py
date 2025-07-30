@@ -21,7 +21,7 @@ from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _session_ctx_s
 from bollydog.models.service import AppService
 from bollydog.models.base import MessageName, BaseMessage, Session
 from bollydog.service.app import HubService
-
+from bollydog.service.handler import AppHandler
 
 def _load_config(config: str) -> Dict:
     if not config:
@@ -93,7 +93,7 @@ class CLI:
     def shell(config: str, ):
         apps = get_apps(config)
         hub = HubService(apps=apps.values())
-        for msg, handlers in hub.app_handler.handlers.items():
+        for msg, handlers in AppHandler.commands.items():
             print(f'{msg} -> {handlers}')
         embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True)  # # noqa
         # print("Starting ptpython asyncio REPL")

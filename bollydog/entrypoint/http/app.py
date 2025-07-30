@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, HTMLResponse
 
 from bollydog.globals import hub, _session_ctx_stack
 from bollydog.models.base import BaseMessage, get_model_name, Session
+from bollydog.service.handler import AppHandler
 from .config import (
     SERVICE_DEBUG,
     SERVICE_PORT,
@@ -67,7 +68,7 @@ class HttpService(AppService):
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     async def on_start(self) -> None:
-        for message_model,handler in hub.app_handler.handlers.items():
+        for message_model,handler in AppHandler.commands.items():
             entrypoint=f'{handler.app.name}.{message_model.name}'
             _methods = self.router_mapping.get(entrypoint, ['GET'])
             if isinstance(_methods, str):

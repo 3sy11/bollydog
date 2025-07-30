@@ -30,30 +30,32 @@ class AppHandler(object):
             if self.isasyncgenfunction:
                 return await self._handle_async_generator(message)
             else:
-                return await self._handle_sync_function(message)
+                return await self._handle_async_function(message)
 
-    async def _handle_sync_function(self, message: BaseMessage) -> Any:
+    async def _handle_async_function(self, message: BaseMessage) -> Any:
         # ? if result is Event, should return msg.iid by default
-        result = await self.fun(message)
-        if not isinstance(result, (Command, Event)):
-            return result
-        result = await self.callback(result)
+        next_message = await self.fun(message)
+        if isinstance(next_message, (Command, Event)):
+            next_message = await self.call(next_message)
+            result = await next_message.state
+        else:
+            result = next_message
         return result
 
     async def _handle_async_generator(self, message: BaseMessage) -> Any:
         result = None
+        gen = self.fun(message)
         try:
-            gen = self.fun(message)
             while True:
-                if result is None:
-                    result = await gen.__anext__()
-                else:
-                    result = await gen.asend(result)
-                if not isinstance(result, (Command, Event)):
-                    return result
-                result = await self.callback(result)
+                next_message = await gen.asend(result)
+                if not isinstance(next_message, (Command, Event)):
+                    result = next_message
+                    break
+                await self.call(next_message)
+                result = await next_message.state
         except StopAsyncIteration:
-            return result
+            pass
+        return result
 
     def __repr__(self) -> str:
         return f"{self.app}: {self.fun}"
@@ -62,7 +64,7 @@ class AppHandler(object):
         return self.__repr__()
 
     @property
-    def callback(self) -> Callable[[BaseMessage], Awaitable[BaseMessage]]:
+    def call(self) -> Callable[[BaseMessage], Awaitable[BaseMessage]]:
         return (
             hub.put_message
             if hub.state == "running" and _message_ctx_stack.top.qos == 0
@@ -70,11 +72,8 @@ class AppHandler(object):
         )
 
     @classmethod
-    def register(
-        cls, message: Type[BaseMessage], fun: HandlerFunction, app: "AppService"
-    ) -> None:
-        if not issubclass(message, (Command, Event)):
-            logger.warning(f"Unknown message type {message}, skipping registration")
+    def register(cls, message: Type[BaseMessage], fun: HandlerFunction, app: "AppService") -> None:
+        if not isinstance(message, Type) or not issubclass(message, (Command, Event)):
             return
 
         message.domain = app.domain

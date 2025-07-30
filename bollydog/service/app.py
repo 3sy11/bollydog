@@ -29,7 +29,6 @@ class HubService(AppService):
     router: Router
     futures: MutableMapping[MessageId, Tuple[Message, asyncio.Future]] = {}
     tasks: Dict[MessageId, Any] = {}
-    app_handler = AppHandler
 
     def __init__(self, domain=_DOMAIN, name=_NAME, handlers=_HANDLERS, apps: Iterable[AppService] = None, **kwargs):
         super().__init__(domain=domain, name=name, **kwargs)
@@ -116,7 +115,7 @@ class HubService(AppService):
         if not isinstance(message, (Command, Event)):
             raise HandlerNoneError(f'Message type {type(message).__name__} is not supported, only Command and Event are allowed')
             
-        handlers = self.app_handler.get_message_handlers(message.__class__)
+        handlers = AppHandler.get_message_handlers(message.__class__)
         if not handlers:
             raise HandlerNoneError(f'No handlers found for {type(message).__name__} {message.name}')
             
