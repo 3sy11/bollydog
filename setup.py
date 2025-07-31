@@ -6,7 +6,7 @@ bollydog.com
 
 setup(
     name="bollydog",
-    version="0.1.2",
+    version="0.1.3",
     author="3sy11",
     author_email="",
     description="bollydog framework",

@@ -1,7 +1,6 @@
 import asyncio
-import uuid
 from functools import partial
-from typing import Iterable, List, Dict, Awaitable, Tuple, MutableMapping, Any
+from typing import Iterable, List, Dict, Awaitable, Tuple, MutableMapping, Any, Coroutine
 
 import mode
 
@@ -13,24 +12,23 @@ from bollydog.exception import (
     HandlerMaxRetryError,
     HandlerNoneError
 )
-from bollydog.globals import _bus_ctx_stack
-from bollydog.models.base import BaseMessage as Message, MessageId, Command
+from bollydog.globals import _hub_ctx_stack
+from bollydog.models.base import BaseMessage as Message, MessageId, Command, Event
 from bollydog.models.service import AppService
 from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
 from bollydog.config import QUEUE_MAX_SIZE
 
 _DOMAIN='bollydog'
-_NAME='bus'
+_NAME='hub'
 _HANDLERS = ['bollydog.service.model', ]
 
-class BusService(AppService):
+class HubService(AppService):
     queue: asyncio.Queue
     apps: dict
     router: Router
     futures: MutableMapping[MessageId, Tuple[Message, asyncio.Future]] = {}
     tasks: Dict[MessageId, Any] = {}
-    app_handler = AppHandler
 
     def __init__(self, domain=_DOMAIN, name=_NAME, handlers=_HANDLERS, apps: Iterable[AppService] = None, **kwargs):
         super().__init__(domain=domain, name=name, **kwargs)
@@ -42,7 +40,7 @@ class BusService(AppService):
             self.add_service(app)
         for handler in handlers:
             AppHandler.walk_module(handler, self)
-        self.exit_stack.enter_context(_bus_ctx_stack.push(self))  # # mode.Service.stop
+        self.exit_stack.enter_context(_hub_ctx_stack.push(self))  # # mode.Service.stop
 
     async def on_started(self) -> None:
         for service in self.apps.values():
@@ -113,16 +111,15 @@ class BusService(AppService):
             self.logger.exception(e)
             future.set_exception(e)
 
-    def get_coro(self, message: Message) -> List[Awaitable]:
-        # 确保消息类型是 Command
-        if not isinstance(message, Command):
-            raise HandlerNoneError(f'Message type {type(message).__name__} is not supported, only Command is allowed')
+    def get_coro(self, message: Message) -> List[partial[Coroutine]]:
+        if not isinstance(message, (Command, Event)):
+            raise HandlerNoneError(f'Message type {type(message).__name__} is not supported, only Command and Event are allowed')
             
-        handler = self.app_handler.handlers.get(message.__class__)
-        if not handler:
-            raise HandlerNoneError(f'No handler found for command {message.name}')
+        handlers = AppHandler.get_message_handlers(message.__class__)
+        if not handlers:
+            raise HandlerNoneError(f'No handlers found for {type(message).__name__} {message.name}')
             
-        return [partial(handler, message=message)]
+        return [partial(handler, message=message) for handler in handlers]
 
     async def _execute(self, message, coro):
         self.futures[message.iid] = (message, message.state)

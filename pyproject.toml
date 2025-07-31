@@ -1,6 +1,6 @@
 [project]
 name = "bollydog"
-version = "0.1.2"
+version = "0.1.3"
 description = "bollydog framework - Event-driven, DDD and TDD as fundamental design paradigms"
 readme = "README.md"
 license = {text = "MIT"}
@@ -27,10 +27,8 @@ dependencies = [
     "ptpython",
     "sqlmodel",
     "structlog",
-    "loguru",
     "redis",
     "starlette-authentication",
-    "notion_client",
     "databases==0.9.0",
 ]
 

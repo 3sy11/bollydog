@@ -8,10 +8,11 @@ DOMAIN = 'service'
 class TaskList(Command):
     domain: str = Field(default=DOMAIN)
 
-
 class TaskCount(Command):
     domain: str = Field(default=DOMAIN)
 
+class TaskState(Command):
+    domain: str = Field(default=DOMAIN)
 
 async def task_list(command: TaskList):
     result = asyncio.all_tasks()
@@ -22,3 +23,8 @@ async def task_list(command: TaskList):
 async def task_count(command: TaskCount):
     result = asyncio.all_tasks()
     return len(result)
+
+async def task_state(command: TaskState):
+    count = yield TaskCount()
+    tasks = yield TaskList()
+    yield [count, tasks]

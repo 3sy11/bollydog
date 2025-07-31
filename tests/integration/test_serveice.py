@@ -12,7 +12,7 @@ import environs
 from httpx import AsyncClient, ASGITransport
 from starlette.testclient import TestClient
 
-from bollydog.service.app import BusService
+from bollydog.service.app import HubService
 
 path = pathlib.Path(__file__).parent.parent.joinpath('./config.yml')
 env = pathlib.Path(__file__).parent.parent.joinpath('./.env')
@@ -28,20 +28,20 @@ async def test_run_service():
         app = app_config['app']
         apps[app_name] = app.create_from(**app_config)
 
-    bus = BusService.create_from(apps=apps.values())
+    hub = HubService.create_from(apps=apps.values())
 
-    async with bus:
+    async with hub:
         m1 = TaskCount()
         m2 = TaskList()
-        await bus.put_message(m1)
+        await hub.put_message(m1)
         # await asyncio.sleep(1)
         r1 = await m1.state
-        await bus.put_message(m2)
+        await hub.put_message(m2)
         # await asyncio.sleep(1)
         r2 = await m2.state
         assert r1
         assert r2
-        web_service = bus.apps.get('http')
+        web_service = hub.apps.get('http')
         web_app = web_service.http_app
         async with AsyncClient(transport=ASGITransport(app=web_app), base_url="http://0.0.0.0") as client:
             r1 = await client.get('/bollydog/service/model/TaskList', timeout=1)
@@ -49,7 +49,7 @@ async def test_run_service():
             r2 = await client.get('/bollydog/service/model/TaskCount', timeout=1)
             assert r2.status_code == 200
 
-        client = TestClient(bus.apps.get('websocket').socket_app)
+        client = TestClient(hub.apps.get('websocket').socket_app)
         with client.websocket_connect('/') as ws:
             ws.send_text('{"name":"bollydog.service.model.TaskCount"}')
-        bus.supervisor = None
+        hub.supervisor = None
