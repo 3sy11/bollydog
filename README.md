@@ -17,24 +17,29 @@
 
 # CORE TODO LIST
 
-- [ ] ftr: support handler message be waited in collection from other handlers message by ctx
-- [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
-- [X] ftr: on 0.1.3, `command` combine to one handler, `event` combine to multi or rewrite, opt autodiscover
-- [ ] ftr: opentelemetry processor on structlog
-- [ ] ftr: rete?
-- [ ] ftr: pydantic plugin to validate reserved keywords in input parameters
-- [ ] ftr: add alias routing in `router_mapping`
-- [ ] ftr: hot reloading
-- [ ] ftr: label support
-- [ ] ftr: priority system
 - [ ] ftr: IOC agent can be injected as an entrypoint, behaves like an API and can invoke all handlers
+- [ ] ftr: hot reloading
+- [ ] ftr: state service
+  - [ ] ftr: label support
+  - [ ] ftr: rete
+- [ ] ftr: distribute service
+  - [ ] ftr: priority system
+  - [ ] ftr: add alias routing in `router_mapping`
+- [ ] ftr: telemetry service
+  - [ ] ftr: opentelemetry
+- [ ] ftr: pydantic plugin to validate reserved keywords in input parameters
+- [ ] ftr: service builder to create AppService
+- [X] ftr: on 0.1.3, `command` combine to one handler, `event` combine to multi or rewrite, opt autodiscover
 - [X] ftr: `.wheel` install support & `uv` install
 - [X] opt: rename `bus` to `hub`
+- [ ] ftr: support handler message be waited in collection from other handlers message by ctx
+- [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
+
 
 # MODULE TODO LIST
 
 - [ ] opt: WebSocket middleware
-- [ ] ftr: add toggle in entrypoint to enable or disable receiving specific messages
+- [ ] ftr: add toggle in entrypoint to enable or disable receiving specific messages(distribute service)
 - [ ] ftr: HTTP messages debounce or QoS
 
 # .env
