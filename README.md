@@ -128,3 +128,166 @@ locals()
 from example.handler import TaskList,task_list
 await task_list(TaskList())
 ```
+
+# Using Case
+
+## Using built-in SqlAlchemyProtocol CRUD (no custom Protocol class)
+
+```python
+# This example shows how to rely on SqlAlchemyProtocol's built-in CRUD
+# so you can skip implementing a custom ExampleProtocol.
+# It includes: messages, model, service, handler, and a sample config.
+
+# 1) Messages (Command/Event)
+from bollydog.models.base import Command, Event
+
+class CreateUser(Command):
+    username: str
+    email: str
+
+class UserCreated(Event):
+    user_id: int
+
+# 2) SQLModel domain entity and metadata
+from typing import Optional
+from sqlmodel import SQLModel, Field
+from bollydog.adapters.rdb import SQLModelDomain
+
+class User(SQLModel, SQLModelDomain, table=True):
+    __tablename__ = "users"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str
+    email: str
+
+# We will use SQLModel.metadata in UnitOfWork config
+metadata = SQLModel.metadata
+
+# 3) AppService for domain
+from bollydog.models.service import AppService
+
+class ExampleService(AppService):
+    domain = "example"
+
+# 4) Handler uses the injected `protocol` directly
+#    SqlAlchemyProtocol already provides: add/get/list/update/delete/search
+from bollydog.globals import protocol, session
+
+async def create_user(cmd: CreateUser) -> UserCreated:
+    # optional auditing
+    session.username = session.username or "system"
+
+    # create a new User using built-in CRUD
+    created = await protocol.add(User(username=cmd.username, email=cmd.email))
+
+    # fetch it back if needed (demonstrates `get`)
+    row = await protocol.get(User, id=created.id)
+
+    return UserCreated(user_id=row["id"] if isinstance(row, dict) else row.id)
+```
+
+ Minimal config (YAML) to wire everything (illustrative)
+``` yaml
+example:
+  app: !module app.example.service.ExampleService
+  unit_of_work:
+    module: !module bollydog.adapters.rdb.SqlAlchemyAsyncUnitOfWork
+    url: postgresql+asyncpg://user:pass@localhost:5432/demo
+    metadata: !module app.example.store.metadata
+  protocol:
+    module: !module bollydog.adapters.rdb.SqlAlchemyProtocol
+  handlers:
+    - app.example.handler
+```
+
+## Complete example covering Command/Event/Handler/Protocol/AppService and globals
+
+```python
+# This end-to-end example shows:
+# - Command / Event definitions
+# - A custom Protocol (wrapping built-in SqlAlchemyProtocol capabilities)
+# - An AppService
+# - Handlers using all globals: hub, message, protocol, session, app
+# - How to chain messages via hub.execute()
+
+# 1) Messages
+from bollydog.models.base import Command, Event
+
+class UpdateUserEmail(Command):
+    user_id: int
+    new_email: str
+
+class UserEmailUpdated(Event):
+    user_id: int
+    new_email: str
+
+# 2) Domain model
+from typing import Optional
+from sqlmodel import SQLModel, Field
+from bollydog.adapters.rdb import SQLModelDomain
+
+class User(SQLModel, SQLModelDomain, table=True):
+    __tablename__ = "users"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str
+    email: str
+
+# 3) Custom Protocol (wrapping built-in CRUD)
+from bollydog.adapters.rdb import SqlAlchemyProtocol
+
+class Example2Protocol(SqlAlchemyProtocol):
+    async def update_user_email(self, user_id: int, new_email: str):
+        # Uses built-in `update` to modify the email field
+        await self.update(User, user_id, email=new_email)
+        # Return a normalized dict-like object to callers
+        row = await self.get(User, id=user_id)
+        return row
+
+# 4) AppService
+from bollydog.models.service import AppService
+
+class Example2Service(AppService):
+    domain = "example2"
+
+# 5) Handlers using all globals
+from bollydog.globals import hub, message, protocol, session, app
+
+async def update_user_email(cmd: UpdateUserEmail) -> UserEmailUpdated:
+    # session: carry operator information into auditing
+    session.username = session.username or "operator"
+
+    # app: log within current AppService
+    app.logger.info(f"updating user={cmd.user_id} -> {cmd.new_email}")
+
+    # protocol: call domain port
+    row = await protocol.update_user_email(cmd.user_id, cmd.new_email)
+
+    # message: inspect trace/span for debugging or correlation
+    app.logger.debug(f"trace={message.trace_id} span={message.span_id}")
+
+    # Chain another message synchronously if needed (example only)
+    # await hub.execute(SomeFollowUpCommand(...))
+
+    return UserEmailUpdated(user_id=row["id"] if isinstance(row, dict) else row.id,
+                            new_email=row["email"] if isinstance(row, dict) else row.email)
+
+async def on_user_email_updated(evt: UserEmailUpdated):
+    # All globals still available in this handler
+    app.logger.info(f"updated user={evt.user_id} to {evt.new_email} by {session.username}")
+    # message: current envelope
+    app.logger.debug(f"handled event={message.name} iid={message.iid}")
+```
+
+### Minimal config (illustrative)
+
+```yaml
+example2:
+  app: !module app.example2.service.Example2Service
+  unit_of_work:
+    module: !module bollydog.adapters.rdb.SqlAlchemyAsyncUnitOfWork
+    url: postgresql+asyncpg://user:pass@localhost:5432/demo
+    metadata: !module app.example.store.metadata  # reuse or define your own
+  protocol:
+    module: !module app.example2.protocol.Example2Protocol
+  handlers:
+    - app.example2.handler
+```

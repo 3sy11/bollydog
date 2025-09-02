@@ -1,0 +1,305 @@
+sect1
+## Appendix A Repository and Unit of Work Patterns with Django
+Suppose you wanted to use Django instead of SQLAlchemy and Flask. How might things look? The first thing is to choose where to install it. We put it in a separate package next to our main allocation code
+content
+content
+``` highlight
+├── src
+│   ├── allocation
+│   │   ├── __init__.py
+│   │   ├── adapters
+│   │   │   ├── __init__.py
+...
+│   ├── djangoproject
+│   │   ├── alloc
+│   │   │   ├── __init__.py
+│   │   │   ├── apps.py
+│   │   │   ├── migrations
+│   │   │   │   ├── 0001_initial.py
+│   │   │   │   └── __init__.py
+│   │   │   ├── models.py
+│   │   │   └── views.py
+│   │   ├── django_project
+│   │   │   ├── __init__.py
+│   │   │   ├── settings.py
+│   │   │   ├── urls.py
+│   │   │   └── wsgi.py
+│   │   └── manage.py
+│   └── setup.py
+└── tests
+├── conftest.py
+├── e2e
+│   └── test_api.py
+├── integration
+│   ├── test_repository.py
+...
+```
++-----------------------------------+--------------------------------------------------------------------------------------------------+
+|  title                         |                                                                                      |
+| Tip                               | The code for this appendix is in the appendix_django branch [on GitHub](https//oreil.ly/A-I76) |
+|                                |                                                                                               |
+|                                   |                                                                                                  |
+|                                   |  listingblock                                                                                |
+|                                   |  content                                                                                      |
+|                                   |     git clone https//github.com/cosmicpython/code.git                                           |
+|                                   |     cd code                                                                                      |
+|                                   |     git checkout appendix_django                                                                 |
+|                                   |                                                                                               |
+|                                   |                                                                                              |
+|                                   |                                                                                                  |
+|                                   |                                                                                      |
+|                                   | Code examples follows on from the end of [\[chapter_06_uow\]](#chapter_06_uow).                  |
+|                                   |                                                                                               |
++-----------------------------------+--------------------------------------------------------------------------------------------------+
+sect2
+### Repository Pattern with Django
+We used a plugin called [`pytest-django`](https//github.com/pytest-dev/pytest-django) to help with test database management.
+Rewriting the first repository test was a minimal change---just rewriting some raw SQL with a call to the Django ORM/QuerySet language
+title
+Example 1. First repository test adapted (tests/integration/test_repository.py)
+content
+listingblock
+content
+``` highlight
+from djangoproject.alloc import models as django_models
+@pytest.mark.django_db
+def test_repository_can_save_a_batch()
+batch = model.Batch("batch1", "RUSTY-SOAPDISH", 100, eta=date(2011, 12, 25))
+repo = repository.DjangoRepository()
+repo.add(batch)
+[saved_batch] = django_models.Batch.objects.all()
+assert saved_batch.reference == batch.reference
+assert saved_batch.sku == batch.sku
+assert saved_batch.qty == batch._purchased_quantity
+assert saved_batch.eta == batch.eta
+```
+The second test is a bit more involved since it has allocations, but it is still made up of familiar-looking Django code
+title
+Example 2. Second repository test is more involved (tests/integration/test_repository.py)
+content
+listingblock
+content
+``` highlight
+@pytest.mark.django_db
+def test_repository_can_retrieve_a_batch_with_allocations()
+sku = "PONY-STATUE"
+d_line = django_models.OrderLine.objects.create(orderid="order1", sku=sku, qty=12)
+d_batch1 = django_models.Batch.objects.create(
+reference="batch1", sku=sku, qty=100, eta=None
+)
+d_batch2 = django_models.Batch.objects.create(
+reference="batch2", sku=sku, qty=100, eta=None
+)
+django_models.Allocation.objects.create(line=d_line, batch=d_batch1)
+repo = repository.DjangoRepository()
+retrieved = repo.get("batch1")
+expected = model.Batch("batch1", sku, 100, eta=None)
+assert retrieved == expected  # Batch.__eq__ only compares reference
+assert retrieved.sku == expected.sku
+assert retrieved._purchased_quantity == expected._purchased_quantity
+assert retrieved._allocations == {
+model.OrderLine("order1", sku, 12),
+}
+```
+Here's how the actual repository ends up looking
+title
+Example 3. A Django repository (src/allocation/adapters/repository.py)
+content
+listingblock
+content
+``` highlight
+class DjangoRepository(AbstractRepository)
+def add(self, batch)
+super().add(batch)
+self.update(batch)
+def update(self, batch)
+django_models.Batch.update_from_domain(batch)
+def _get(self, reference)
+return (
+django_models.Batch.objects.filter(reference=reference)
+.first()
+.to_domain()
+)
+def list(self)
+return [b.to_domain() for b in django_models.Batch.objects.all()]
+```
+You can see that the implementation relies on the Django models having some custom methods for translating to and from our domain model.^\[[1](#_footnotedef_1 "View footnote.")\]^
+sect3
+#### Custom Methods on Django ORM Classes to Translate to/from Our Domain Model
+Those custom methods look something like this
+title
+Example 4. Django ORM with custom methods for domain model conversion (src/djangoproject/alloc/models.py)
+content
+listingblock
+content
+``` highlight
+from django.db import models
+from allocation.domain import model as domain_model
+class Batch(models.Model)
+reference = models.CharField(max_length=255)
+sku = models.CharField(max_length=255)
+qty = models.IntegerField()
+eta = models.DateField(blank=True, null=True)
+@staticmethod
+def update_from_domain(batch domain_model.Batch)
+try
+b = Batch.objects.get(reference=batch.reference)  #(1)
+except Batch.DoesNotExist
+b = Batch(reference=batch.reference)  #(1)
+b.sku = batch.sku
+b.qty = batch._purchased_quantity
+b.eta = batch.eta  #(2)
+b.save()
+b.allocation_set.set(
+Allocation.from_domain(l, b)  #(3)
+for l in batch._allocations
+)
+def to_domain(self) -> domain_model.Batch
+b = domain_model.Batch(
+ref=self.reference, sku=self.sku, qty=self.qty, eta=self.eta
+)
+b._allocations = set(
+a.line.to_domain()
+for a in self.allocation_set.all()
+)
+return b
+class OrderLine(models.Model)
+#...
+```
+1.  For value objects, `objects.get_or_create` can work, but for entities, you probably need an explicit try-get/except to handle the upsert.^\[[2](#_footnotedef_2 "View footnote.")\]^
+2.  We've shown the most complex example here. If you do decide to do this, be aware that there will be boilerplate! Thankfully it's not very complex boilerplate.
+3.  Relationships also need some careful, custom handling.
++-----------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|  title                         | As in [\[chapter_02_repository\]](#chapter_02_repository), we use dependency inversion. The ORM (Django) depends on the model and not the other way around. |
+| Note                              |                                                                                                                                                             |
+|                                |                                                                                                                                                             |
++-----------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------+
+sect2
+### Unit of Work Pattern with Django
+The tests don't change too much
+title
+Example 5. Adapted UoW tests (tests/integration/test_uow.py)
+content
+listingblock
+content
+``` highlight
+def insert_batch(ref, sku, qty, eta)  #(1)
+django_models.Batch.objects.create(reference=ref, sku=sku, qty=qty, eta=eta)
+def get_allocated_batch_ref(orderid, sku)  #(1)
+return django_models.Allocation.objects.get(
+line__orderid=orderid, line__sku=sku
+).batch.reference
+@pytest.mark.django_db(transaction=True)
+def test_uow_can_retrieve_a_batch_and_allocate_to_it()
+insert_batch("batch1", "HIPSTER-WORKBENCH", 100, None)
+uow = unit_of_work.DjangoUnitOfWork()
+with uow
+batch = uow.batches.get(reference="batch1")
+line = model.OrderLine("o1", "HIPSTER-WORKBENCH", 10)
+batch.allocate(line)
+uow.commit()
+batchref = get_allocated_batch_ref("o1", "HIPSTER-WORKBENCH")
+assert batchref == "batch1"
+@pytest.mark.django_db(transaction=True)  #(2)
+def test_rolls_back_uncommitted_work_by_default()
+...
+@pytest.mark.django_db(transaction=True)  #(2)
+def test_rolls_back_on_error()
+...
+```
+1.  Because we had little helper functions in these tests, the actual main bodies of the tests are pretty much the same as they were with SQLAlchemy.
+2.  The `pytest-django` `mark.django_db(transaction=True)` is required to test our custom transaction/rollback behaviors.
+And the implementation is quite simple, although it took me a few tries to find which invocation of Django's transaction magic would work
+title
+Example 6. UoW adapted for Django (src/allocation/service_layer/unit_of_work.py)
+content
+listingblock
+content
+``` highlight
+class DjangoUnitOfWork(AbstractUnitOfWork)
+def __enter__(self)
+self.batches = repository.DjangoRepository()
+transaction.set_autocommit(False)  #(1)
+return super().__enter__()
+def __exit__(self, *args)
+super().__exit__(*args)
+transaction.set_autocommit(True)
+def commit(self)
+for batch in self.batches.seen  #(3)
+self.batches.update(batch)  #(3)
+transaction.commit()  #(2)
+def rollback(self)
+transaction.rollback()  #(2)
+```
+1.  `set_autocommit(False)` was the best way to tell Django to stop automatically committing each ORM operation immediately, and to begin a transaction.
+2.  Then we use the explicit rollback and commits.
+3.  One difficulty because, unlike with SQLAlchemy, we're not instrumenting the domain model instances themselves, the `commit()` command needs to explicitly go through all the objects that have been touched by every repository and manually update them back to the ORM.
+sect2
+### API Django Views Are Adapters
+The Django *views.py* file ends up being almost identical to the old *flask_app.py*, because our architecture means it's a very thin wrapper around our service layer (which didn't change at all, by the way)
+title
+Example 7. Flask app → Django views (src/djangoproject/alloc/views.py)
+content
+listingblock
+content
+``` highlight
+os.environ["DJANGO_SETTINGS_MODULE"] = "djangoproject.django_project.settings"
+django.setup()
+@csrf_exempt
+def add_batch(request)
+data = json.loads(request.body)
+eta = data["eta"]
+if eta is not None
+eta = datetime.fromisoformat(eta).date()
+services.add_batch(
+data["ref"], data["sku"], data["qty"], eta,
+unit_of_work.DjangoUnitOfWork(),
+)
+return HttpResponse("OK", status=201)
+@csrf_exempt
+def allocate(request)
+data = json.loads(request.body)
+try
+batchref = services.allocate(
+data["orderid"],
+data["sku"],
+data["qty"],
+unit_of_work.DjangoUnitOfWork(),
+)
+except (model.OutOfStock, services.InvalidSku) as e
+return JsonResponse({"message" str(e)}, status=400)
+return JsonResponse({"batchref" batchref}, status=201)
+```
+sect2
+### Why Was This All So Hard?
+OK, it works, but it does feel like more effort than Flask/SQLAlchemy. Why is that?
+The main reason at a low level is because Django's ORM doesn't work in the same way. We don't have an equivalent of the SQLAlchemy classical mapper, so our `ActiveRecord` and our domain model can't be the same object. Instead we have to build a manual translation layer behind the repository. That's more work (although once it's done, the ongoing maintenance burden shouldn't be too high).
+Because Django is so tightly coupled to the database, you have to use helpers like `pytest-django` and think carefully about test databases, right from the very first line of code, in a way that we didn't have to when we started out with our pure domain model.
+But at a higher level, the entire reason that Django is so great is that it's designed around the sweet spot of making it easy to build CRUD apps with minimal boilerplate. But the entire thrust of our book is about what to do when your app is no longer a simple CRUD app.
+At that point, Django starts hindering more than it helps. Things like the Django admin, which are so awesome when you start out, become actively dangerous if the whole point of your app is to build a complex set of rules and modeling around the workflow of state changes. The Django admin bypasses all of that.
+sect2
+### What to Do If You Already Have Django
+So what should you do if you want to apply some of the patterns in this book to a Django app? We'd say the following
+ulist
+- The Repository and Unit of Work patterns are going to be quite a lot of work. The main thing they will buy you in the short term is faster unit tests, so evaluate whether that benefit feels worth it in your case. In the longer term, they decouple your app from Django and the database, so if you anticipate wanting to migrate away from either of those, Repository and UoW are a good idea.
+- The Service Layer pattern might be of interest if you're seeing a lot of duplication in your *views.py*. It can be a good way of thinking about your use cases separately from your web endpoints.
+- You can still theoretically do DDD and domain modeling with Django models, tightly coupled as they are to the database; you may be slowed by migrations, but it shouldn't be fatal. So as long as your app is not too complex and your tests not too slow, you may be able to get something out of the *fat models* approach push as much logic down to your models as possible, and apply patterns like Entity, Value Object, and Aggregate. However, see the following caveat.
+With that said, [word in the Django community](https//oreil.ly/Nbpjj) is that people find that the fat models approach runs into scalability problems of its own, particularly around managing interdependencies between apps. In those cases, there's a lot to be said for extracting out a business logic or domain layer to sit between your views and forms and your *models.py*, which you can then keep as minimal as possible.
+sect2
+### Steps Along the Way
+Suppose you're working on a Django project that you're not sure is going to get complex enough to warrant the patterns we recommend, but you still want to put a few steps in place to make your life easier, both in the medium term and if you want to migrate to some of our patterns later. Consider the following
+ulist
+- One piece of advice we've heard is to put a *logic.py* into every Django app from day one. This gives you a place to put business logic, and to keep your forms, views, and models free of business logic. It can become a stepping-stone for moving to a fully decoupled domain model and/or service layer later.
+- A business-logic layer might start out working with Django model objects and only later become fully decoupled from the framework and work on plain Python data structures.
+- For the read side, you can get some of the benefits of CQRS by putting reads into one place, avoiding ORM calls sprinkled all over the place.
+- When separating out modules for reads and modules for domain logic, it may be worth decoupling yourself from the Django apps hierarchy. Business concerns will cut across them.
++-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|  title                         | We'd like to give a shout-out to David Seddon and Ashia Zawaduk for talking through some of the ideas in this appendix. They did their best to stop us from saying anything really stupid about a topic we don't really have enough personal experience of, but they may have failed. |
+| Note                              |                                                                                                                                                                                                                                                                                       |
+|                                |                                                                                                                                                                                                                                                                                       |
++-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+For more thoughts and actual lived experience dealing with existing applications, refer to the [epilogue](#epilogue_1_how_to_get_there_from_here).
+------------------------------------------------------------------------
+[1](#_footnoteref_1). The DRY-Python project people have built a tool called [mappers](https//mappers.readthedocs.io/en/latest) that looks like it might help minimize boilerplate for this sort of thing.
+[2](#_footnoteref_2). `@mr-bo-jangles` suggested you might be able to use [`update_or_create`](https//oreil.ly/HTq1r), but that's beyond our Django-fu.
+Last updated 2025-09-02 102309 +0800

@@ -1,0 +1,287 @@
+sect1
+## Appendix A Validation
+Whenever we're teaching and talking about these techniques, one question that comes up over and over is \"Where should I do validation? Does that belong with my business logic in the domain model, or is that an infrastructural concern?\"
+As with any architectural question, the answer is it depends!
+The most important consideration is that we want to keep our code well separated so that each part of the system is simple. We don't want to clutter our code with irrelevant detail.
+sect2
+### What Is Validation, Anyway?
+When people use the word *validation*, they usually mean a process whereby they test the inputs of an operation to make sure that they match certain criteria. Inputs that match the criteria are considered *valid*, and inputs that don't are *invalid*.
+If the input is invalid, the operation can't continue but should exit with some kind of error. In other words, validation is about creating *preconditions*. We find it useful to separate our preconditions into three subtypes syntax, semantics, and pragmatics.
+sect2
+### Validating Syntax
+In linguistics, the *syntax* of a language is the set of rules that govern the structure of grammatical sentences. For example, in English, the sentence \"Allocate three units of `TASTELESS-LAMP` to order twenty-seven\" is grammatically sound, while the phrase \"hat hat hat hat hat hat wibble\" is not. We can describe grammatically correct sentences as *well formed*.
+How does this map to our application? Here are some examples of syntactic rules
+ulist
+- An `Allocate` command must have an order ID, a SKU, and a quantity.
+- A quantity is a positive integer.
+- A SKU is a string.
+These are rules about the shape and structure of incoming data. An `Allocate` command without a SKU or an order ID isn't a valid message. It's the equivalent of the phrase \"Allocate three to.\"
+We tend to validate these rules at the edge of the system. Our rule of thumb is that a message handler should always receive only a message that is well-formed and contains all required information.
+One option is to put your validation logic on the message type itself
+title
+Example 1. Validation on the message class (src/allocation/commands.py)
+content
+listingblock
+content
+``` highlight
+from schema import And, Schema, Use
+@dataclass
+class Allocate(Command)
+_schema = Schema({  #(1)
+'orderid' str,
+'sku' str,
+'qty' And(Use(int), lambda n n > 0)
+}, ignore_extra_keys=True)
+orderid str
+sku str
+qty int
+@classmethod
+def from_json(cls, data)  #(2)
+data = json.loads(data)
+return cls(**_schema.validate(data))
+```
+1.  The [schema library](https//pypi.org/project/schema) lets us describe the structure and validation of our messages in a nice declarative way.
+2.  The `from_json` method reads a string as JSON and turns it into our message type.
+This can get repetitive, though, since we need to specify our fields twice, so we might want to introduce a helper library that can unify the validation and declaration of our message types
+title
+Example 2. A command factory with schema (src/allocation/commands.py)
+content
+listingblock
+content
+``` highlight
+def command(name, **fields)  #(1)
+schema = Schema(And(Use(json.loads), fields), ignore_extra_keys=True)
+cls = make_dataclass(name, fields.keys())  #(2)
+cls.from_json = lambda s cls(**schema.validate(s))  #(3)
+return cls
+def greater_than_zero(x)
+return x > 0
+quantity = And(Use(int), greater_than_zero)  #(4)
+Allocate = command(  #(5)
+'Allocate',
+orderid=int,
+sku=str,
+qty=quantity
+)
+AddStock = command(
+'AddStock',
+sku=str,
+qty=quantity
+```
+1.  The `command` function takes a message name, plus kwargs for the fields of the message payload, where the name of the kwarg is the name of the field and the value is the parser.
+2.  We use the `make_dataclass` function from the dataclass module to dynamically create our message type.
+3.  We patch the `from_json` method onto our dynamic dataclass.
+4.  We can create reusable parsers for quantity, SKU, and so on to keep things DRY.
+5.  Declaring a message type becomes a one-liner.
+This comes at the expense of losing the types on your dataclass, so bear that trade-off in mind.
+sect2
+### Postel's Law and the Tolerant Reader Pattern
+*Postel's law*, or the *robustness principle*, tells us, \"Be liberal in what you accept, and conservative in what you emit.\" We think this applies particularly well in the context of integration with our other systems. The idea here is that we should be strict whenever we're sending messages to other systems, but as lenient as possible when we're receiving messages from others.
+For example, our system *could* validate the format of a SKU. We've been using made-up SKUs like `UNFORGIVING-CUSHION` and `MISBEGOTTEN-POUFFE`. These follow a simple pattern two words, separated by dashes, where the second word is the type of product and the first word is an adjective.
+Developers *love* to validate this kind of thing in their messages, and reject anything that looks like an invalid SKU. This causes horrible problems down the line when some anarchist releases a product named `COMFY-CHAISE-LONGUE` or when a snafu at the supplier results in a shipment of `CHEAP-CARPET-2`.
+Really, as the allocation system, it's *none of our business* what the format of a SKU might be. All we need is an identifier, so we can simply describe it as a string. This means that the procurement system can change the format whenever they like, and we won't care.
+This same principle applies to order numbers, customer phone numbers, and much more. For the most part, we can ignore the internal structure of strings.
+Similarly, developers *love* to validate incoming messages with tools like JSON Schema, or to build libraries that validate incoming messages and share them among systems. This likewise fails the robustness test.
+Let's imagine, for example, that the procurement system adds new fields to the `ChangeBatchQuantity` message that record the reason for the change and the email of the user responsible for the change.
+Since these fields don't matter to the allocation service, we should simply ignore them. We can do that in the `schema` library by passing the keyword arg `ignore_extra_keys=True`.
+This pattern, whereby we extract only the fields we care about and do minimal validation of them, is the Tolerant Reader pattern.
++-----------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|  title                         | Validate as little as possible. Read only the fields you need, and don't overspecify their contents. This will help your system stay robust when other systems change over time. Resist the temptation to share message definitions between systems instead, make it easy to define the data you depend on. For more info, see Martin Fowler's article on the [Tolerant Reader pattern](https//oreil.ly/YL_La). |
+| Tip                               |                                                                                                                                                                                                                                                                                                                                                                                                                   |
+|                                |                                                                                                                                                                                                                                                                                                                                                                                                                   |
++-----------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+content
+title
+Is Postel Always Right?
+Mentioning Postel can be quite triggering to some people. They will [tell you](https//oreil.ly/bzLmb) that Postel is the precise reason that everything on the internet is broken and we can't have nice things. Ask Hynek about SSLv3 one day.
+We like the Tolerant Reader approach in the particular context of event-based integration between services that we control, because it allows for independent evolution of those services.
+If you're in charge of an API that's open to the public on the big bad internet, there might be good reasons to be more conservative about what inputs you allow.
+sect2
+### Validating at the Edge
+Earlier, we said that we want to avoid cluttering our code with irrelevant details. In particular, we don't want to code defensively inside our domain model. Instead, we want to make sure that requests are known to be valid before our domain model or use-case handlers see them. This helps our code stay clean and maintainable over the long term. We sometimes refer to this as *validating at the edge of the system*.
+In addition to keeping your code clean and free of endless checks and asserts, bear in mind that invalid data wandering through your system is a time bomb; the deeper it gets, the more damage it can do, and the fewer tools you have to respond to it.
+Back in [\[chapter_08_events_and_message_bus\]](#chapter_08_events_and_message_bus), we said that the message bus was a great place to put cross-cutting concerns, and validation is a perfect example of that. Here's how we might change our bus to perform validation for us
+title
+Example 3. Validation
+content
+listingblock
+content
+``` highlight
+class MessageBus
+def handle_message(self, name str, body str)
+try
+message_type = next(mt for mt in EVENT_HANDLERS if mt.__name__ == name)
+message = message_type.from_json(body)
+self.handle([message])
+except StopIteration
+raise KeyError(f"Unknown message name {name}")
+except ValidationError as e
+logging.error(
+f'invalid message of type {name}\n'
+f'{body}\n'
+f'{e}'
+)
+raise e
+```
+Here's how we might use that method from our Flask API endpoint
+title
+Example 4. API bubbles up validation errors (src/allocation/flask_app.py)
+content
+listingblock
+content
+``` highlight
+@app.route("/change_quantity", methods=['POST'])
+def change_batch_quantity()
+try
+bus.handle_message('ChangeBatchQuantity', request.body)
+except ValidationError as e
+return bad_request(e)
+except exceptions.InvalidSku as e
+return jsonify({'message' str(e)}), 400
+def bad_request(e ValidationError)
+return e.code, 400
+```
+And here's how we might plug it in to our asynchronous message processor
+title
+Example 5. Validation errors when handling Redis messages (src/allocation/redis_pubsub.py)
+content
+listingblock
+content
+``` highlight
+def handle_change_batch_quantity(m, bus messagebus.MessageBus)
+try
+bus.handle_message('ChangeBatchQuantity', m)
+except ValidationError
+print('Skipping invalid message')
+except exceptions.InvalidSku as e
+print(f'Unable to change stock for missing sku {e}')
+```
+Notice that our entrypoints are solely concerned with how to get a message from the outside world and how to report success or failure. Our message bus takes care of validating our requests and routing them to the correct handler, and our handlers are exclusively focused on the logic of our use case.
++-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|  title                         | When you receive an invalid message, there's usually little you can do but log the error and continue. At MADE we use metrics to count the number of messages a system receives, and how many of those are successfully processed, skipped, or invalid. Our monitoring tools will alert us if we see spikes in the numbers of bad messages. |
+| Tip                               |                                                                                                                                                                                                                                                                                                                                             |
+|                                |                                                                                                                                                                                                                                                                                                                                             |
++-----------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+sect2
+### Validating Semantics
+While syntax is concerned with the structure of messages, *semantics* is the study of *meaning* in messages. The sentence \"Undo no dogs from ellipsis four\" is syntactically valid and has the same structure as the sentence \"Allocate one teapot to order five,\"\" but it is meaningless.
+We can read this JSON blob as an `Allocate` command but can't successfully execute it, because it's *nonsense*
+title
+Example 6. A meaningless message
+content
+listingblock
+content
+``` highlight
+{
+"orderid" "superman",
+"sku" "zygote",
+"qty" -1
+}
+```
+We tend to validate semantic concerns at the message-handler layer with a kind of contract-based programming
+title
+Example 7. Preconditions (src/allocation/ensure.py)
+content
+listingblock
+content
+``` highlight
+"""
+This module contains preconditions that we apply to our handlers.
+"""
+class MessageUnprocessable(Exception)  #(1)
+def __init__(self, message)
+self.message = message
+class ProductNotFound(MessageUnprocessable)  #(2)
+""""
+This exception is raised when we try to perform an action on a product
+that doesn't exist in our database.
+""""
+def __init__(self, message)
+super().__init__(message)
+self.sku = message.sku
+def product_exists(event, uow)  #(3)
+product = uow.products.get(event.sku)
+if product is None
+raise ProductNotFound(event)
+```
+1.  We use a common base class for errors that mean a message is invalid.
+2.  Using a specific error type for this problem makes it easier to report on and handle the error. For example, it's easy to map `ProductNotFound` to a 404 in Flask.
+3.  `product_exists` is a precondition. If the condition is `False`, we raise an error.
+This keeps the main flow of our logic in the service layer clean and declarative
+title
+Example 8. Ensure calls in services (src/allocation/services.py)
+content
+listingblock
+content
+``` highlight
+# services.py
+from allocation import ensure
+def allocate(event, uow)
+line = model.OrderLine(event.orderid, event.sku, event.qty)
+with uow
+ensure.product_exists(event, uow)
+product = uow.products.get(line.sku)
+product.allocate(line)
+uow.commit()
+```
+We can extend this technique to make sure that we apply messages idempotently. For example, we want to make sure that we don't insert a batch of stock more than once.
+If we get asked to create a batch that already exists, we'll log a warning and continue to the next message
+title
+Example 9. Raise SkipMessage exception for ignorable events (src/allocation/services.py)
+content
+listingblock
+content
+``` highlight
+class SkipMessage (Exception)
+""""
+This exception is raised when a message can't be processed, but there's no
+incorrect behavior. For example, we might receive the same message multiple
+times, or we might receive a message that is now out of date.
+""""
+def __init__(self, reason)
+self.reason = reason
+def batch_is_new(self, event, uow)
+batch = uow.batches.get(event.batchid)
+if batch is not None
+raise SkipMessage(f"Batch with id {event.batchid} already exists")
+```
+Introducing a `SkipMessage` exception lets us handle these cases in a generic way in our message bus
+title
+Example 10. The bus now knows how to skip (src/allocation/messagebus.py)
+content
+listingblock
+content
+``` highlight
+class MessageBus
+def handle_message(self, message)
+try
+...
+except SkipMessage as e
+logging.warn(f"Skipping message {message.id} because {e.reason}")
+```
+There are a couple of pitfalls to be aware of here. First, we need to be sure that we're using the same UoW that we use for the main logic of our use case. Otherwise, we open ourselves to irritating concurrency bugs.
+Second, we should try to avoid putting *all* our business logic into these precondition checks. As a rule of thumb, if a rule *can* be tested inside our domain model, then it *should* be tested in the domain model.
+sect2
+### Validating Pragmatics
+*Pragmatics* is the study of how we understand language in context. After we have parsed a message and grasped its meaning, we still need to process it in context. For example, if you get a comment on a pull request saying, \"I think this is very brave,\" it may mean that the reviewer admires your courage---unless they're British, in which case, they're trying to tell you that what you're doing is insanely risky, and only a fool would attempt it. Context is everything.
+content
+title
+Validation Recap
+dlist
+Validation means different things to different people
+When talking about validation, make sure you're clear about what you're validating. We find it useful to think about syntax, semantics, and pragmatics the structure of messages, the meaningfulness of messages, and the business logic governing our response to messages.
+Validate at the edge when possible
+Validating required fields and the permissible ranges of numbers is *boring*, and we want to keep it out of our nice clean codebase. Handlers should always receive only valid messages.
+Only validate what you require
+Use the Tolerant Reader pattern read only the fields your application needs and don't overspecify their internal structure. Treating fields as opaque strings buys you a lot of flexibility.
+Spend time writing helpers for validation
+Having a nice declarative way to validate incoming messages and apply preconditions to your handlers will make your codebase much cleaner. It's worth investing time to make boring code easy to maintain.
+Locate each of the three types of validation in the right place
+Validating syntax can happen on message classes, validating semantics can happen in the service layer or on the message bus, and validating pragmatics belongs in the domain model.
++-----------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|  title                         | Once you've validated the syntax and semantics of your commands at the edges of your system, the domain is the place for the rest of your validation. Validation of pragmatics is often a core part of your business rules. |
+| Tip                               |                                                                                                                                                                                                                             |
+|                                |                                                                                                                                                                                                                             |
++-----------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+In software terms, the pragmatics of an operation are usually managed by the domain model. When we receive a message like \"allocate three million units of `SCARCE-CLOCK` to order 76543,\" the message is *syntactically* valid and *semantically* valid, but we're unable to comply because we don't have the stock available.
+Last updated 2025-09-02 102309 +0800
