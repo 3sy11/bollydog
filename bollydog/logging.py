@@ -142,11 +142,20 @@ LOGGING_DICT_CONFIG = {
         },
     },
     "handlers": {
-        "file": {
+        "info": {
             "level": "INFO",
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "plain",
-            "filename": os.environ.get("BOLLYDOG_LOG_FILE","info.log"),
+            "filename": os.path.join(os.environ.get("BOLLYDOG_LOG_PATH","."), "info.log"),
+            "maxBytes": 1024 * 1024 * 10,
+            "backupCount": 3,
+            "encoding": "utf-8",
+        },
+        "error": {
+            "level": "ERROR",
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "plain",
+            "filename": os.path.join(os.environ.get("BOLLYDOG_LOG_PATH","."), "error.log"),
             "maxBytes": 1024 * 1024 * 10,
             "backupCount": 3,
             "encoding": "utf-8",
@@ -159,7 +168,7 @@ LOGGING_DICT_CONFIG = {
     },
     "loggers": {
         "": {
-            "handlers": ["console", "file"],
+            "handlers": ["console", "info", "error"],
             "propagate": False,
         },
     },
@@ -167,18 +176,19 @@ LOGGING_DICT_CONFIG = {
 
 
 class ProxyLogger(logging.Logger):
-    _file: logging.FileHandler
+    _info: logging.FileHandler
     _console: logging.StreamHandler
+    _error: logging.FileHandler
 
     def __init__(self, name, level=logging.NOTSET):
         super().__init__(name, level)
-        self.handlers = [self._file, self._console]
+        self.handlers = [self._info, self._console, self._error]
         self.propagate = False
 
     def _log(self, level, msg, args, exc_info=None, extra=None, stack_info=False, stacklevel=1):
         stacklevel = 1 + stacklevel
-        if not self.handlers or self.handlers != [self._file, self._console]:
-            self.handlers = [self._file, self._console]
+        if not self.handlers or self.handlers != [self._info, self._console, self._error]:
+            self.handlers = [self._info, self._console, self._error]
 
         fn, lno, func, sinfo = self.findCaller(stack_info, stacklevel)
         if exc_info:
@@ -194,4 +204,4 @@ class ProxyLogger(logging.Logger):
 structlog.stdlib.recreate_defaults()
 logging.setLoggerClass(ProxyLogger)
 logging.config.dictConfig(LOGGING_DICT_CONFIG)
-ProxyLogger._file, ProxyLogger._console = logging.root.handlers
+ProxyLogger._console, ProxyLogger._info, ProxyLogger._error = logging.root.handlers
