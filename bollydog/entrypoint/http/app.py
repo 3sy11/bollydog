@@ -8,6 +8,7 @@ from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse
+from starlette.datastructures import UploadFile
 
 from bollydog.globals import hub, _session_ctx_stack
 from bollydog.models.base import BaseMessage, get_model_name, Session
@@ -43,7 +44,23 @@ class HttpHandler:
                 if request.method == 'GET':
                     message: BaseMessage = self.message(**request.query_params, **request.path_params)  # < 入参校验
                 elif request.method == 'POST':
-                    data = await request.json() or await request.form()
+                    content_type = request.headers.get('content-type', '')
+                    if 'multipart/form-data' in content_type:
+                        _data = dict()
+                        data = await request.form()
+                        for k,v in data.items():
+                            if isinstance(v, UploadFile):
+                                file = await v.read()
+                                v={
+                                    'file':file,
+                                    'filename':v.filename,
+                                    'content_type':v.content_type,
+                                    'size':v.size
+                                }
+                            _data[k] = v
+                        data = _data
+                    else:
+                        data = await request.json()
                     message: BaseMessage = self.message(**data, **request.path_params)  # < 入参校验
                 else:
                     raise NotImplementedError
@@ -76,7 +93,7 @@ class HttpService(AppService):
 
     async def on_start(self) -> None:
         for message_model,handler in AppHandler.commands.items():
-            entrypoint=f'{handler.app.name}.{message_model.name}'
+            entrypoint=f'{handler.app.name}.{handler.fun.__name__}'
             _methods = self.router_mapping.get(entrypoint, ['GET'])
             if isinstance(_methods, str):
                 _methods = [_methods]
@@ -86,7 +103,7 @@ class HttpService(AppService):
                 methods=_methods,
                 name=None,
                 include_in_schema=True,
-            )
+                )
         for r in self.http_app.routes:
             self.logger.info(r)
         self.http_app.user_middleware = self.middlewares

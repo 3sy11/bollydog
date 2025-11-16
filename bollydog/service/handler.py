@@ -77,7 +77,7 @@ class AppHandler(object):
             return
 
         message.domain = app.domain
-        fun.__name__ = message.name
+        # fun.__name__ = message.name
         cls.messages[get_model_name(message)] = message
 
         if issubclass(message, Command):
@@ -122,7 +122,7 @@ class AppHandler(object):
             for _name, _cls in inspect.getmembers(module, inspect.isclass):
                 # # only support class with async __call__ method and issubclass of Command or Event
                 if (issubclass(_cls, (Command, Event)) and hasattr(_cls, "__call__")
-                    and (inspect.iscoroutinefunction(_cls.__call__) or inspect.isasyncgenfunction(_cls.__call__))):
+                        and (inspect.iscoroutinefunction(_cls.__call__) or inspect.isasyncgenfunction(_cls.__call__))):
                     cls.register(_cls, _cls.__call__, app)
             for _name, _func in inspect.getmembers(module, inspect.isfunction):
                 cls.walk_annotation(_func, app)
