@@ -19,6 +19,7 @@
 
 # CORE TODO LIST
 
+- [X] ftr: logging level file
 - [ ] ftr: IOC agent can be injected as an entrypoint, behaves like an API and can invoke all handlers
 - [ ] ftr: hot reloading
 - [ ] ftr: state service
@@ -40,6 +41,7 @@
 
 # MODULE TODO LIST
 
+- [X] opt: http service QPS config
 - [ ] opt: WebSocket middleware
 - [ ] ftr: add toggle in entrypoint to enable or disable receiving specific messages(distribute service)
 - [ ] ftr: HTTP messages debounce or QoS

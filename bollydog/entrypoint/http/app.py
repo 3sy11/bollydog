@@ -18,7 +18,14 @@ from .config import (
     SERVICE_LOG_LEVEL,
     SERVICE_HOST,
     SERVICE_PRIVATE_KEY_PATH,
-    SERVICE_PUBLIC_KEY_PATH
+    SERVICE_PUBLIC_KEY_PATH,
+    SERVICE_WORKERS,
+    SERVICE_LOOP,
+    SERVICE_HTTP,
+    SERVICE_LIMIT_CONCURRENCY,
+    SERVICE_LIMIT_MAX_REQUESTS,
+    SERVICE_TIMEOUT_KEEP_ALIVE,
+    SERVICE_BACKLOG
 )
 
 _config_middleware_key = 'middleware'
@@ -98,7 +105,14 @@ class HttpService(AppService):
             port=int(SERVICE_PORT),
             log_level=SERVICE_LOG_LEVEL,
             ssl_keyfile=SERVICE_PRIVATE_KEY_PATH,
-            ssl_certfile=SERVICE_PUBLIC_KEY_PATH
+            ssl_certfile=SERVICE_PUBLIC_KEY_PATH,
+            workers=SERVICE_WORKERS,
+            loop=SERVICE_LOOP,
+            http=SERVICE_HTTP,
+            limit_concurrency=SERVICE_LIMIT_CONCURRENCY,
+            limit_max_requests=SERVICE_LIMIT_MAX_REQUESTS,
+            timeout_keep_alive=SERVICE_TIMEOUT_KEEP_ALIVE,
+            backlog=SERVICE_BACKLOG
         )
         self.uvicorn = uvicorn.Server(config)
 
