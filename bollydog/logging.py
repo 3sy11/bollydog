@@ -5,6 +5,10 @@ from logging import config
 import structlog
 from bollydog.globals import message, app
 
+log_path = os.environ.get("BOLLYDOG_LOG_PATH", ".")
+if log_path != ".":
+    os.makedirs(log_path, exist_ok=True)
+
 COLORS = {
     'RESET': "\033[0m",
     'BOLD': "\033[1m",

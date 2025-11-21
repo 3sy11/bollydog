@@ -19,7 +19,6 @@
 
 # CORE TODO LIST
 
-- [X] ftr: logging level file
 - [ ] ftr: IOC agent can be injected as an entrypoint, behaves like an API and can invoke all handlers
 - [ ] ftr: hot reloading
 - [ ] ftr: state service
@@ -32,19 +31,17 @@
   - [ ] ftr: opentelemetry
 - [ ] ftr: pydantic plugin to validate reserved keywords in input parameters
 - [ ] ftr: service builder to create AppService
-- [X] ftr: on 0.1.3, `command` combine to one handler, `event` combine to multi or rewrite, opt autodiscover
-- [X] ftr: `.wheel` install support & `uv` install
-- [X] opt: rename `bus` to `hub`
 - [ ] ftr: support handler message be waited in collection from other handlers message by ctx
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
-
+- [X] opt: add Command subclass `__call__` name defined 
+- [X] opt: if logging file path not exsit, create
 
 # MODULE TODO LIST
 
-- [X] opt: http service QPS config
 - [ ] opt: WebSocket middleware
 - [ ] ftr: add toggle in entrypoint to enable or disable receiving specific messages(distribute service)
 - [ ] ftr: HTTP messages debounce or QoS
+- [ ] opt: disable router in yaml
 
 # .env
 
