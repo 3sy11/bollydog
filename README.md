@@ -33,11 +33,11 @@
 - [ ] ftr: service builder to create AppService
 - [ ] ftr: support handler message be waited in collection from other handlers message by ctx
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
-- [X] opt: add Command subclass `__call__` name defined 
-- [X] opt: if logging file path not exsit, create
+- [ ] fix: `shell`,`execute` mode, not load on_start resource
 
 # MODULE TODO LIST
 
+- [ ] ftr: support like `uvicorn web.base.HttpService:app --reload`
 - [ ] opt: WebSocket middleware
 - [ ] ftr: add toggle in entrypoint to enable or disable receiving specific messages(distribute service)
 - [ ] ftr: HTTP messages debounce or QoS
