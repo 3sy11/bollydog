@@ -18,10 +18,11 @@ from bollydog.models.service import AppService
 from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
 from bollydog.config import QUEUE_MAX_SIZE
+from bollydog.service.handler import HttpCommand
 
 _DOMAIN='bollydog'
 _NAME='hub'
-_HANDLERS = ['bollydog.service.model', ]
+_HANDLERS = ['bollydog.service.model','bollydog.service.handler' ]
 
 class HubService(AppService):
     queue: asyncio.Queue
@@ -59,6 +60,7 @@ class HubService(AppService):
             raise ServiceRejectException()
         if self.queue.qsize() > QUEUE_MAX_SIZE:
             raise ServiceMaxSizeOfQueueError(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} Queue is full')
+        message = HttpCommand.check(message)  # < move to router, lifecycle manage. using router.check->HttpCommand.check
         await self.queue.put(message)
         self.logger.info(
             f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name}')

@@ -3,7 +3,6 @@ import logging
 import mode
 import uvicorn
 from bollydog.models.service import AppService
-# from bollydog.patch.logging import redirect_stdouts
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
@@ -11,7 +10,7 @@ from starlette.responses import JSONResponse, HTMLResponse
 from starlette.datastructures import UploadFile
 
 from bollydog.globals import hub, _session_ctx_stack
-from bollydog.models.base import BaseMessage, get_model_name, Session
+from bollydog.models.base import BaseMessage, get_model_name, Session, Command
 from bollydog.service.handler import AppHandler
 from .config import (
     SERVICE_DEBUG,
@@ -77,13 +76,14 @@ class HttpHandler:
 
 
 class HttpService(AppService):
+    router_mapping: dict = {}
 
     def __init__(self, web_app=None, router_mapping=None, middlewares=None, **kwargs):
         super().__init__(**kwargs)
         self.app = self
         self.http_app = web_app or Starlette()
         self.uvicorn = None
-        self.router_mapping = router_mapping or {}
+        HttpService.router_mapping = router_mapping or {}
         self.middlewares = []
         for m in middlewares or []:
             self.middlewares.append(Middleware(m.pop(_config_middleware_key), **m))
@@ -91,19 +91,30 @@ class HttpService(AppService):
     # async def on_first_start(self) -> None:
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
+    @classmethod
+    def build_command_route_info(cls, command_class: Type[Command], handler=None) -> tuple[str, list[str]]:
+        """构造路由路径和 HTTP 方法"""
+        if handler is None:
+            handler = AppHandler.commands.get(command_class)
+        
+        entrypoint = f'{handler.app.name}.{handler.fun.__name__}'
+        methods = cls.router_mapping.get(entrypoint, ['GET'])
+        if isinstance(methods, str):
+            methods = [methods]
+        route_path = '/' + entrypoint.replace('.', '/')
+        
+        return route_path, methods
+
     async def on_start(self) -> None:
         for message_model,handler in AppHandler.commands.items():
-            entrypoint=f'{handler.app.name}.{handler.fun.__name__}'
-            _methods = self.router_mapping.get(entrypoint, ['GET'])
-            if isinstance(_methods, str):
-                _methods = [_methods]
+            route_path, _methods = self.build_command_route_info(message_model, handler)
             self.http_app.router.add_route(
-                f'/' + entrypoint.replace('.', '/'),
+                route_path,
                 HttpHandler(message_model),
                 methods=_methods,
                 name=None,
                 include_in_schema=True,
-                )
+            )
         for r in self.http_app.routes:
             self.logger.info(r)
         self.http_app.user_middleware = self.middlewares

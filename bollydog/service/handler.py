@@ -1,9 +1,15 @@
 import logging
 import inspect
+import httpx
 from typing import Any, Dict, Type, Callable, Union, Awaitable, AsyncGenerator, List, TYPE_CHECKING
 from mode.utils.imports import smart_import
 from bollydog.models.base import (Command,Event,BaseMessage,ModulePathWithDot,MessageName,get_model_name,)
 from bollydog.globals import (_protocol_ctx_stack,_message_ctx_stack,hub,_app_ctx_stack,)
+from pydantic import Field
+from bollydog.config import HOSTNAME
+
+logger = logging.getLogger(__name__)
+DOMAIN = 'service'
 
 if TYPE_CHECKING:
     from bollydog.models.service import AppService
@@ -122,7 +128,7 @@ class AppHandler(object):
             for _name, _cls in inspect.getmembers(module, inspect.isclass):
                 # # only support class with async __call__ method and issubclass of Command or Event
                 if (issubclass(_cls, (Command, Event)) and hasattr(_cls, "__call__")
-                        and (inspect.iscoroutinefunction(_cls.__call__) or inspect.isasyncgenfunction(_cls.__call__))):
+                    and (inspect.iscoroutinefunction(_cls.__call__) or inspect.isasyncgenfunction(_cls.__call__))):
                     cls.register(_cls, _cls.__call__, app)
             for _name, _func in inspect.getmembers(module, inspect.isfunction):
                 cls.walk_annotation(_func, app)
@@ -140,3 +146,66 @@ class AppHandler(object):
         elif issubclass(message, Event):
             return cls.events.get(message, [])
         return []
+
+
+class HttpCommand(Command):
+    """HTTP 远程调用 Command 包装类"""
+    domain: str = Field(default=DOMAIN)
+    url: str = Field(description="完整的目标 URL")
+    method: str = Field(default="POST", description="HTTP 方法")
+    original: dict = Field(description="原始 Command 的 model_dump() 数据")
+
+    name = 'http'
+
+    @classmethod
+    def check(cls, command: Command) -> Union[Command, 'HttpCommand']:
+        if command.execution == 'local-only' and not command.destination or command.destination == HOSTNAME:
+            return command
+        from bollydog.entrypoint.http.app import HttpService
+
+        try:
+            route_path, methods = HttpService.build_command_route_info(command.__class__)
+            method = methods[0] if methods else "POST"
+            url = command.destination.rstrip('/') + route_path
+            original_data = command.model_dump()
+            original_data.update({
+                'host': command.host,
+                'version': command.version,
+                'module': command.module,
+                'domain': command.domain,
+                'name': command.name
+            })
+            return cls(url=url, method=method, original=original_data)
+        except Exception as e:
+            logger.warning(f"构造 HttpCommand 失败: {e}")
+            return command
+
+    async def __call__(command):
+        try:
+            async with httpx.AsyncClient(timeout=command.expire_time) as client:
+                if command.method.upper() == "GET":
+                    response = await client.get(command.url, params=command.original)
+                else:
+                    response = await client.post(command.url, json=command.original) # > TypeError('Object of type bytes is not JSON serializable')
+
+                response.raise_for_status()
+                result = response.json()
+            yield result
+
+        except Exception as e:
+            logger.warning(f"HttpCommand 远程调用失败: {e}，降级到本地执行")
+
+            original_data = command.original.copy()
+
+            for name, msg_class in AppHandler.messages.items():
+                if msg_class.__name__.lower() == original_data.get('name'):
+                    message_class = msg_class
+                    break
+            else:
+                raise ValueError(f"无法找到对应的 Command 类: {original_data.get('name')}")
+            original_data.pop('state')
+            fallback_command = message_class(**original_data)
+            fallback_command.execution = "local-only"
+
+            result = yield fallback_command
+            yield result

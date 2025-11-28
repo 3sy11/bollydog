@@ -1,7 +1,12 @@
 import asyncio
+import logging
+from typing import Union
 from pydantic import Field
 from bollydog.models.base import Command
+from bollydog.config import HOSTNAME
+from bollydog.entrypoint.http.app import HttpService
 
+logger = logging.getLogger(__name__)
 DOMAIN = 'service'
 
 
@@ -28,3 +33,4 @@ async def task_state(command: TaskState):
     count = yield TaskCount()
     tasks = yield TaskList()
     yield [count, tasks]
+

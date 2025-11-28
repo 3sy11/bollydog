@@ -110,7 +110,7 @@ class BaseMessage(_ModelMixin):
     domain: ClassVar[DomainName]
     name: ClassVar[MessageName]
     expire_time: ClassVar[float] = COMMAND_EXPIRE_TIME
-    # destination: str = Field(default=None)  # <
+    destination: str = Field(default=None)  # <
 
     # # state
     handler: ModulePathWithDot = Field(default=None)
@@ -164,6 +164,7 @@ class BaseMessage(_ModelMixin):
 
 
 class Command(BaseMessage, abstract=True):
+    execution: ClassVar[str] = "local-only"  # 可选值: "local-only", "remote-only", "local-first", "remote-first"
     
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(abstract=abstract, **kwargs)
