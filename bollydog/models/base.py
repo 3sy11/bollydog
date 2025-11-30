@@ -170,7 +170,7 @@ class Command(BaseMessage, abstract=True):
         
         if not abstract and hasattr(cls, '__call__') and hasattr(cls, 'name'):
             call = getattr(cls, '__call__')
-            if inspect.iscoroutinefunction(call):
+            if inspect.iscoroutinefunction(call) or inspect.isasyncgenfunction(call):
                 call.__name__ = cls.name
 
 
