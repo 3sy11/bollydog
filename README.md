@@ -34,6 +34,7 @@
 - [ ] ftr: support handler message be waited in collection from other handlers message by ctx
 - [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
 - [ ] fix: `shell`,`execute` mode, not load on_start resource
+- [ ] ftr: none app command, run command directly without app 
 
 # MODULE TODO LIST
 
