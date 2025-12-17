@@ -95,7 +95,7 @@ class CLI:
         hub = HubService(apps=apps.values())
         for msg, handlers in AppHandler.commands.items():
             print(f'{msg} -> {handlers}')
-        embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True)  # # noqa
+        embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True, history_filename='.ptpython.tmp',patch_stdout=True)  # # noqa
         # print("Starting ptpython asyncio REPL")
         # print('Use "await" directly instead of "asyncio.run()".')
         with _session_ctx_stack.push(Session()):
