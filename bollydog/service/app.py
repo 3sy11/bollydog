@@ -75,8 +75,15 @@ class HubService(AppService):
             app: AppService = self.apps.get(message.domain)
             self.logger.info(
                 f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name}')
+            asyncio.create_task(self._process_message(message))
+
+    async def _process_message(self, message: Message):
+        try:
             await self.execute(message)
             await self.router.publish(message)
+        except Exception as e:
+            self.logger.error(f'process message error: {e}')
+            self.logger.exception(e)
 
     @mode.Service.task
     async def pop_events(self):

@@ -43,6 +43,7 @@
 - [ ] ftr: add toggle in entrypoint to enable or disable receiving specific messages(distribute service)
 - [ ] ftr: HTTP messages debounce or QoS
 - [ ] opt: disable router in yaml
+- [ ] opt: neo4j adapter using async driver
 
 # .env
 
