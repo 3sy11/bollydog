@@ -19,26 +19,29 @@
 
 # CORE TODO LIST
 
-- [ ] ftr: IOC agent can be injected as an entrypoint, behaves like an API and can invoke all handlers
-- [ ] ftr: hot reloading
-- [ ] ftr: state service
-  - [ ] ftr: label support
-  - [ ] ftr: rete
-- [ ] ftr: distribute service
-  - [ ] ftr: priority system
-  - [ ] ftr: add alias routing in `router_mapping`
+- [ ] fix: adpter SqlAlchemyAsyncUnitOfWork bug, pytest not pass
 - [ ] ftr: telemetry service
-  - [ ] ftr: opentelemetry
-- [ ] ftr: pydantic plugin to validate reserved keywords in input parameters
-- [ ] ftr: service builder to create AppService
-- [ ] ftr: support handler message be waited in collection from other handlers message by ctx
-- [ ] fix: SqlAlchemyAsyncUnitOfWork bug, pytest not pass
-- [ ] fix: `shell`,`execute` mode, not load on_start resource
-- [ ] ftr: none app command, run command directly without app 
+- [ ] ftr: distribute microservice orchestration
+  - [ ] opt: service builder to create AppService
+  - [ ] ftr: label support
+  - [ ] ftr: hot reloading
+  - [ ] ftr: add alias routing in `router_mapping`
+  - [ ] fix: `shell`,`execute` mode, not load on_start resource
+- [ ] ftr: handler orchestration
+  - [ ] ftr: `rate`
+  - [ ] ftr: priority system
+  - [ ] ftr: support handler message be waited in collection from other handlers message by ctx, using for agent interrupt
+  - [ ] opt: execute command mode, combine `app` instance
+- [ ] ftr: Agent v 0.1.4
+  - [ ] ftr: global `session` as a service, work
+  - [ ] ftr: combine with `router` 
+  - [ ] ftr: worflow like `rate` maybe
+
 
 # MODULE TODO LIST
 
 - [ ] ftr: support like `uvicorn web.base.HttpService:app --reload`
+- [ ] ftr: sse
 - [ ] opt: WebSocket middleware
 - [ ] ftr: add toggle in entrypoint to enable or disable receiving specific messages(distribute service)
 - [ ] ftr: HTTP messages debounce or QoS
