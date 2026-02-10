@@ -13,7 +13,7 @@ from bollydog.exception import (
     HandlerNoneError
 )
 from bollydog.globals import _hub_ctx_stack
-from bollydog.models.base import BaseMessage as Message, MessageId, Command, Event
+from bollydog.models.base import BaseMessage as Message, MessageId, Command
 from bollydog.models.service import AppService
 from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
@@ -21,7 +21,6 @@ from bollydog.config import QUEUE_MAX_SIZE
 
 _DOMAIN='bollydog'
 _NAME='hub'
-_HANDLERS = ['bollydog.service.model', ]
 
 class HubService(AppService):
     queue: asyncio.Queue
@@ -30,7 +29,7 @@ class HubService(AppService):
     futures: MutableMapping[MessageId, Tuple[Message, asyncio.Future]] = {}
     tasks: Dict[MessageId, Any] = {}
 
-    def __init__(self, domain=_DOMAIN, name=_NAME, handlers=_HANDLERS, apps: Iterable[AppService] = None, **kwargs):
+    def __init__(self, domain=_DOMAIN, name=_NAME, apps: Iterable[AppService] = None, **kwargs):
         super().__init__(domain=domain, name=name, **kwargs)
         self.queue = asyncio.Queue()
         self.router = Router(domain=domain)
@@ -38,9 +37,7 @@ class HubService(AppService):
         self.apps = {self.name: self}
         for app in apps or []:
             self.add_service(app)
-        for handler in handlers:
-            AppHandler.walk_module(handler, self)
-        self.exit_stack.enter_context(_hub_ctx_stack.push(self))  # # mode.Service.stop
+        self.exit_stack.enter_context(_hub_ctx_stack.push(self))
 
     async def on_started(self) -> None:
         for service in self.apps.values():
@@ -85,14 +82,6 @@ class HubService(AppService):
             self.logger.error(f'process message error: {e}')
             self.logger.exception(e)
 
-    @mode.Service.task
-    async def pop_events(self):
-        while True:
-            for app in self.apps.values():
-                while app.protocol and app.protocol.events:
-                    await self.queue.put(app.protocol.events.pop())
-            await asyncio.sleep(1)
-
     def task_done_callback(self, task):
         message, future = self.futures.pop(task.get_name())
         try:
@@ -119,8 +108,8 @@ class HubService(AppService):
             future.set_exception(e)
 
     def get_coro(self, message: Message) -> List[partial[Coroutine]]:
-        if not isinstance(message, (Command, Event)):
-            raise HandlerNoneError(f'Message type {type(message).__name__} is not supported, only Command and Event are allowed')
+        if not isinstance(message, Command):
+            raise HandlerNoneError(f'Message type {type(message).__name__} is not supported, only Command is allowed')
             
         handlers = AppHandler.get_message_handlers(message.__class__)
         if not handlers:

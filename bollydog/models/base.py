@@ -164,14 +164,7 @@ class BaseMessage(_ModelMixin):
 
 
 class Command(BaseMessage, abstract=True):
-    
-    def __init_subclass__(cls, abstract: bool = False, **kwargs):
-        super().__init_subclass__(abstract=abstract, **kwargs)
-        
-        if not abstract and hasattr(cls, '__call__') and hasattr(cls, 'name'):
-            call = getattr(cls, '__call__')
-            if inspect.iscoroutinefunction(call) or inspect.isasyncgenfunction(call):
-                call.__name__ = cls.name
+    pass
 
 
 class Event(BaseMessage, abstract=True):

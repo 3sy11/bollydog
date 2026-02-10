@@ -47,6 +47,8 @@
 - [ ] ftr: HTTP messages debounce or QoS
 - [ ] opt: disable router in yaml
 - [ ] opt: neo4j adapter using async driver
+- [ ] opt: `router_mapping` currently hardcoded as `DEFAULT_ROUTER_MAPPING` in `HttpService`, need a more flexible configuration approach (e.g. env var, decorator, or auto-discovery)
+- [ ] opt: middleware list in `HttpService._build_middlewares()` is fixed, consider supporting user-defined middleware registration
 
 # .env
 
@@ -54,7 +56,9 @@ global
 BOLLYDOG_COMMAND_EXPIRE_TIME  
 BOLLYDOG_EVENT_EXPIRE_TIME  
 BOLLYDOG_LOG_LEVEL  
-BOLLYDOG_HANDLERS   
+BOLLYDOG_HANDLERS  
+BOLLYDOG_HTTP_ENABLED (0/1, default 1)  
+BOLLYDOG_WS_ENABLED (0/1, default 1)  
 
 http api  
 BOLLYDOG_HTTP_SERVICE_HOST  
@@ -63,6 +67,10 @@ BOLLYDOG_HTTP_SERVICE_PORT
 BOLLYDOG_HTTP_SERVICE_LOG_LEVEL  
 BOLLYDOG_HTTP_SERVICE_PRIVATE_KEY  
 BOLLYDOG_HTTP_SERVICE_PUBLIC_KEY  
+BOLLYDOG_HTTP_MIDDLEWARE_SESSION (0/1, default 1)  
+BOLLYDOG_HTTP_MIDDLEWARE_AUTH (0/1, default 1)  
+BOLLYDOG_HTTP_MIDDLEWARE_CORS (0/1, default 1)  
+HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY  
 
 websocket  
 BOLLYDOG_WS_SERVICE_HOST  

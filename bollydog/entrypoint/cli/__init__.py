@@ -20,8 +20,11 @@ from bollydog.bootstrap import Bootstrap
 from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _session_ctx_stack  # # noqa
 from bollydog.models.service import AppService
 from bollydog.models.base import MessageName, BaseMessage, Session
+from bollydog.config import BOLLYDOG_HTTP_ENABLED, BOLLYDOG_WS_ENABLED
 from bollydog.service.app import HubService
 from bollydog.service.handler import AppHandler
+from bollydog.entrypoint.http.app import HttpService
+from bollydog.entrypoint.websocket.app import SocketService
 
 def _load_config(config: str) -> Dict:
     if not config:
@@ -35,17 +38,20 @@ def _load_config(config: str) -> Dict:
         return smart_import(config)
 
 
-def get_apps(config: str) -> Dict[str, AppService]:
-    work_dir = pathlib.Path(config).parent
-    sys.path.insert(0, work_dir.as_posix())
-    config = _load_config(config)
+def get_apps(config: str = None) -> Dict[str, AppService]:
     apps = {}
-    for domain, app_config in config.items():
-        if domain in apps:
-            raise ValueError(f'duplicate domain: {domain}')
-        app = app_config.pop('app')
-        app = app.create_from(domain=domain,**app_config)
-        apps[domain] = app
+    if config:
+        work_dir = pathlib.Path(config).parent
+        sys.path.insert(0, work_dir.as_posix())
+        for domain, app_config in (_load_config(config) or {}).items():
+            if domain in apps:
+                raise ValueError(f'duplicate domain: {domain}')
+            app = app_config.pop('app')
+            apps[domain] = app.create_from(domain=domain, **app_config)
+    if BOLLYDOG_HTTP_ENABLED:
+        apps['http'] = HttpService.create_from(domain='http')
+    if BOLLYDOG_WS_ENABLED:
+        apps['ws'] = SocketService.create_from(domain='ws')
     return apps
 
 
@@ -55,7 +61,7 @@ class CLI:
 
     @staticmethod
     def service(
-            config: str,
+            config: str = None,
             exclude: list = None,
             include: list = None
     ):
@@ -71,8 +77,8 @@ class CLI:
 
     @staticmethod
     def execute(
-            config: str,
-            message: MessageName,  # # instance or class name
+            config: str = None,
+            message: MessageName = None,  # # instance or class name
             **kwargs):
         apps = get_apps(config)
         hub = HubService(apps=apps.values())
@@ -90,7 +96,7 @@ class CLI:
         logging.info(f'{json.dumps(msg.model_dump(), ensure_ascii=False)}')
 
     @staticmethod
-    def shell(config: str, ):
+    def shell(config: str = None, ):
         apps = get_apps(config)
         hub = HubService(apps=apps.values())
         for msg, handlers in AppHandler.commands.items():
