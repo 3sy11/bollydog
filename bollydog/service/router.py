@@ -2,11 +2,11 @@ from typing import Callable, Dict, Set
 
 from bollydog.models.service import AppService
 from bollydog.models.base import BaseCommand as Message
-from bollydog.config import DOMAIN
+from bollydog.service.config import DOMAIN
 
 
 class Router(AppService):
-    domain = DOMAIN
+    alias = [DOMAIN]
     callbacks: Dict[str, Set[Callable]] = {'*': set()}
 
     def __init__(self, **kwargs):
@@ -32,8 +32,9 @@ class Router(AppService):
             self.logger.warning(f'{callback} not in {name}')
 
     async def publish(self, message: Message):
-        if message.alias in self.callbacks:
-            for callback in self.callbacks[message.alias]:
+        key = f'{message.alias[0]}.{message.alias[1]}'
+        if key in self.callbacks:
+            for callback in self.callbacks[key]:
                 await callback(message)
         for callback in self.callbacks['*']:
             await callback(message)

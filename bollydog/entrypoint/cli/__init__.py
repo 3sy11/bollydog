@@ -21,9 +21,8 @@ from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _session_ctx_s
 from bollydog.models.service import AppService
 from bollydog.models.base import BaseCommand
 from bollydog.service.session import Session
-from bollydog.config import BOLLYDOG_HTTP_ENABLED, BOLLYDOG_WS_ENABLED
+from bollydog.service.config import BOLLYDOG_HTTP_ENABLED, BOLLYDOG_WS_ENABLED
 from bollydog.service.app import Hub
-from bollydog.service.handler import AppHandler
 from bollydog.entrypoint.http.app import HttpService
 from bollydog.entrypoint.websocket.app import SocketService
 
@@ -100,8 +99,8 @@ class CLI:
     def shell(config: str = None, ):
         apps = get_apps(config)
         hub = Hub(apps=apps.values())
-        for msg, handlers in AppHandler.commands.items():
-            print(f'{msg} -> {handlers}')
+        for key, cmd_cls in BaseCommand._registry.items():
+            print(f'{key} -> {cmd_cls}')
         embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True, history_filename='.ptpython.tmp',patch_stdout=True)  # # noqa
         # print("Starting ptpython asyncio REPL")
         # print('Use "await" directly instead of "asyncio.run()".')

@@ -16,7 +16,6 @@ from starlette.datastructures import UploadFile
 from bollydog.globals import hub, _session_ctx_stack
 from bollydog.models.base import BaseCommand
 from bollydog.service.session import Session
-from bollydog.service.handler import AppHandler
 from .middleware import base_auth_backend
 from .config import (
     SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST,
@@ -99,18 +98,11 @@ class HttpService(AppService):
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     async def on_start(self) -> None:
-        for message_model,handler in AppHandler.commands.items():
-            entrypoint=f'{handler.app.alias}.{handler.fun.__name__}'
-            _methods = self.router_mapping.get(entrypoint, ['GET'])
+        for key, command_cls in BaseCommand._registry.items():
+            _methods = self.router_mapping.get(key, ['GET'])
             if isinstance(_methods, str):
                 _methods = [_methods]
-            self.http_app.router.add_route(
-                f'/' + entrypoint.replace('.', '/'),
-                HttpHandler(message_model),
-                methods=_methods,
-                name=None,
-                include_in_schema=True,
-                )
+            self.http_app.router.add_route(f'/' + key.replace('.', '/'), HttpHandler(command_cls), methods=_methods, name=None, include_in_schema=True)
         for r in self.http_app.routes:
             self.logger.info(r)
         self.http_app.user_middleware = self.middlewares

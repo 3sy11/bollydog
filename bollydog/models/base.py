@@ -9,7 +9,7 @@ from typing import Dict, Type, List, Any, ClassVar
 import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 
-from bollydog.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, DEFAULT_SIGN, DELIVERY_COUNT, DEFAULT_QOS
+from bollydog.service.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, DEFAULT_SIGN, DELIVERY_COUNT, DEFAULT_QOS
 from bollydog.globals import message, session
 
 
@@ -31,12 +31,10 @@ class BaseDomain(_ModelMixin):
 
 class BaseCommand(_ModelMixin):
     model_config = ConfigDict(extra='allow')
-    # system
     host: ClassVar[str] = HOSTNAME
     version: ClassVar[str] = REPOSITORY_VERSION
-    module: ClassVar[str]
-    domain: ClassVar[str]
-    alias: ClassVar[str]
+    alias: ClassVar[List[str]]  # [module, name]
+    destination: List[str] = Field(default_factory=list)
 
     # instance
     expire_time: float = Field(default=COMMAND_EXPIRE_TIME)
@@ -76,30 +74,28 @@ class BaseCommand(_ModelMixin):
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
-        if not abstract and not hasattr(cls, 'alias'):
-            cls.alias = cls.__name__.lower()
-        cls.module = cls.__module__
+        if not hasattr(cls, 'alias'):
+            cls.alias = [cls.__module__, cls.__name__.lower()]
 
     @abstractmethod
     async def __call__(self, *args, **kwargs) -> Any:
-        """子类必须实现此方法作为消息处理入口"""
         ...
 
+class BaseEvent(BaseCommand):
+    
+    qos: ClassVar[int] = not DEFAULT_QOS
+
+    async def __call__(self, *args, **kwargs) -> Any:
+        self.state.set_result(True)
 
 class BaseService(mode.Service):
     abstract = True
-    domain: str = None
-    alias: str = None
-    path: pathlib.Path
+    alias: ClassVar[List[str]]
 
-    def __init__(self, domain=None, alias=None, *args, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
-        self.domain = domain or self.domain or self.path.name
-        self.alias = alias or self.alias or self.__class__.__name__.lower()
-        self.alias = f'{self.domain}.{self.alias}'
 
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
-        service.alias = f'{self.alias}.{service.alias}'
         super().add_dependency(service)
         return service
 
@@ -114,7 +110,8 @@ class BaseService(mode.Service):
 
     def __init_subclass__(cls, abstract=False, **kwargs):
         super(BaseService, cls).__init_subclass__()
-        cls.path = pathlib.Path(inspect.getmodule(cls).__file__).parent
+        if not hasattr(cls, 'alias'):
+            cls.alias = [pathlib.Path(inspect.getmodule(cls).__file__).parent.name, cls.__name__.lower()]
 
     def __repr__(self) -> str:
         return f"<{self._repr_name()}: {self.state}: {id(self)}>"

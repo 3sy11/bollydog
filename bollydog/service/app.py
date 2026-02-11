@@ -1,40 +1,36 @@
 import asyncio
 from functools import partial
-from typing import Iterable, List, Dict, Awaitable, Tuple, MutableMapping, Any, Coroutine
+from typing import Iterable
 
 import mode
 
-from bollydog.exception import (
-    ServiceRejectException,
-    MessageValidationError,
-    ServiceMaxSizeOfQueueError,
-    HandlerTimeOutError,
-    HandlerMaxRetryError,
-    HandlerNoneError
-)
-from bollydog.globals import _hub_ctx_stack
+from bollydog.exception import ServiceRejectException, HandlerTimeOutError, HandlerMaxRetryError
+from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack, _app_ctx_stack
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
-from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
 from bollydog.service.session import Session
-from bollydog.config import QUEUE_MAX_SIZE, DOMAIN
+from bollydog.service.broker import Broker
+from bollydog.service.config import DOMAIN
 
 
 class Hub(AppService):
-    queue: asyncio.Queue
+    alias = [DOMAIN, 'hub']
     apps: dict
     router: Router
     session: Session
-    futures: MutableMapping[str, Tuple[Message, asyncio.Future]] = {}
+    broker: Broker
 
-
-    def __init__(self, domain=DOMAIN, alias='hub', apps: Iterable[AppService] = None, **kwargs):
-        super().__init__(domain=domain, alias=alias, **kwargs)
-        self.queue = asyncio.Queue()
-        self.router = Router(domain=domain)
-        self.session = Session(domain=domain)
-        self.apps = {self.alias: self, self.router.alias: self.router, self.session.alias: self.session}
+    def __init__(self, apps: Iterable[AppService] = None, **kwargs):
+        super().__init__(**kwargs)
+        self.router = Router()
+        self.session = Session()
+        self.broker = Broker()
+        self.add_dependency(self.router)
+        self.add_dependency(self.session)
+        self.add_dependency(self.broker)
+        _key = lambda s: '.'.join(s.alias)
+        self.apps = {_key(self): self, _key(self.router): self.router, _key(self.session): self.session, _key(self.broker): self.broker}
         for app in apps or []:
             self.add_service(app)
         self.exit_stack.enter_context(_hub_ctx_stack.push(self))
@@ -47,28 +43,30 @@ class Hub(AppService):
         self.logger.info(self.apps)
 
     def add_service(self, service: AppService):
-        assert service.alias not in self.apps
-        self.apps[service.alias] = service
+        key = '.'.join(service.alias)
+        assert key not in self.apps
+        self.apps[key] = service
 
     async def put_message(self, message: Message) -> Message:
         if self.should_stop:
             raise ServiceRejectException()
-        if self.queue.qsize() > QUEUE_MAX_SIZE:
-            raise ServiceMaxSizeOfQueueError(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} Queue is full')
-        await self.queue.put(message)
-        self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias}')
-        return message
+        msg = await self.broker.put(message)
+        self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]}')
+        return msg
+
+    async def dispatch(self, message: Message) -> Message:
+        if message.qos == 0 and self.state == "running":
+            return await self.put_message(message)
+        return await self.execute(message)
 
     @mode.Service.task
     async def run(self):
-        while not self.should_stop or not self.queue.empty():
-            if self.queue.empty():
-                await asyncio.sleep(0.1)
+        while not self.should_stop or self.broker.size > 0:
+            message = await self.broker.take()
+            if not message:
                 continue
-            message: Message = await self.queue.get()
-            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias} {message.model_dump()}')
-            app: AppService = self.apps.get(message.domain)
-            self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias}')
+            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]} {message.model_dump()}')
+            self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]}')
             asyncio.create_task(self._process_message(message))
 
     async def _process_message(self, message: Message):
@@ -79,45 +77,38 @@ class Hub(AppService):
             self.logger.error(f'process message error: {e}')
             self.logger.exception(e)
 
-    def task_done_callback(self, task):
-        message, future = self.futures.pop(task.get_name())
+    def task_done_callback(self, message: Message, task):
         try:
-            if not future.cancelled():
+            if not message.state.cancelled():
                 result = task.result()
-                if not future.done():
-                    future.set_result(result)
-                self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias}')
+                self.broker.ack(message.iid, result)
+                self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]}')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
             if message.delivery_count:
-                self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias} retrying {message.delivery_count}')
-                self.futures[message.iid] = (message, future)
+                self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]} retrying {message.delivery_count}')
             else:
-                self.logger.error(e)
-                self.logger.error('Timeout or MaxRetry')
-                future.set_exception(e)
+                self.logger.error(f'Timeout or MaxRetry: {e}')
+                self.broker.nack(message.iid, e)
         except (AssertionError, StopAsyncIteration, RuntimeError) as e:
             self.logger.error(e)
-            future.set_exception(e)
+            self.broker.nack(message.iid, e)
         except Exception as e:
             self.logger.exception(e)
-            future.set_exception(e)
+            self.broker.nack(message.iid, e)
 
-    def get_coro(self, message: Message) -> List[partial[Coroutine]]:
-        if not isinstance(message, Message):
-            raise HandlerNoneError(f'Message type {type(message).__name__} is not supported')
-        handlers = AppHandler.get_message_handlers(message.__class__)
-        if not handlers:
-            raise HandlerNoneError(f'No handlers found for {type(message).__name__} {message.alias}')
-        return [partial(handler, message=message) for handler in handlers]
+    def _resolve_app(self, message: Message):
+        for a in self.apps.values():
+            if a.alias[0] in message.alias[0] and getattr(a, 'protocol', None):
+                return a
+        return None
 
-    async def _execute(self, message, coro):
-        self.futures[message.iid] = (message, message.state)
+    async def _execute(self, message: Message):
         done = asyncio.Event()
         while not message.state.done() and not message.state.cancelled():
             done.clear()
-            c = asyncio.wait_for(coro(), timeout=message.expire_time)
-            t = asyncio.create_task(c, name=message.iid)
-            t.add_done_callback(self.task_done_callback)
+            c = asyncio.wait_for(message(), timeout=message.expire_time)
+            t = asyncio.create_task(c)
+            t.add_done_callback(partial(self.task_done_callback, message))
             t.add_done_callback(lambda _: done.set())
             await done.wait()
             if message.state.cancelled() or message.state.done():
@@ -125,13 +116,12 @@ class Hub(AppService):
             message.delivery_count -= 1
 
     async def execute(self, message: Message) -> Message:
-        coroutines = self.get_coro(message)
+        app = self._resolve_app(message)
         try:
-            async with asyncio.TaskGroup() as tg:
-                for coro in coroutines:
-                    tg.create_task(self._execute(message, coro))
-            await asyncio.sleep(0)
+            with (_protocol_ctx_stack.push(app.protocol if app else None), _message_ctx_stack.push(message), _app_ctx_stack.push(app)):
+                await self._execute(message)
         except Exception as e:
             self.logger.error(f'{e}')
-            message.state.set_result(str(e))
+            if not message.state.done():
+                message.state.set_result(str(e))
         return message

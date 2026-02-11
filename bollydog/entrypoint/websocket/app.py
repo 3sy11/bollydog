@@ -49,8 +49,8 @@ class SocketService(AppService):
                 message = await websocket.receive_text()
                 self.logger.debug(f"Received message from client: {message}")
                 message = json.loads(message)
-                if message['name'] in hub.app_handler.messages:
-                    message = hub.app_handler.messages[message['name']](**message)
+                if message.get('name') in BaseCommand._registry:
+                    message = BaseCommand._registry[message['name']](**message)
                 else:
                     message = BaseCommand(**message)
                 if message.trace_id in self.listening:
