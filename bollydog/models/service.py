@@ -21,13 +21,11 @@ class AppService(BaseService, abstract=True):
         self.protocol = protocol
 
     @classmethod
-    def create_from(cls, domain, unit_of_work=None, protocol=None, **kwargs):
-        logger.debug(f'create_from {cls.__name__} {domain} {unit_of_work} {protocol}')
-        assert (unit_of_work and protocol) or (not unit_of_work and not protocol)
-        if unit_of_work:
-            unit_of_work = unit_of_work['module'](domain=domain, **unit_of_work)
-            protocol = protocol['module'](unit_of_work=unit_of_work, **protocol)
+    def create_from(cls, domain, protocol=None, **kwargs):
+        logger.debug(f'create_from {cls.__name__} {domain} {protocol}')
+        if protocol:
+            protocol = protocol['module'](domain=domain, **protocol)
         app_service = cls(domain=domain, protocol=protocol, **kwargs)
         if protocol:
-            app_service.add_dependency(unit_of_work)
+            app_service.add_dependency(protocol)
         return app_service

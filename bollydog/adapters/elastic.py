@@ -1,74 +1,50 @@
 import logging
 import uuid
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Union, List
+from typing import Union, List
 
-from bollydog.models.protocol import UnitOfWork, Protocol
+from bollydog.models.protocol import Protocol
 from elasticsearch import AsyncElasticsearch
 
 logger = logging.getLogger(__name__)
 
 
-class ElasticUnitOfWork(UnitOfWork):
+class ElasticProtocol(Protocol):
 
-    def create(self) -> AsyncElasticsearch:
-        return AsyncElasticsearch(hosts=[self.url], api_key=self.api_key)
-
-    def __init__(self,
-                 url: Union[str | List[str]],  # <
-                 api_key: str,
-                 *args, **kwargs):
+    def __init__(self, url: Union[str | List[str]], api_key: str, *args, **kwargs):
         self.api_key = api_key
         self.url = url
         super().__init__(*args, **kwargs)
 
+    def create(self) -> AsyncElasticsearch:
+        return AsyncElasticsearch(hosts=[self.url], api_key=self.api_key)
+
     async def create_index(self, index: str):
         return await self.adapter.indices.create(index=index)
 
-
-class ElasticProtocol(Protocol):
-
     async def add(self, item: dict, index: str):
-        result = await self.adapter.create(
-            index=index,
-            id=uuid.uuid4().hex,
-            body=item,
-        )
+        result = await self.adapter.create(index=index, id=uuid.uuid4().hex, body=item)
         return result.body
 
     async def add_all(self, items: list[dict], index: str):
-        result = []
-        for item in items:
-            result.append(await self.add(item, index))
-        return result
+        return [await self.add(item, index) for item in items]
 
     async def update(self, item: dict, index: str):
-        result = await self.adapter.update(
-            index=index,
-            id=item['iid'],
-            body={
-                "doc": item,
-                "doc_as_upsert": True,
-            },
-        )
+        result = await self.adapter.update(index=index, id=item['iid'], body={"doc": item, "doc_as_upsert": True})
         return result.body
 
     async def update_all(self, items: list[dict], index: str):
-        result = []
-        for item in items:
-            result.append(await self.update(item=item, index=index))
-        return result
+        return [await self.update(item=item, index=index) for item in items]
 
     async def get(self, index: str, **kwargs):
-        result = await self.adapter.search(index=index, **kwargs)  # < scroll
+        result = await self.adapter.search(index=index, **kwargs)
         return result.body
 
     async def delete(self, index: str, item_id):
-        result = await self.adapter.delete(index=index, id=item_id)  # < update sign=0
+        result = await self.adapter.delete(index=index, id=item_id)
         return result.body
 
     async def list(self, index: str, **kwargs):
-        result = await self.adapter.search(index=index, **kwargs)  # < scroll
+        result = await self.adapter.search(index=index, **kwargs)
         return result.body
 
     async def scroll(self, scroll, scroll_id, **kwargs):

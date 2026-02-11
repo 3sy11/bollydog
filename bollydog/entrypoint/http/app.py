@@ -14,7 +14,8 @@ from starlette.responses import JSONResponse, HTMLResponse
 from starlette.datastructures import UploadFile
 
 from bollydog.globals import hub, _session_ctx_stack
-from bollydog.models.base import BaseMessage, get_model_name, Session
+from bollydog.models.base import BaseCommand
+from bollydog.service.session import Session
 from bollydog.service.handler import AppHandler
 from .middleware import base_auth_backend
 from .config import (
@@ -29,7 +30,7 @@ from .config import (
 
 class HttpHandler:
 
-    def __init__(self, message: Type[BaseMessage]):
+    def __init__(self, message: Type[BaseCommand]):
         self.message = message
 
     async def __call__(self, scope, receive, send):
@@ -37,7 +38,7 @@ class HttpHandler:
         with _session_ctx_stack.push(Session(username=scope['user'].display_name)):
             try:
                 if request.method == 'GET':
-                    message: BaseMessage = self.message(**request.query_params, **request.path_params)  # < 入参校验
+                    message: BaseCommand = self.message(**request.query_params, **request.path_params)  # < 入参校验
                 elif request.method == 'POST':
                     content_type = request.headers.get('content-type', '')
                     if 'multipart/form-data' in content_type:
@@ -56,7 +57,7 @@ class HttpHandler:
                         data = _data
                     else:
                         data = await request.json()
-                    message: BaseMessage = self.message(**data, **request.path_params)  # < 入参校验
+                    message: BaseCommand = self.message(**data, **request.path_params)  # < 入参校验
                 else:
                     raise NotImplementedError
                 message = await hub.put_message(message)
@@ -99,7 +100,7 @@ class HttpService(AppService):
 
     async def on_start(self) -> None:
         for message_model,handler in AppHandler.commands.items():
-            entrypoint=f'{handler.app.name}.{handler.fun.__name__}'
+            entrypoint=f'{handler.app.alias}.{handler.fun.__name__}'
             _methods = self.router_mapping.get(entrypoint, ['GET'])
             if isinstance(_methods, str):
                 _methods = [_methods]

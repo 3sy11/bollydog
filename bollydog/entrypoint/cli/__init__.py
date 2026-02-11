@@ -19,9 +19,10 @@ from bollydog.patch import yaml
 from bollydog.bootstrap import Bootstrap
 from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _session_ctx_stack  # # noqa
 from bollydog.models.service import AppService
-from bollydog.models.base import MessageName, BaseMessage, Session
+from bollydog.models.base import BaseCommand
+from bollydog.service.session import Session
 from bollydog.config import BOLLYDOG_HTTP_ENABLED, BOLLYDOG_WS_ENABLED
-from bollydog.service.app import HubService
+from bollydog.service.app import Hub
 from bollydog.service.handler import AppHandler
 from bollydog.entrypoint.http.app import HttpService
 from bollydog.entrypoint.websocket.app import SocketService
@@ -71,19 +72,19 @@ class CLI:
                 apps.pop(app_name)
         if include:
             apps = {k: v for k, v in apps.items() if k in include}
-        hub = HubService(apps=apps.values())
+        hub = Hub(apps=apps.values())
         worker = Bootstrap(hub, override_logging=False)
         raise worker.execute_from_commandline()
 
     @staticmethod
     def execute(
             config: str = None,
-            message: MessageName = None,  # # instance or class name
+            message: str = None,  # # instance or class name
             **kwargs):
         apps = get_apps(config)
-        hub = HubService(apps=apps.values())
+        hub = Hub(apps=apps.values())
         msg = smart_import(message)
-        assert issubclass(msg, BaseMessage)
+        assert issubclass(msg, BaseCommand)
         msg = msg(**kwargs)
         logging.info(
             f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare to execute')
@@ -98,7 +99,7 @@ class CLI:
     @staticmethod
     def shell(config: str = None, ):
         apps = get_apps(config)
-        hub = HubService(apps=apps.values())
+        hub = Hub(apps=apps.values())
         for msg, handlers in AppHandler.commands.items():
             print(f'{msg} -> {handlers}')
         embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True, history_filename='.ptpython.tmp',patch_stdout=True)  # # noqa

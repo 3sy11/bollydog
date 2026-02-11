@@ -13,28 +13,28 @@ from bollydog.exception import (
     HandlerNoneError
 )
 from bollydog.globals import _hub_ctx_stack
-from bollydog.models.base import BaseMessage as Message, MessageId, Command
+from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
 from bollydog.service.handler import AppHandler
 from bollydog.service.router import Router
-from bollydog.config import QUEUE_MAX_SIZE
+from bollydog.service.session import Session
+from bollydog.config import QUEUE_MAX_SIZE, DOMAIN
 
-_DOMAIN='bollydog'
-_NAME='hub'
 
-class HubService(AppService):
+class Hub(AppService):
     queue: asyncio.Queue
     apps: dict
     router: Router
-    futures: MutableMapping[MessageId, Tuple[Message, asyncio.Future]] = {}
-    tasks: Dict[MessageId, Any] = {}
+    session: Session
+    futures: MutableMapping[str, Tuple[Message, asyncio.Future]] = {}
 
-    def __init__(self, domain=_DOMAIN, name=_NAME, apps: Iterable[AppService] = None, **kwargs):
-        super().__init__(domain=domain, name=name, **kwargs)
+
+    def __init__(self, domain=DOMAIN, alias='hub', apps: Iterable[AppService] = None, **kwargs):
+        super().__init__(domain=domain, alias=alias, **kwargs)
         self.queue = asyncio.Queue()
         self.router = Router(domain=domain)
-        self.add_dependency(self.router)
-        self.apps = {self.name: self}
+        self.session = Session(domain=domain)
+        self.apps = {self.alias: self, self.router.alias: self.router, self.session.alias: self.session}
         for app in apps or []:
             self.add_service(app)
         self.exit_stack.enter_context(_hub_ctx_stack.push(self))
@@ -47,9 +47,8 @@ class HubService(AppService):
         self.logger.info(self.apps)
 
     def add_service(self, service: AppService):
-        assert service.name
-        assert service.name not in self.apps
-        self.apps[service.name] = service
+        assert service.alias not in self.apps
+        self.apps[service.alias] = service
 
     async def put_message(self, message: Message) -> Message:
         if self.should_stop:
@@ -57,8 +56,7 @@ class HubService(AppService):
         if self.queue.qsize() > QUEUE_MAX_SIZE:
             raise ServiceMaxSizeOfQueueError(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} Queue is full')
         await self.queue.put(message)
-        self.logger.info(
-            f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name}')
+        self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias}')
         return message
 
     @mode.Service.task
@@ -68,10 +66,9 @@ class HubService(AppService):
                 await asyncio.sleep(0.1)
                 continue
             message: Message = await self.queue.get()
-            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name} {message.model_dump()}')
+            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias} {message.model_dump()}')
             app: AppService = self.apps.get(message.domain)
-            self.logger.info(
-                f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name}')
+            self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias}')
             asyncio.create_task(self._process_message(message))
 
     async def _process_message(self, message: Message):
@@ -89,12 +86,10 @@ class HubService(AppService):
                 result = task.result()
                 if not future.done():
                     future.set_result(result)
-                self.logger.debug(
-                    f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name}')
+                self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias}')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
             if message.delivery_count:
-                self.logger.info(
-                    f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.name} retrying {message.delivery_count}')
+                self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.domain}.{message.alias} retrying {message.delivery_count}')
                 self.futures[message.iid] = (message, future)
             else:
                 self.logger.error(e)
@@ -108,13 +103,11 @@ class HubService(AppService):
             future.set_exception(e)
 
     def get_coro(self, message: Message) -> List[partial[Coroutine]]:
-        if not isinstance(message, Command):
-            raise HandlerNoneError(f'Message type {type(message).__name__} is not supported, only Command is allowed')
-            
+        if not isinstance(message, Message):
+            raise HandlerNoneError(f'Message type {type(message).__name__} is not supported')
         handlers = AppHandler.get_message_handlers(message.__class__)
         if not handlers:
-            raise HandlerNoneError(f'No handlers found for {type(message).__name__} {message.name}')
-            
+            raise HandlerNoneError(f'No handlers found for {type(message).__name__} {message.alias}')
         return [partial(handler, message=message) for handler in handlers]
 
     async def _execute(self, message, coro):

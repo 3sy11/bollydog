@@ -8,13 +8,12 @@ from typing import AsyncGenerator, Type, List
 
 from sqlalchemy import select, insert, delete, update, MetaData, text, inspect, orm, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession, AsyncEngine
-from bollydog.models.protocol import UnitOfWork, Protocol
+from bollydog.models.protocol import Protocol
 from bollydog.models.base import BaseDomain
 from bollydog.utils.base import get_hostname
 
 duckdb = importlib.import_module('duckdb', package=None)
 
-# bollydog.models.base._ModelMixin
 class SQLModelDomain(sqlmodel.SQLModel, BaseDomain):
     __abstract__ = True
     id: int = sqlmodel.Field(primary_key=True)
@@ -23,24 +22,19 @@ class SQLModelDomain(sqlmodel.SQLModel, BaseDomain):
     update_time: float = sqlmodel.Field(default_factory=lambda: int(time.time() * 1000), index=True)
     sign: int = sqlmodel.Field(default=1)
     created_by: str = sqlmodel.Field(default='', max_length=50, index=True)
+    __table_args__ = (UniqueConstraint("iid"),)
 
-    __table_args__ = (
-        UniqueConstraint("iid"),
-    )
 
-class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
+class SqlAlchemyProtocol(Protocol):
     async_session = None
 
-    def __init__(self,
-                 url: str,
-                 metadata: MetaData,
-                 *args, **kwargs):
+    def __init__(self, url: str, metadata: MetaData, *args, **kwargs):
         self.metadata = metadata
         self.url = url
         super().__init__(*args, **kwargs)
 
     def __repr__(self):
-        return f'<SqlAlchemyAsyncUnitOfWork {self.url}>'
+        return f'<SqlAlchemyProtocol {self.url}>'
 
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator[AsyncSession, None]:
@@ -52,45 +46,29 @@ class SqlAlchemyAsyncUnitOfWork(UnitOfWork):
             raise e
 
     def create(self) -> AsyncEngine:
-        self.adapter = create_async_engine(
-            self.url,
-            echo=False,
-            echo_pool=False,
-            hide_parameters=not False,
-            pool_pre_ping=True,
-            pool_recycle=3600,
-        )
+        self.adapter = create_async_engine(self.url, echo=False, echo_pool=False, hide_parameters=not False, pool_pre_ping=True, pool_recycle=3600)
         self.async_session = async_sessionmaker(self.adapter, expire_on_commit=True)
         return self.adapter
 
     async def create_all(self, metadata=None):
         async with self.adapter.begin() as conn:
-            if metadata:
-                await conn.run_sync(metadata.create_all)
-            else:
-                await conn.run_sync(self.metadata.create_all)
-
-
-class SqlAlchemyProtocol(Protocol):
+            await conn.run_sync((metadata or self.metadata).create_all)
 
     async def add(self, item: SQLModelDomain, *args, **kwargs):
         cls = inspect(item).mapper.local_table
-        async with self.unit_of_work.connect() as session:
-            stmt = insert(cls).values(**item.model_dump())
-            stmt = stmt.returning(cls.c.id)
+        async with self.connect() as session:
+            stmt = insert(cls).values(**item.model_dump()).returning(cls.c.id)
             res = await session.execute(stmt)
             await session.commit()
-            res = res.scalars().first()
-            item.id = res
+            item.id = res.scalars().first()
         return item
 
     async def add_all(self, items: List[SQLModelDomain], *args, **kwargs):
         if not items:
             return items
-        table = inspect(items[0]).mapper.local_table  # <
-        async with self.unit_of_work.connect() as session:
-            stmt = insert(table).values([item.model_dump() for item in items])
-            stmt = stmt.returning(table.c.id)
+        table = inspect(items[0]).mapper.local_table
+        async with self.connect() as session:
+            stmt = insert(table).values([item.model_dump() for item in items]).returning(table.c.id)
             res = await session.execute(stmt)
             res = res.fetchall()
             await session.commit()
@@ -102,7 +80,7 @@ class SqlAlchemyProtocol(Protocol):
         stmt = select(cls)
         for column, value in kwargs.items():
             stmt = stmt.where(getattr(cls, column).is_(value))
-        async with self.unit_of_work.connect() as session:
+        async with self.connect() as session:
             result = await session.execute(stmt)
             res = result.scalars().first()
             res = res.model_dump()
@@ -112,16 +90,14 @@ class SqlAlchemyProtocol(Protocol):
         stmt = select(cls)
         for column, value in kwargs.items():
             stmt = stmt.where(getattr(cls, column).is_(value))
-        async with self.unit_of_work.connect() as session:
+        async with self.connect() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
     async def update(self, cls: Type[SQLModelDomain], item_id, *args, **kwargs):
-        stmt = update(cls).where(cls.id == item_id)
         update_time = kwargs.pop('update_time', None) or time.time() * 1000
-        stmt = stmt.values(update_time=update_time, **kwargs)
-        stmt = stmt.returning(cls)
-        async with self.unit_of_work.connect() as session:
+        stmt = update(cls).where(cls.id == item_id).values(update_time=update_time, **kwargs).returning(cls)
+        async with self.connect() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
@@ -130,19 +106,19 @@ class SqlAlchemyProtocol(Protocol):
         for column, value in kwargs.items():
             stmt = stmt.where(getattr(cls, column).is_(value))
         stmt = stmt.returning(cls)
-        async with self.unit_of_work.connect() as session:
+        async with self.connect() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
     async def search(self, *args, **kwargs):
         query = text(kwargs['query'])
-        async with self.unit_of_work.connect() as session:
+        async with self.connect() as session:
             result = await session.execute(query)
         return result.fetchall()
 
 
-# < try to use SqlAlchemyProtocol
-class DuckDBUnitOfWork(UnitOfWork):
+class DuckDBProtocol(Protocol):
+
     def __init__(self, url, metadata: MetaData = None, *args, **kwargs):
         self.url = url or ':default:'
         self.metadata = metadata
@@ -150,14 +126,13 @@ class DuckDBUnitOfWork(UnitOfWork):
         super().__init__(*args, **kwargs)
 
     def __repr__(self):
-        return f'<DuckDBAsyncUnitOfWork {self.url}>'
+        return f'<DuckDBProtocol {self.url}>'
 
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator[duckdb.DuckDBPyConnection, None]:
         try:
             if not self.connection:
                 self.connection = duckdb.connect(self.url)
-            # < load_extension
             yield self.connection
         except BaseException as e:
             self.logger.exception(e)
@@ -167,7 +142,6 @@ class DuckDBUnitOfWork(UnitOfWork):
             self.connection = None
 
     def create(self, url=None):
-        # check connection is closed, because duckdb feature, using self.connection to execute create tables;
         url = url or self.url
         self.connection = duckdb.connect(url)
         self.connection.commit()
@@ -185,6 +159,5 @@ class DuckDBUnitOfWork(UnitOfWork):
             create_stmt = str(CreateTable(table).compile())
             print(create_stmt)
             self.connection.execute(create_stmt)
-            self.connection.execute(f"CREATE OR REPLACE SEQUENCE {table.name}idseq START 1;")  # # add autoincrement id
-            self.connection.execute(
-                f"ALTER TABLE {table.name} ALTER COLUMN id SET DEFAULT NEXTVAL('{table.name}idseq');")
+            self.connection.execute(f"CREATE OR REPLACE SEQUENCE {table.name}idseq START 1;")
+            self.connection.execute(f"ALTER TABLE {table.name} ALTER COLUMN id SET DEFAULT NEXTVAL('{table.name}idseq');")

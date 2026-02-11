@@ -1,9 +1,9 @@
-from bollydog.models.base import Command
+from bollydog.models.base import BaseCommand
 
 DOMAIN = 'example'
 
-class TaskList(Command):
+class TaskList(BaseCommand):
     domain = DOMAIN
 
-class TaskCount(Command):
+class TaskCount(BaseCommand):
     domain = DOMAIN

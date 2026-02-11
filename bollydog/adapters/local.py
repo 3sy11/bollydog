@@ -3,60 +3,46 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from bollydog.models.protocol import UnitOfWork, Protocol
+from bollydog.models.protocol import Protocol
 
 
-class LogUnitOfWork(UnitOfWork):
+class LogProtocol(Protocol):
 
     def create(self):
         return True
 
 
-class LogProtocol(Protocol):
-    ...
-
-
-class FileUnitOfWork(UnitOfWork):
+class FileProtocol(Protocol):
 
     def __init__(self, path: str | pathlib.Path, **kwargs) -> None:
-        if isinstance(path, str):
-            self.path = pathlib.Path(path)
-        else:
-            self.path = path
+        self.path = pathlib.Path(path) if isinstance(path, str) else path
         super().__init__(**kwargs)
 
     def create(self):
         return True
 
     @asynccontextmanager
-    async def connect(self, filename) -> AsyncGenerator:
+    async def connect(self, filename=None) -> AsyncGenerator:
         file = self.path / filename
-        with open(file.as_posix(), 'a+',encoding='utf-8') as f:
+        with open(file.as_posix(), 'a+', encoding='utf-8') as f:
             yield f
 
-
-class FileProtocol(Protocol):
-
     async def write(self, filename, text):
-        async with self.unit_of_work.connect(filename) as f:
+        async with self.connect(filename) as f:
             f.write(text)
         return True
 
     async def read(self, filename):
-        file = self.unit_of_work.path / filename
+        file = self.path / filename
         if not file.exists():
             raise FileNotFoundError(file.as_posix())
-        async with self.unit_of_work.connect(filename) as f:
+        async with self.connect(filename) as f:
             f.seek(0)
             text = f.read()
         return text
 
 
-class NoneUnitOfWork(UnitOfWork):
+class NoneProtocol(Protocol):
 
     def create(self):
         return True
-
-
-class NoneProtocol(Protocol):
-    ...

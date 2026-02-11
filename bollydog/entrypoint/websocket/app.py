@@ -9,12 +9,13 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from bollydog.entrypoint.websocket.config import SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST
 from bollydog.globals import hub
-from bollydog.models.base import BaseMessage, MessageTraceId, Session
+from bollydog.models.base import BaseCommand
+from bollydog.service.session import Session
 
 
 class SocketService(AppService):
     subscribers = set()
-    listening: Dict[MessageTraceId, Set[WebSocket]] = {}
+    listening: Dict[str, Set[WebSocket]] = {}
     sessions: Dict[Session, WebSocket] = {}
 
     async def subscribe(self, websocket: WebSocket):
@@ -31,7 +32,7 @@ class SocketService(AppService):
                 self.listening.pop(_id)
         self.logger.debug(f"A subscriber unsubscribed, total subscribers: {len(self.subscribers)}")
 
-    async def publish(self, message: BaseMessage):
+    async def publish(self, message: BaseCommand):
         subscribers = self.listening.get(message.trace_id, [])
         for subscriber in subscribers:
             try:
@@ -51,7 +52,7 @@ class SocketService(AppService):
                 if message['name'] in hub.app_handler.messages:
                     message = hub.app_handler.messages[message['name']](**message)
                 else:
-                    message = BaseMessage(**message)
+                    message = BaseCommand(**message)
                 if message.trace_id in self.listening:
                     self.listening[message.trace_id].add(websocket)
                 else:

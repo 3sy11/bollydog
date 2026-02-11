@@ -3,122 +3,46 @@ import inspect
 import pathlib
 import time
 import uuid
-from functools import lru_cache
+from abc import abstractmethod
 from typing import Dict, Type, List, Any, ClassVar
 
 import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
-from pydantic_core import PydanticUndefined
-from typing_extensions import Annotated
 
-from bollydog.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, EVENT_EXPIRE_TIME
+from bollydog.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, DEFAULT_SIGN, DELIVERY_COUNT, DEFAULT_QOS
 from bollydog.globals import message, session
-
-_DEFAULT_SIGN = 1
-_DELIVERY_COUNT = 0
-_DEFAULT_QOS = 1
-# ModulePathWithDot = Annotated[str, lambda path: smart_import(path)]
-ModulePathWithDot = Annotated[str, lambda path: '.' in path]
-MessageName = Annotated[str, 'MessageName']
-MessageId = Annotated[str, 'MessageId']
-MessageTraceId = Annotated[str, 'MessageTraceId']
-DomainName = Annotated[str, 'Domain']
-
-
-@lru_cache
-def get_model_name(o) -> str:
-    """
-    Get a standardized name for a model, function, or class.
-    
-    This function provides a consistent naming convention for different types of objects:
-    - For functions: returns 'module.function_name'
-    - For Pydantic models: returns the model's 'name' field if defined, otherwise 'module.class_name'
-    - For other classes: returns 'module.class_name'
-    
-    The function is cached with @lru_cache for performance optimization.
-    
-    Examples:
-        # For a function
-        def my_handler():
-            pass
-        get_model_name(my_handler)  # Returns: 'my_module.my_handler'
-        
-        # For a Pydantic model with explicit name
-        class TaskCount(BaseMessage):
-            name = 'task.count'
-        get_model_name(TaskCount)  # Returns: 'task.count'
-        
-        # For a Pydantic model without explicit name
-        class UserProfile(BaseMessage):
-            pass
-        get_model_name(UserProfile)  # Returns: 'my_module.userprofile'
-        
-        # For a regular class
-        class MyService:
-            pass
-        get_model_name(MyService)  # Returns: 'my_module.myservice'
-    
-    Args:
-        o: The object to get the name for (function, class, or Pydantic model)
-        
-    Returns:
-        str: A standardized name string in the format 'module.name' or custom name for Pydantic models
-    """
-    if inspect.isfunction(o):
-        return f'{o.__module__}.{o.__name__}'
-    if issubclass(o, BaseModel):
-        if 'name' in o.model_fields \
-                and o.model_fields['name'].default \
-                and o.model_fields['name'].default != PydanticUndefined:
-            return o.model_fields['name'].default
-    return f'{o.__module__}.{o.__name__}'
-
-
-def get_class_domain(cls: Type) -> str:
-    return inspect.getfile(cls).split('/')[-2]
 
 
 class _ModelMixin(BaseModel):
     created_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     update_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     iid: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
-    sign: int = Field(default=_DEFAULT_SIGN, description='1:normal, -1:deleted')
+    sign: int = Field(default=DEFAULT_SIGN, description='1:normal, -1:deleted')
     created_by: str = Field(default=None, max_length=50)
 
     def model_post_init(self, __context: Any) -> None:
-        self.created_by = getattr(session,'username',None) or HOSTNAME
-
-
-Domains: Dict[DomainName, Type['BaseDomain']] = {}
+        self.created_by = getattr(session, 'username', None) or HOSTNAME
 
 
 class BaseDomain(_ModelMixin):
+    """BaseDomain is the base class for DDD."""
     model_config = ConfigDict(extra='ignore')
 
-    @classmethod
-    def __pydantic_init_subclass__(cls, **kwargs):
-        super().__pydantic_init_subclass__(**kwargs)
-        Domains[get_model_name(cls)] = cls
 
-
-class BaseMessage(_ModelMixin):
+class BaseCommand(_ModelMixin):
     model_config = ConfigDict(extra='allow')
-    # # system
+    # system
     host: ClassVar[str] = HOSTNAME
     version: ClassVar[str] = REPOSITORY_VERSION
     module: ClassVar[str]
-    domain: ClassVar[DomainName]
-    name: ClassVar[MessageName]
-    expire_time: ClassVar[float] = COMMAND_EXPIRE_TIME
-    # destination: str = Field(default=None)  # <
+    domain: ClassVar[str]
+    alias: ClassVar[str]
 
-    # # state
-    handler: ModulePathWithDot = Field(default=None)
-    delivery_count: ClassVar[int] = _DELIVERY_COUNT
+    # instance
+    expire_time: float = Field(default=COMMAND_EXPIRE_TIME)
+    qos: int = Field(default=DEFAULT_QOS)
+    delivery_count: ClassVar[int] = DELIVERY_COUNT
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
-    qos: ClassVar[int] = _DEFAULT_QOS
-
-    # conditions: Dict = Field(default=None)  # <
 
     @field_serializer('state')
     def serialize_state(self, state: asyncio.Future, _info) -> List:
@@ -130,62 +54,52 @@ class BaseMessage(_ModelMixin):
                 else:
                     _result = state.result()
             else:
-                _result = state._cancel_message  # # noqa
-        return [state._state, _result]  # # noqa
+                _result = state._cancel_message  # noqa
+        return [state._state, _result]  # noqa
 
-    # # trace
+    # trace
     trace_id: str = Field(default_factory=lambda: getattr(message, 'trace_id', uuid.uuid4().hex))
     span_id: str = Field(default='--')
     parent_span_id: str = Field(default=getattr(message, 'span_id', '--'))
 
     # # data
-    data: dict = Field(default_factory=dict)
-
-    # subject: str = Field(default=None)  # <
-    # schema: str = Field(default=None)  # <
-    # schema_version: str = Field(default='0')  # <
+    # data: dict = Field(default_factory=dict)
 
     def model_post_init(self, __context: Any) -> None:
-        # self.state = asyncio.Future()
         super().model_post_init(__context)
         self.span_id = self.span_id if self.span_id != '--' else self.iid
-        self.data['model_fields_set'] = list(self.model_fields_set)  # # `set` type not satisfy database
-        self.data['model_extra'] = self.model_extra
+        # self.data['model_fields_set'] = list(self.model_fields_set)
+        # self.data['model_extra'] = self.model_extra
         if message:
-            # self.state = message.state
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
-        if not abstract and not hasattr(cls,'name'):
-            cls.name = cls.__name__.lower()
+        if not abstract and not hasattr(cls, 'alias'):
+            cls.alias = cls.__name__.lower()
         cls.module = cls.__module__
 
-
-class Command(BaseMessage, abstract=True):
-    pass
-
-
-class Event(BaseMessage, abstract=True):
-    expire_time: ClassVar[float] = EVENT_EXPIRE_TIME
-    qos: ClassVar[int] = not _DEFAULT_QOS
+    @abstractmethod
+    async def __call__(self, *args, **kwargs) -> Any:
+        """子类必须实现此方法作为消息处理入口"""
+        ...
 
 
 class BaseService(mode.Service):
     abstract = True
-    domain: DomainName = None
-    name: str = None
+    domain: str = None
+    alias: str = None
     path: pathlib.Path
 
-    def __init__(self, domain, name=None, *args, **kwargs):
+    def __init__(self, domain=None, alias=None, *args, **kwargs):
         super().__init__()
-        self.domain = domain or self.domain
-        self.name = name or self.name or self.__class__.__name__.lower()
-        self.name = f'{self.domain}.{self.name}'
+        self.domain = domain or self.domain or self.path.name
+        self.alias = alias or self.alias or self.__class__.__name__.lower()
+        self.alias = f'{self.domain}.{self.alias}'
 
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
-        service.name = f'{self.name}.{service.name}'
+        service.alias = f'{self.alias}.{service.alias}'
         super().add_dependency(service)
         return service
 
@@ -207,9 +121,3 @@ class BaseService(mode.Service):
 
     def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
         self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)  # < 3
-
-
-class Session(BaseModel):
-    uid: str = Field(default_factory=lambda: uuid.uuid4().hex)
-    username: str = Field(default=HOSTNAME)
-    collection: dict = Field(default_factory=dict)
