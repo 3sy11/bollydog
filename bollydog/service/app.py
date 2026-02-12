@@ -15,7 +15,7 @@ from bollydog.service.config import DOMAIN
 
 
 class Hub(AppService):
-    alias = [DOMAIN, 'hub']
+    domain = DOMAIN
     apps: dict
     router: Router
     session: Session
@@ -29,8 +29,8 @@ class Hub(AppService):
         self.add_dependency(self.router)
         self.add_dependency(self.session)
         self.add_dependency(self.broker)
-        _key = lambda s: '.'.join(s.alias)
-        self.apps = {_key(self): self, _key(self.router): self.router, _key(self.session): self.session, _key(self.broker): self.broker}
+        _id = lambda s: f'{s.domain}.{s.alias}'
+        self.apps = {_id(self): self, _id(self.router): self.router, _id(self.session): self.session, _id(self.broker): self.broker}
         for app in apps or []:
             self.add_service(app)
         self.exit_stack.enter_context(_hub_ctx_stack.push(self))
@@ -43,7 +43,7 @@ class Hub(AppService):
         self.logger.info(self.apps)
 
     def add_service(self, service: AppService):
-        key = '.'.join(service.alias)
+        key = f'{service.domain}.{service.alias}'
         assert key not in self.apps
         self.apps[key] = service
 
@@ -51,7 +51,7 @@ class Hub(AppService):
         if self.should_stop:
             raise ServiceRejectException()
         msg = await self.broker.put(message)
-        self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]}')
+        self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
         return msg
 
     async def dispatch(self, message: Message) -> Message:
@@ -65,8 +65,8 @@ class Hub(AppService):
             message = await self.broker.take()
             if not message:
                 continue
-            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]} {message.model_dump()}')
-            self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]}')
+            self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias} {message.model_dump()}')
+            self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
             asyncio.create_task(self._process_message(message))
 
     async def _process_message(self, message: Message):
@@ -82,10 +82,10 @@ class Hub(AppService):
             if not message.state.cancelled():
                 result = task.result()
                 self.broker.ack(message.iid, result)
-                self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]}')
+                self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
             if message.delivery_count:
-                self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias[0]}.{message.alias[1]} retrying {message.delivery_count}')
+                self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias} retrying {message.delivery_count}')
             else:
                 self.logger.error(f'Timeout or MaxRetry: {e}')
                 self.broker.nack(message.iid, e)
@@ -97,10 +97,9 @@ class Hub(AppService):
             self.broker.nack(message.iid, e)
 
     def _resolve_app(self, message: Message):
-        for a in self.apps.values():
-            if a.alias[0] in message.alias[0] and getattr(a, 'protocol', None):
-                return a
-        return None
+        if not message.destination:
+            return None
+        return self.apps.get(message.destination)
 
     async def _execute(self, message: Message):
         done = asyncio.Event()

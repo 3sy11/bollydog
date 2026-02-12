@@ -6,7 +6,7 @@ from bollydog.service.config import DOMAIN
 
 
 class Router(AppService):
-    alias = [DOMAIN]
+    domain = DOMAIN
     callbacks: Dict[str, Set[Callable]] = {'*': set()}
 
     def __init__(self, **kwargs):
@@ -32,9 +32,8 @@ class Router(AppService):
             self.logger.warning(f'{callback} not in {name}')
 
     async def publish(self, message: Message):
-        key = f'{message.alias[0]}.{message.alias[1]}'
-        if key in self.callbacks:
-            for callback in self.callbacks[key]:
+        if message.alias in self.callbacks:
+            for callback in self.callbacks[message.alias]:
                 await callback(message)
         for callback in self.callbacks['*']:
             await callback(message)

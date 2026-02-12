@@ -14,7 +14,7 @@ PENDING, IN_FLIGHT, DONE, FAILED = 1, 2, 0, 3
 
 
 class Broker(AppService):
-    alias = [DOMAIN]
+    domain = DOMAIN
     _store: OrderedDict[str, Tuple[Message, asyncio.Future, int]]
     _history: deque
     _notify: asyncio.Event

@@ -4,7 +4,7 @@ import pathlib
 import time
 import uuid
 from abc import abstractmethod
-from typing import Dict, Type, List, Any, ClassVar
+from typing import List, Any, ClassVar
 
 import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
@@ -33,8 +33,9 @@ class BaseCommand(_ModelMixin):
     model_config = ConfigDict(extra='allow')
     host: ClassVar[str] = HOSTNAME
     version: ClassVar[str] = REPOSITORY_VERSION
-    alias: ClassVar[List[str]]  # [module, name]
-    destination: List[str] = Field(default_factory=list)
+    module: ClassVar[str]
+    alias: ClassVar[str]
+    destination: ClassVar[str] = None
 
     # instance
     expire_time: float = Field(default=COMMAND_EXPIRE_TIME)
@@ -74,8 +75,10 @@ class BaseCommand(_ModelMixin):
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
-        if not hasattr(cls, 'alias'):
-            cls.alias = [cls.__module__, cls.__name__.lower()]
+        if 'module' not in cls.__dict__:
+            cls.module = cls.__module__
+        if 'alias' not in cls.__dict__:
+            cls.alias = cls.__name__.lower()
 
     @abstractmethod
     async def __call__(self, *args, **kwargs) -> Any:
@@ -90,7 +93,8 @@ class BaseEvent(BaseCommand):
 
 class BaseService(mode.Service):
     abstract = True
-    alias: ClassVar[List[str]]
+    domain: ClassVar[str]
+    alias: ClassVar[str]
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -110,8 +114,10 @@ class BaseService(mode.Service):
 
     def __init_subclass__(cls, abstract=False, **kwargs):
         super(BaseService, cls).__init_subclass__()
-        if not hasattr(cls, 'alias'):
-            cls.alias = [pathlib.Path(inspect.getmodule(cls).__file__).parent.name, cls.__name__.lower()]
+        if 'domain' not in cls.__dict__:
+            cls.domain = pathlib.Path(inspect.getmodule(cls).__file__).parent.name
+        if 'alias' not in cls.__dict__:
+            cls.alias = cls.__name__.lower()
 
     def __repr__(self) -> str:
         return f"<{self._repr_name()}: {self.state}: {id(self)}>"
