@@ -1,5 +1,4 @@
 import asyncio
-from functools import partial
 from typing import Iterable
 
 import mode
@@ -78,50 +77,30 @@ class Hub(AppService):
             self.logger.error(f'process message error: {e}')
             self.logger.exception(e)
 
-    def task_done_callback(self, message: Message, task):
-        try:
-            if not message.state.cancelled():
-                result = task.result()
-                if not message.state.done():
-                    message.state.set_result(result)
-                self.broker.ack(message.iid, result)
-                self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
-        except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
-            if message.delivery_count:
-                self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias} retrying {message.delivery_count}')
-            else:
-                self.logger.error(f'Timeout or MaxRetry: {e}')
-                if not message.state.done():
-                    message.state.set_result(str(e))
-                self.broker.nack(message.iid, e)
-        except (AssertionError, StopAsyncIteration, RuntimeError) as e:
-            self.logger.error(e)
-            if not message.state.done():
-                message.state.set_result(str(e))
-            self.broker.nack(message.iid, e)
-        except Exception as e:
-            self.logger.exception(e)
-            if not message.state.done():
-                message.state.set_result(str(e))
-            self.broker.nack(message.iid, e)
-
     def _resolve_app(self, message: Message):
         if not message.destination:
             return None
         return self.apps.get(message.destination)
 
     async def _execute(self, message: Message):
-        done = asyncio.Event()
         while not message.state.done() and not message.state.cancelled():
-            done.clear()
-            c = asyncio.wait_for(message(), timeout=message.expire_time)
-            t = asyncio.create_task(c)
-            t.add_done_callback(partial(self.task_done_callback, message))
-            t.add_done_callback(lambda _: done.set())
-            await done.wait()
-            if message.state.cancelled() or message.state.done():
-                break
-            message.delivery_count -= 1
+            try:
+                result = await asyncio.wait_for(message(), timeout=message.expire_time)
+                message.state.set_result(result)
+                self.broker.ack(message.iid, result)
+                self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
+            except (TimeoutError, HandlerTimeOutError, HandlerMaxRetryError) as e:
+                if message.delivery_count:
+                    self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias} retrying {message.delivery_count}')
+                    message.delivery_count -= 1
+                    continue
+                self.logger.error(f'Timeout or MaxRetry: {e}')
+                message.state.set_result(str(e))
+                self.broker.nack(message.iid, e)
+            except Exception as e:
+                self.logger.exception(e)
+                message.state.set_result(str(e))
+                self.broker.nack(message.iid, e)
 
     async def execute(self, message: Message) -> Message:
         app = self._resolve_app(message)
