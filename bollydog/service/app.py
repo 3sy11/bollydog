@@ -5,13 +5,14 @@ from typing import Iterable
 import mode
 
 from bollydog.exception import ServiceRejectException, HandlerTimeOutError, HandlerMaxRetryError
-from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack, _app_ctx_stack
+from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack, _app_ctx_stack, _session_ctx_stack
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
 from bollydog.service.router import Router
 from bollydog.service.session import Session
 from bollydog.service.broker import Broker
 from bollydog.service.config import DOMAIN
+import bollydog.service.commands  # noqa
 
 
 class Hub(AppService):
@@ -81,6 +82,8 @@ class Hub(AppService):
         try:
             if not message.state.cancelled():
                 result = task.result()
+                if not message.state.done():
+                    message.state.set_result(result)
                 self.broker.ack(message.iid, result)
                 self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
         except (HandlerTimeOutError, HandlerMaxRetryError, TimeoutError) as e:
@@ -88,12 +91,18 @@ class Hub(AppService):
                 self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias} retrying {message.delivery_count}')
             else:
                 self.logger.error(f'Timeout or MaxRetry: {e}')
+                if not message.state.done():
+                    message.state.set_result(str(e))
                 self.broker.nack(message.iid, e)
         except (AssertionError, StopAsyncIteration, RuntimeError) as e:
             self.logger.error(e)
+            if not message.state.done():
+                message.state.set_result(str(e))
             self.broker.nack(message.iid, e)
         except Exception as e:
             self.logger.exception(e)
+            if not message.state.done():
+                message.state.set_result(str(e))
             self.broker.nack(message.iid, e)
 
     def _resolve_app(self, message: Message):
@@ -116,11 +125,14 @@ class Hub(AppService):
 
     async def execute(self, message: Message) -> Message:
         app = self._resolve_app(message)
+        ctx = await self.session.acquire(message)
         try:
-            with (_protocol_ctx_stack.push(app.protocol if app else None), _message_ctx_stack.push(message), _app_ctx_stack.push(app)):
+            with (_protocol_ctx_stack.push(app.protocol if app else None), _message_ctx_stack.push(message), _app_ctx_stack.push(app), _session_ctx_stack.push(ctx)):
                 await self._execute(message)
         except Exception as e:
             self.logger.error(f'{e}')
             if not message.state.done():
                 message.state.set_result(str(e))
+        finally:
+            await self.session.release(message)
         return message

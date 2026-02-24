@@ -46,3 +46,18 @@ class NoneProtocol(Protocol):
 
     def create(self):
         return True
+
+
+class MemoryProtocol(Protocol):
+
+    def create(self):
+        return {}
+
+    async def get(self, key: str):
+        return self.adapter.get(key)
+
+    async def set(self, key: str, value, ttl: int = None):
+        self.adapter[key] = value
+
+    async def remove(self, key: str):
+        self.adapter.pop(key, None)

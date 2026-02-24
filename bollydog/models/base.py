@@ -1,12 +1,9 @@
 import asyncio
-import inspect
-import pathlib
 import time
 import uuid
 from abc import abstractmethod
-from typing import List, Any, ClassVar
+from typing import Dict, List, Type, Any, ClassVar
 
-import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 
 from bollydog.service.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, DEFAULT_SIGN, DELIVERY_COUNT, DEFAULT_QOS
@@ -31,6 +28,7 @@ class BaseDomain(_ModelMixin):
 
 class BaseCommand(_ModelMixin):
     model_config = ConfigDict(extra='allow')
+    _registry: ClassVar[Dict[str, Type['BaseCommand']]] = {}
     host: ClassVar[str] = HOSTNAME
     version: ClassVar[str] = REPOSITORY_VERSION
     module: ClassVar[str]
@@ -40,7 +38,7 @@ class BaseCommand(_ModelMixin):
     # instance
     expire_time: float = Field(default=COMMAND_EXPIRE_TIME)
     qos: int = Field(default=DEFAULT_QOS)
-    delivery_count: ClassVar[int] = DELIVERY_COUNT
+    delivery_count: int = Field(default=DELIVERY_COUNT)
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
 
     @field_serializer('state')
@@ -79,48 +77,27 @@ class BaseCommand(_ModelMixin):
             cls.module = cls.__module__
         if 'alias' not in cls.__dict__:
             cls.alias = cls.__name__.lower()
+        if not abstract and '__call__' in cls.__dict__:
+            cls._registry[f'{cls.module}.{cls.alias}'] = cls
+
+    @classmethod
+    def resolve(cls, name: str) -> Type['BaseCommand']:
+        if name in cls._registry:
+            return cls._registry[name]
+        matches = {k: v for k, v in cls._registry.items() if k.endswith(f'.{name}')}
+        if len(matches) == 1:
+            return next(iter(matches.values()))
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous alias '{name}', candidates: {list(matches.keys())}")
+        raise KeyError(f"Command '{name}' not found")
 
     @abstractmethod
     async def __call__(self, *args, **kwargs) -> Any:
         ...
 
-class BaseEvent(BaseCommand):
+class BaseEvent(BaseCommand, abstract=True):
     
     qos: ClassVar[int] = not DEFAULT_QOS
 
     async def __call__(self, *args, **kwargs) -> Any:
         self.state.set_result(True)
-
-class BaseService(mode.Service):
-    abstract = True
-    domain: ClassVar[str]
-    alias: ClassVar[str]
-
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def add_dependency(self, service: 'BaseService') -> 'BaseService':
-        super().add_dependency(service)
-        return service
-
-    async def on_first_start(self) -> None:
-        supervisor = mode.OneForOneSupervisor()
-        supervisor.add(self)
-        await supervisor.start()
-
-    async def crash(self, reason: BaseException) -> None:
-        self.logger.error(reason)
-        await super(BaseService, self).crash(reason)
-
-    def __init_subclass__(cls, abstract=False, **kwargs):
-        super(BaseService, cls).__init_subclass__()
-        if 'domain' not in cls.__dict__:
-            cls.domain = pathlib.Path(inspect.getmodule(cls).__file__).parent.name
-        if 'alias' not in cls.__dict__:
-            cls.alias = cls.__name__.lower()
-
-    def __repr__(self) -> str:
-        return f"<{self._repr_name()}: {self.state}: {id(self)}>"
-
-    def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)  # < 3

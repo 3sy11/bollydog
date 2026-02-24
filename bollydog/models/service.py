@@ -1,8 +1,46 @@
+import inspect
 import logging
+import pathlib
+from typing import Any, ClassVar
 
-from bollydog.models.base import BaseService
+import mode
 
 logger = logging.getLogger(__name__)
+
+
+class BaseService(mode.Service):
+    abstract = True
+    domain: ClassVar[str]
+    alias: ClassVar[str]
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def add_dependency(self, service: 'BaseService') -> 'BaseService':
+        super().add_dependency(service)
+        return service
+
+    async def on_first_start(self) -> None:
+        supervisor = mode.OneForOneSupervisor()
+        supervisor.add(self)
+        await supervisor.start()
+
+    async def crash(self, reason: BaseException) -> None:
+        self.logger.error(reason)
+        await super(BaseService, self).crash(reason)
+
+    def __init_subclass__(cls, abstract=False, **kwargs):
+        super(BaseService, cls).__init_subclass__()
+        if 'domain' not in cls.__dict__:
+            cls.domain = pathlib.Path(inspect.getmodule(cls).__file__).parent.name
+        if 'alias' not in cls.__dict__:
+            cls.alias = cls.__name__.lower()
+
+    def __repr__(self) -> str:
+        return f"<{self._repr_name()}: {self.state}: {id(self)}>"
+
+    def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)  # < 3
 
 
 class AppService(BaseService, abstract=True):

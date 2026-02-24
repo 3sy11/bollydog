@@ -2,7 +2,7 @@ import abc
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Any
 
-from bollydog.models.base import BaseService
+from bollydog.models.service import BaseService
 
 
 class Protocol(BaseService, abstract=True):
@@ -12,7 +12,7 @@ class Protocol(BaseService, abstract=True):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.adapter = self.create()
-        assert self.adapter
+        assert self.adapter is not None
 
     @abc.abstractmethod
     def create(self) -> Any:
