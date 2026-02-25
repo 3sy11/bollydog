@@ -6,10 +6,10 @@ bollydog.com
 
 setup(
     name="bollydog",
-    version="0.1.3",
+    version="0.1.5",
     author="3sy11",
-    author_email="",
-    description="bollydog framework",
+    author_email="sorcerer0001@hotmail.com",
+    description="bollydog framework - Async microservice framework with command-as-executable architecture",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/3sy11/bollydog",
@@ -21,21 +21,22 @@ setup(
     ],
     python_requires='>=3.11',
     install_requires=[
-        # "loguru==0.6.0",
-        "uvicorn==0.21.1",
-        "authlib==1.3.1",
         "starlette==0.36.3",
-        # "starlette-authentication",
+        "uvicorn==0.21.1",
+        "httptools==0.7.1",
+        "starlette-authentication",
+        "authlib==1.3.1",
         "itsdangerous==2.1.2",
+        "sqlmodel",
+        "databases==0.9.0",
         "mode-streaming==0.4.1",
-        "fire==0.5.0",
-        "pyyaml==6.0.1",
         "websockets==12.0",
         "aiohttp",
+        "fire==0.5.0",
+        "pyyaml==6.0.1",
         "environs",
+        "structlog",
         "ptpython",
-        "sqlmodel",
-        "structlog"
     ],
     extras_require={
         "dev": [
@@ -52,10 +53,11 @@ setup(
             "iredis",
             "httpx",
         ],
-        "optional":[
+        "data":[
             "duckdb",
-            "notion_client",
             "elasticsearch==8.14.0",
+            "redis",
+            "aioredis",
         ]
     },
 
