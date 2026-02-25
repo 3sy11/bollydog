@@ -11,7 +11,6 @@ from bollydog.service.router import Router
 from bollydog.service.session import Session
 from bollydog.service.broker import Broker
 from bollydog.service.config import DOMAIN
-import bollydog.service.commands  # noqa
 
 
 class Hub(AppService):

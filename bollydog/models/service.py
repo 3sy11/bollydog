@@ -1,9 +1,10 @@
 import inspect
 import logging
 import pathlib
-from typing import Any, ClassVar
+from typing import Any, ClassVar, List
 
 import mode
+from mode.utils.imports import smart_import
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class BaseService(mode.Service):
 
 class AppService(BaseService, abstract=True):
     router_mapping: ClassVar[dict] = {}
+    autodiscover: ClassVar[List[str]] = ['commands']
 
     async def on_first_start(self) -> None:
         await super(AppService, self).on_first_start()
@@ -61,7 +63,19 @@ class AppService(BaseService, abstract=True):
         self.router_mapping = router_mapping if router_mapping is not None else self.__class__.router_mapping
 
     @classmethod
-    def create_from(cls, protocol=None, router_mapping=None, **kwargs):
+    def _autodiscover(cls, modules: List[str]):
+        pkg = cls.__module__.rsplit('.', 1)[0]
+        for name in modules:
+            fqn = f'{pkg}.{name}' if '.' not in name else name
+            try:
+                smart_import(fqn)
+                logger.debug(f'autodiscover: loaded {fqn}')
+            except (ImportError, ModuleNotFoundError):
+                logger.debug(f'autodiscover: {fqn} not found, skipping')
+
+    @classmethod
+    def create_from(cls, protocol=None, router_mapping=None, autodiscover=None, **kwargs):
+        cls._autodiscover(autodiscover if autodiscover is not None else cls.autodiscover)
         logger.debug(f'create_from {cls.__name__} {protocol}')
         if protocol:
             protocol = protocol['module'](**protocol)

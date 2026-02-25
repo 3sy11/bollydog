@@ -66,6 +66,7 @@ class CLI:
 
     @staticmethod
     def ls(config: str = None):
+        get_apps(config)
         _base_fields = set(BaseCommand.model_fields.keys())
         alias_count: Dict[str, list] = {}
         for fqn, cmd_cls in BaseCommand._registry.items():

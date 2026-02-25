@@ -1,5 +1,4 @@
 from bollydog.models.service import AppService
-import example.commands  # noqa: trigger command registration
 
 
 class ExampleService(AppService):
