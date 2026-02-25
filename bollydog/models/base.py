@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import time
 import uuid
 from abc import abstractmethod
@@ -10,6 +11,49 @@ from bollydog.service.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VE
 from bollydog.globals import message, session
 
 
+class StreamState(asyncio.Queue):
+    def __init__(self):
+        super().__init__()
+        self._results, self._done_event, self._exception = [], asyncio.Event(), None
+
+    async def put(self, value):
+        if value is None: self._done_event.set()
+        else: self._results.append(value)
+        await super().put(value)
+
+    def set_result(self, result):
+        self._results = [result] if not self._results else self._results
+        self._done_event.set()
+
+    def set_exception(self, exc):
+        self._exception = exc
+        self._done_event.set()
+        self.put_nowait(None)
+
+    def done(self): return self._done_event.is_set()
+    def cancelled(self): return False
+    def exception(self): return self._exception
+    def result(self):
+        if self._exception: raise self._exception
+        return self._results[0] if len(self._results) == 1 else self._results
+
+    @property
+    def _state(self): return 'FINISHED' if self.done() else 'PENDING'
+
+    def __await__(self):
+        async def _wait():
+            await self._done_event.wait()
+            if self._exception: raise self._exception
+            return self.result()
+        return _wait().__await__()
+
+    async def __aiter__(self):
+        while True:
+            value = await self.get()
+            if value is None: break
+            yield value
+
+
 class _ModelMixin(BaseModel):
     created_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     update_time: float = Field(default_factory=lambda: int(time.time() * 1000))
@@ -18,7 +62,8 @@ class _ModelMixin(BaseModel):
     created_by: str = Field(default=None, max_length=50)
 
     def model_post_init(self, __context: Any) -> None:
-        self.created_by = getattr(session, 'username', None) or HOSTNAME
+        if self.created_by is None:
+            self.created_by = getattr(session, 'username', None) or HOSTNAME
 
 
 class BaseDomain(_ModelMixin):
@@ -62,14 +107,18 @@ class BaseCommand(_ModelMixin):
     # # data
     # data: dict = Field(default_factory=dict)
 
+    @property
+    def is_async_gen(self) -> bool:
+        return inspect.isasyncgenfunction(type(self).__call__)
+
     def model_post_init(self, __context: Any) -> None:
         super().model_post_init(__context)
         self.span_id = self.span_id if self.span_id != '--' else self.iid
-        # self.data['model_fields_set'] = list(self.model_fields_set)
-        # self.data['model_extra'] = self.model_extra
         if message:
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
+        if self.is_async_gen:
+            self.state = StreamState()
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)

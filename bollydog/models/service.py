@@ -44,6 +44,7 @@ class BaseService(mode.Service):
 
 
 class AppService(BaseService, abstract=True):
+    router_mapping: ClassVar[dict] = {}
 
     async def on_first_start(self) -> None:
         await super(AppService, self).on_first_start()
@@ -54,16 +55,17 @@ class AppService(BaseService, abstract=True):
     async def on_started(self) -> None:
         await super(AppService, self).on_started()
 
-    def __init__(self, protocol=None, **kwargs):
+    def __init__(self, protocol=None, router_mapping=None, **kwargs):
         super().__init__(**kwargs)
         self.protocol = protocol
+        self.router_mapping = router_mapping if router_mapping is not None else self.__class__.router_mapping
 
     @classmethod
-    def create_from(cls, protocol=None, **kwargs):
+    def create_from(cls, protocol=None, router_mapping=None, **kwargs):
         logger.debug(f'create_from {cls.__name__} {protocol}')
         if protocol:
             protocol = protocol['module'](**protocol)
-        app_service = cls(protocol=protocol, **kwargs)
+        app_service = cls(protocol=protocol, router_mapping=router_mapping, **kwargs)
         if protocol:
             app_service.add_dependency(protocol)
         return app_service

@@ -4,7 +4,7 @@ import logging
 import os
 import pathlib
 import sys
-from typing import Dict, Coroutine
+from typing import Dict
 import environs
 import fire
 from mode.utils.imports import smart_import
@@ -56,14 +56,11 @@ def get_apps(config: str = None) -> Dict[str, AppService]:
 class CLI:
 
     @staticmethod
-    def service(config: str = None, exclude: list = None, include: list = None):
-        apps = get_apps(config)
-        if exclude:
-            for app_name in exclude:
-                apps.pop(app_name)
-        if include:
-            apps = {k: v for k, v in apps.items() if k in include}
-        hub = Hub(apps=apps.values())
+    def service(config: str = None, apps: list = None):
+        _apps = get_apps(config)
+        if apps:
+            _apps = {k: v for k, v in _apps.items() if k in apps}
+        hub = Hub(apps=_apps.values())
         worker = Bootstrap(hub, override_logging=False)
         raise worker.execute_from_commandline()
 
@@ -113,8 +110,13 @@ class CLI:
         hub = Hub(apps=apps.values())
         for key, cmd_cls in BaseCommand._registry.items():
             print(f'{key} -> {cmd_cls}')
-        embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True, history_filename='.ptpython.tmp', patch_stdout=True)  # noqa
-        asyncio.run(embed_result)
+        ns = {**globals(), 'apps': apps, 'hub': hub, 'BaseCommand': BaseCommand}
+
+        async def _run():
+            async with hub:
+                await embed(ns, ns, return_asyncio_coroutine=True, history_filename='.ptpython.tmp', patch_stdout=True)
+
+        asyncio.run(_run())
 
 
 def main():

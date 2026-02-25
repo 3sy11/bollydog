@@ -1,26 +1,26 @@
+import asyncio
+import json
 from typing import Type
 import logging
 import mode
 import uvicorn
 from bollydog.models.service import AppService
-# from bollydog.patch.logging import redirect_stdouts
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, HTMLResponse
+from starlette.responses import JSONResponse, HTMLResponse, StreamingResponse
 from starlette.datastructures import UploadFile
 
-from bollydog.globals import hub, _session_ctx_stack
+from bollydog.globals import hub
 from bollydog.models.base import BaseCommand
-from bollydog.service.session import Session
 from .middleware import base_auth_backend
 from .config import (
     SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST,
     SERVICE_PRIVATE_KEY_PATH, SERVICE_PUBLIC_KEY_PATH,
-    SERVICE_WORKERS, SERVICE_LOOP, SERVICE_HTTP,
+    SERVICE_LOOP, SERVICE_HTTP,
     SERVICE_LIMIT_CONCURRENCY, SERVICE_LIMIT_MAX_REQUESTS,
     SERVICE_TIMEOUT_KEEP_ALIVE, SERVICE_BACKLOG,
     MIDDLEWARE_SESSION_ENABLED, MIDDLEWARE_AUTH_ENABLED, MIDDLEWARE_CORS_ENABLED,
@@ -34,53 +34,73 @@ class HttpHandler:
 
     async def __call__(self, scope, receive, send):
         request = Request(scope, receive=receive, send=send)
-        with _session_ctx_stack.push(Session(username=scope['user'].display_name)):
-            try:
-                if request.method == 'GET':
-                    message: BaseCommand = self.message(**request.query_params, **request.path_params)  # < 入参校验
-                elif request.method == 'POST':
-                    content_type = request.headers.get('content-type', '')
-                    if 'multipart/form-data' in content_type:
-                        _data = dict()
-                        data = await request.form()
-                        for k,v in data.items():
-                            if isinstance(v, UploadFile):
-                                file = await v.read()
-                                v={
-                                    'file':file,
-                                    'filename':v.filename,
-                                    'content_type':v.content_type,
-                                    'size':v.size
-                                }
-                            _data[k] = v
-                        data = _data
-                    else:
-                        data = await request.json()
-                    message: BaseCommand = self.message(**data, **request.path_params)  # < 入参校验
+        username = getattr(scope.get('user'), 'display_name', None)
+        try:
+            if request.method == 'GET':
+                message: BaseCommand = self.message(**request.query_params, **request.path_params, created_by=username)
+            elif request.method == 'POST':
+                content_type = request.headers.get('content-type', '')
+                if 'multipart/form-data' in content_type:
+                    _data = dict()
+                    data = await request.form()
+                    for k, v in data.items():
+                        if isinstance(v, UploadFile):
+                            file = await v.read()
+                            v = {'file': file, 'filename': v.filename, 'content_type': v.content_type, 'size': v.size}
+                        _data[k] = v
+                    data = _data
                 else:
-                    raise NotImplementedError
-                message = await hub.put_message(message)
-                result = await message.state  # ? 对future.result的异常做处理
-            except Exception as e:
-                result = {'error': str(e)}
-                logging.error(e)
-            if isinstance(result, str):
-                response = HTMLResponse(result)
+                    data = await request.json()
+                message: BaseCommand = self.message(**data, **request.path_params, created_by=username)
             else:
-                response = JSONResponse(result)
-            await response(scope, receive, send)
+                raise NotImplementedError
+            message = await hub.dispatch(message)
+            result = await message.state
+        except Exception as e:
+            result = {'error': str(e)}
+            logging.error(e)
+        if isinstance(result, str):
+            response = HTMLResponse(result)
+        else:
+            response = JSONResponse(result)
+        await response(scope, receive, send)
+
+
+class SseHandler:
+
+    def __init__(self, message: Type[BaseCommand]):
+        self.message = message
+
+    async def __call__(self, scope, receive, send):
+        request = Request(scope, receive=receive, send=send)
+        username = getattr(scope.get('user'), 'display_name', None)
+        if request.method == 'GET':
+            message = self.message(**request.query_params, **request.path_params, created_by=username)
+        else:
+            data = await request.json()
+            message = self.message(**data, **request.path_params, created_by=username)
+
+        async def event_stream():
+            task = asyncio.create_task(hub.execute(message))
+            try:
+                async for value in message.state:
+                    yield f"data: {json.dumps(value, ensure_ascii=False)}\n\n"
+            finally:
+                if not task.done(): task.cancel()
+
+        response = StreamingResponse(event_stream(), media_type='text/event-stream',
+                                     headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'})
+        await response(scope, receive, send)
 
 
 class HttpService(AppService):
-    # TODO: router_mapping 目前为固定默认值，后续需支持更灵活的配置方式
-    DEFAULT_ROUTER_MAPPING = {'answers.api.{item}.{command}': ['POST', 'GET']}
 
     def __init__(self, web_app=None, router_mapping=None, **kwargs):
         super().__init__(**kwargs)
         self.app = self
         self.http_app = web_app or Starlette()
         self.uvicorn = None
-        self.router_mapping = router_mapping if router_mapping is not None else self.DEFAULT_ROUTER_MAPPING
+        self.router_mapping = router_mapping or {}
         self.middlewares = self._build_middlewares()
 
     @staticmethod
@@ -98,11 +118,28 @@ class HttpService(AppService):
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     async def on_start(self) -> None:
+        merged = {}
+        for app in hub.apps.values():
+            if hasattr(app, 'router_mapping') and app.router_mapping:
+                merged.update(app.router_mapping)
+        merged.update(self.router_mapping)
         for key, command_cls in BaseCommand._registry.items():
-            _methods = self.router_mapping.get(key, ['GET'])
-            if isinstance(_methods, str):
-                _methods = [_methods]
-            self.http_app.router.add_route(f'/' + key.replace('.', '/'), HttpHandler(command_cls), methods=_methods, name=None, include_in_schema=True)
+            alias = command_cls.alias
+            route = merged.get(command_cls.__name__, merged.get(alias, merged.get(key)))
+            if route is None:
+                continue
+            methods = route[0] if len(route) > 0 else 'GET'
+            methods = [methods] if isinstance(methods, str) else methods
+            path = route[1] if len(route) > 1 else None
+            if not path:
+                domain = command_cls.destination.split('.')[0] if command_cls.destination else None
+                path = f'/api/{domain}/{alias}' if domain else f'/api/{alias}'
+            if 'SSE' in methods:
+                methods = ['GET']
+                handler = SseHandler(command_cls)
+            else:
+                handler = HttpHandler(command_cls)
+            self.http_app.router.add_route(path, handler, methods=methods, name=alias, include_in_schema=True)
         for r in self.http_app.routes:
             self.logger.info(r)
         self.http_app.user_middleware = self.middlewares
@@ -122,7 +159,6 @@ class HttpService(AppService):
             log_level=SERVICE_LOG_LEVEL,
             ssl_keyfile=SERVICE_PRIVATE_KEY_PATH,
             ssl_certfile=SERVICE_PUBLIC_KEY_PATH,
-            workers=SERVICE_WORKERS,
             loop=SERVICE_LOOP,
             http=SERVICE_HTTP,
             limit_concurrency=SERVICE_LIMIT_CONCURRENCY,
@@ -131,15 +167,6 @@ class HttpService(AppService):
             backlog=SERVICE_BACKLOG
         )
         self.uvicorn = uvicorn.Server(config)
-
-    def http_app(self):
-        """
-        use case:
-        uvicorn web.base.HttpService:app --reload
-        :return:
-        """
-        self.init_server()
-        return self.http_app
 
     async def on_stop(self) -> None:
         try:

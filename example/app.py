@@ -1,6 +1,11 @@
 from bollydog.models.service import AppService
+import example.commands  # noqa: trigger command registration
+
 
 class ExampleService(AppService):
-
-    def __init__(self, *args, **kwargs):
-        super(ExampleService, self).__init__(*args, **kwargs)
+    domain = 'example'
+    router_mapping = {
+        'Ping': ['GET', '/api/ping'],
+        'Echo': ['POST', '/api/echo'],
+        'Countdown': ['SSE', '/api/countdown'],
+    }

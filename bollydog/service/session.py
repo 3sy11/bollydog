@@ -23,7 +23,7 @@ class Session(BaseService):
         data = await self.protocol.get(key)
         if data:
             return SessionContext.model_validate(data)
-        ctx = SessionContext(trace_id=message.trace_id, **kwargs)
+        ctx = SessionContext(trace_id=message.trace_id, username=message.created_by or HOSTNAME, **kwargs)
         await self.protocol.set(key, ctx.model_dump())
         return ctx
 

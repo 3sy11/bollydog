@@ -1,5 +1,4 @@
 import os
-import multiprocessing
 
 SERVICE_HOST = os.getenv('BOLLYDOG_HTTP_SERVICE_HOST', '0.0.0.0')
 SERVICE_DEBUG = os.getenv('BOLLYDOG_HTTP_SERVICE_DEBUG', 'False') == 'True'
@@ -13,8 +12,6 @@ SERVICE_PUBLIC_KEY = os.getenv('BOLLYDOG_HTTP_SERVICE_PUBLIC_KEY', None)
 SERVICE_PRIVATE_KEY_PATH = os.getenv('BOLLYDOG_HTTP_SERVICE_PRIVATE_KEY_PATH', None)
 SERVICE_PUBLIC_KEY_PATH = os.getenv('BOLLYDOG_HTTP_SERVICE_PUBLIC_KEY_PATH', None)
 
-# Uvicorn performance and concurrency parameters
-SERVICE_WORKERS = int(os.getenv('BOLLYDOG_HTTP_SERVICE_WORKERS', multiprocessing.cpu_count() * 2))
 SERVICE_LOOP = os.getenv('BOLLYDOG_HTTP_SERVICE_LOOP', 'uvloop')
 SERVICE_HTTP = os.getenv('BOLLYDOG_HTTP_SERVICE_HTTP', 'httptools')
 SERVICE_LIMIT_CONCURRENCY = int(os.getenv('BOLLYDOG_HTTP_SERVICE_LIMIT_CONCURRENCY', 0)) or None

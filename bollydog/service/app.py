@@ -16,6 +16,7 @@ import bollydog.service.commands  # noqa
 
 class Hub(AppService):
     domain = DOMAIN
+    router_mapping = {'TaskCount': ['GET', '/api/ping']}
     apps: dict
     router: Router
     session: Session
@@ -82,25 +83,52 @@ class Hub(AppService):
             return None
         return self.apps.get(message.destination)
 
+    async def _iterate(self, message: Message, gen):
+        feedback, pending = None, []
+        try:
+            while True:
+                value = pending.pop() if pending else await asyncio.wait_for(gen.asend(feedback), timeout=message.expire_time)
+                if isinstance(value, Message):
+                    sub = await self.dispatch(value)
+                    try:
+                        feedback = await sub.state
+                    except Exception as exc:
+                        try:
+                            pending.append(await asyncio.wait_for(gen.athrow(exc), timeout=message.expire_time))
+                            feedback = None
+                        except StopAsyncIteration:
+                            return
+                else:
+                    feedback = None
+                    yield value
+        except StopAsyncIteration:
+            pass
+
     async def _execute(self, message: Message):
         while not message.state.done() and not message.state.cancelled():
             try:
-                result = await asyncio.wait_for(message(), timeout=message.expire_time)
-                message.state.set_result(result)
+                coro = message()
+                if message.is_async_gen:
+                    async for value in self._iterate(message, coro):
+                        await message.state.put(value)
+                    await message.state.put(None)
+                    result = message.state.result()
+                else:
+                    result = await asyncio.wait_for(coro, timeout=message.expire_time)
+                    message.state.set_result(result)
                 self.broker.ack(message.iid, result)
-                self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
             except (TimeoutError, HandlerTimeOutError, HandlerMaxRetryError) as e:
                 if message.delivery_count:
-                    self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias} retrying {message.delivery_count}')
+                    self.logger.info(f'{message.alias} retrying {message.delivery_count}')
                     message.delivery_count -= 1
                     continue
-                self.logger.error(f'Timeout or MaxRetry: {e}')
-                message.state.set_result(str(e))
+                message.state.set_exception(e)
                 self.broker.nack(message.iid, e)
             except Exception as e:
                 self.logger.exception(e)
-                message.state.set_result(str(e))
+                message.state.set_exception(e)
                 self.broker.nack(message.iid, e)
+            break
 
     async def execute(self, message: Message) -> Message:
         app = self._resolve_app(message)
@@ -110,8 +138,7 @@ class Hub(AppService):
                 await self._execute(message)
         except Exception as e:
             self.logger.error(f'{e}')
-            if not message.state.done():
-                message.state.set_result(str(e))
+            if not message.state.done(): message.state.set_exception(e)
         finally:
             await self.session.release(message)
         return message

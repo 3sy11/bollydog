@@ -1,307 +1,321 @@
-[![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=for-the-badge&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/3sy11/bollydog)
+# Bollydog
 
-# Features
+[![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=for-the-badge&color=00b0aa&labelColor=000000&
+logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbn
+M9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgM
+S42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1
+NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BC
+jxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1
+NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk
+5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEu
+NjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSA
+xMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0Lj
+ExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0
+0IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)]
+(https://zread.ai/3sy11/bollydog)
 
-- Coroutines
-- Event-driven, event specification via `models.base:BaseMessage`
-- DDD and TDD as fundamental design paradigms
-- Same logical flow, multiple entrypoints
-- Global context session via `models.base:Session`
-- Microservice orchestration via configuration file, enabling a more structured large-scale monolith; supports load balancing and system decomposition without code changes
-- Asynchronous generator mechanism for organizing more complex atomic process calls
-- Opentelemetry paradigm: logging, tracing, metrics
-- Shell environment support
-- Fast adaptation to legacy projects, non-intrusive iteration and development
+Async microservice framework built on [mode](https://github.com/faust-streaming/mode), with the Command Pattern at its core, unifying HTTP / WebSocket / CLI entrypoints.
 
-# Core Concepts
+> Design paradigm inspired by [Architecture Patterns with Python](https://www.cosmicpython.com/book/preface.html)
 
-`Command`, `Event`, `Handler`, `UnitOfWork`, `Service`, `Protocol`, `Session`
+## Features
 
-# CORE TODO LIST
+- Coroutine-driven, powered by `asyncio` + `mode.Service` lifecycle management
+- **Command as executable** — `BaseCommand` carries business logic directly via `async def __call__`, no external Handler needed
+- **Polymorphic State** — regular commands use `asyncio.Future`, async generator commands automatically switch to `StreamState` (compatible with both `await` and `async for`)
+- **Unified entrypoints** — the same Command can be executed via HTTP, WebSocket, CLI, or Shell
+- **Broker message lifecycle** — PENDING → IN_FLIGHT → DONE / FAILED, with fixed-length history queue
+- **Session context isolation** — each Command gets independent context keyed by `trace_id`, with pluggable Memory / Redis backends
+- **SSE streaming** — async generator commands natively support Server-Sent Events
+- **Orchestration** — `yield` sub-commands inside an async generator; Hub automatically dispatches and `asend`s the result back
+- **Zero-YAML startup** — core services (HTTP / WS) are toggled via environment variables, no config file required
+- OpenTelemetry paradigm: trace_id / span_id / parent_span_id tracing
+- Interactive Shell environment
 
-- [ ] fix: adpter SqlAlchemyAsyncUnitOfWork bug, pytest not pass
-- [ ] ftr: telemetry service
-- [ ] ftr: distribute microservice orchestration
-  - [ ] opt: service builder to create AppService
-  - [ ] ftr: label support
-  - [ ] ftr: hot reloading
-  - [ ] ftr: add alias routing in `router_mapping`
-  - [ ] fix: `shell`,`execute` mode, not load on_start resource
-- [ ] ftr: handler orchestration
-  - [ ] ftr: `rate`
-  - [ ] ftr: priority system
-  - [ ] ftr: support handler message be waited in collection from other handlers message by ctx, using for agent interrupt
-  - [ ] opt: execute command mode, combine `app` instance
-- [ ] ftr: Agent v 0.1.4
-  - [ ] ftr: global `session` as a service, work
-  - [ ] ftr: combine with `router` 
-  - [ ] ftr: worflow like `rate` maybe
+## Core Concepts
 
+| Concept | Module | Description |
+|---|---|---|
+| `BaseCommand` | `models.base` | Executable command base class, defines `__call__`, auto-registers into `_registry` |
+| `BaseEvent` | `models.base` | Event base class, inherits `BaseCommand`, excluded from registry |
+| `StreamState` | `models.base` | Streaming state object, inherits `asyncio.Queue` and implements the `Future` interface |
+| `BaseService` | `models.service` | Service base class, inherits `mode.Service`, auto-derives `domain` and `alias` |
+| `AppService` | `models.service` | Application service base class, supports `protocol` injection and `router_mapping` declaration |
+| `Protocol` | `models.protocol` | Adapter abstract base class, subclasses implement `create()` to initialize underlying connections |
+| `Hub` | `service.app` | Central dispatcher, manages Router / Session / Broker / AppService |
+| `Broker` | `service.broker` | Message queue management, FIFO scheduling + state tracking + history archival |
+| `Session` | `service.session` | Context management service, isolates `SessionContext` per `trace_id` |
+| `Router` | `service.router` | Hub-internal event pub/sub |
 
-# MODULE TODO LIST
+## Architecture
 
-- [ ] ftr: support like `uvicorn web.base.HttpService:app --reload`
-- [ ] ftr: sse
-- [ ] opt: WebSocket middleware
-- [ ] ftr: add toggle in entrypoint to enable or disable receiving specific messages(distribute service)
-- [ ] ftr: HTTP messages debounce or QoS
-- [ ] opt: disable router in yaml
-- [ ] opt: neo4j adapter using async driver
-- [ ] opt: `router_mapping` currently hardcoded as `DEFAULT_ROUTER_MAPPING` in `HttpService`, need a more flexible configuration approach (e.g. env var, decorator, or auto-discovery)
-- [ ] opt: middleware list in `HttpService._build_middlewares()` is fixed, consider supporting user-defined middleware registration
-
-# .env
-
-global  
-BOLLYDOG_COMMAND_EXPIRE_TIME  
-BOLLYDOG_EVENT_EXPIRE_TIME  
-BOLLYDOG_LOG_LEVEL  
-BOLLYDOG_HANDLERS  
-BOLLYDOG_HTTP_ENABLED (0/1, default 1)  
-BOLLYDOG_WS_ENABLED (0/1, default 1)  
-
-http api  
-BOLLYDOG_HTTP_SERVICE_HOST  
-BOLLYDOG_HTTP_SERVICE_DEBUG  
-BOLLYDOG_HTTP_SERVICE_PORT  
-BOLLYDOG_HTTP_SERVICE_LOG_LEVEL  
-BOLLYDOG_HTTP_SERVICE_PRIVATE_KEY  
-BOLLYDOG_HTTP_SERVICE_PUBLIC_KEY  
-BOLLYDOG_HTTP_MIDDLEWARE_SESSION (0/1, default 1)  
-BOLLYDOG_HTTP_MIDDLEWARE_AUTH (0/1, default 1)  
-BOLLYDOG_HTTP_MIDDLEWARE_CORS (0/1, default 1)  
-HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY  
-
-websocket  
-BOLLYDOG_WS_SERVICE_HOST  
-BOLLYDOG_WS_SERVICE_DEBUG  
-BOLLYDOG_WS_SERVICE_PORT  
-BOLLYDOG_WS_SERVICE_LOG_LEVEL  
-
-
-# DESIGN
-
-> [__Architecture Patterns with Python__](https://www.cosmicpython.com/book/preface.html) Designed as a foundational design paradigm.
-
-![Architecture Patterns with Python](https://www.cosmicpython.com/book/images/apwp_aa01.png)
-
-> [__`mode` module__](https://github.com/faust-streaming/mode) Acts as a foundational application framework.
-
-Defines the core execution logic.
-
-![architecture](./docs/architecture.jpg)
-
-# HOW
-
-## pip
-
-```shell
-git clone https://github.com/3sy11/bollydog.git
-pip install -e .
+```
+CLI / HTTP / WebSocket
+        │
+        ▼
+      Hub  ──── dispatch ──→  Broker.put (qos=0)
+       │                         │
+       │                         ▼
+       │                      Broker.take → Hub._process_message
+       │
+       ├── execute ──→ Session.acquire → _execute → Session.release
+       │                                    │
+       │                          ┌─────────┴──────────┐
+       │                     is_async_gen?          await coro
+       │                          │
+       │                    _iterate(gen)
+       │                     ├── yield Command → dispatch (sub-command orchestration)
+       │                     └── yield data    → state.put (streaming output)
+       │
+       ├── Router (internal event publishing)
+       ├── Session (context management)
+       └── Broker (message lifecycle)
 ```
 
-## uv 
+## Installation
 
 ```shell
 git clone https://github.com/3sy11/bollydog.git
 cd bollydog
-uv sync
-uv sync --dev
-```
 
-## build
+# pip
+pip install -e .
 
-```shell
+# uv
+uv sync && uv sync --dev
+
+# build & install
 uv build --all
 uv run uv pip install dist/bollydog-*.whl
 bollydog --help
-
 ```
 
-# CLI
+## Quick Start
 
-```shell
-#execute a command  
-cd bollydog/example
-bollydog execute --config='./config.yaml' --message=example.handler.TaskCount
-```
-
-```shell
-#start up service as config.yml  
-bollydog service --config "./config.yaml"
-curl http://0.0.0.0:8000/example/exampleservice/taskcount
-```
-
-```shell
-# ptpython shell
-bollydog shell --config "./config.yaml"
-```
+### Define a Command
 
 ```python
-locals()
-from example.handler import TaskList,task_list
-await task_list(TaskList())
+# myapp/commands.py
+from typing import Any
+from bollydog.models.base import BaseCommand
+
+class Ping(BaseCommand):
+    destination = 'myapp.myservice'  # points to the target AppService's domain.alias
+
+    async def __call__(self, *args, **kwargs) -> Any:
+        return {'pong': True}
 ```
 
-# Using Case
-
-## Using built-in SqlAlchemyProtocol CRUD (no custom Protocol class)
+### Define an AppService
 
 ```python
-# This example shows how to rely on SqlAlchemyProtocol's built-in CRUD
-# so you can skip implementing a custom ExampleProtocol.
-# It includes: messages, model, service, handler, and a sample config.
-
-# 1) Messages (Command/Event)
-from bollydog.models.base import Command, Event
-
-class CreateUser(Command):
-    username: str
-    email: str
-
-class UserCreated(Event):
-    user_id: int
-
-# 2) SQLModel domain entity and metadata
-from typing import Optional
-from sqlmodel import SQLModel, Field
-from bollydog.adapters.rdb import SQLModelDomain
-
-class User(SQLModel, SQLModelDomain, table=True):
-    __tablename__ = "users"
-    id: Optional[int] = Field(default=None, primary_key=True)
-    username: str
-    email: str
-
-# We will use SQLModel.metadata in UnitOfWork config
-metadata = SQLModel.metadata
-
-# 3) AppService for domain
+# myapp/service.py
 from bollydog.models.service import AppService
 
-class ExampleService(AppService):
-    domain = "example"
-
-# 4) Handler uses the injected `protocol` directly
-#    SqlAlchemyProtocol already provides: add/get/list/update/delete/search
-from bollydog.globals import protocol, session
-
-async def create_user(cmd: CreateUser) -> UserCreated:
-    # optional auditing
-    session.username = session.username or "system"
-
-    # create a new User using built-in CRUD
-    created = await protocol.add(User(username=cmd.username, email=cmd.email))
-
-    # fetch it back if needed (demonstrates `get`)
-    row = await protocol.get(User, id=created.id)
-
-    return UserCreated(user_id=row["id"] if isinstance(row, dict) else row.id)
+class MyService(AppService):
+    domain = 'myapp'
+    router_mapping = {
+        'Ping': ['GET', '/api/ping'],  # key is the Command class name
+    }
 ```
 
- Minimal config (YAML) to wire everything (illustrative)
-``` yaml
-example:
-  app: !module app.example.service.ExampleService
-  unit_of_work:
-    module: !module bollydog.adapters.rdb.SqlAlchemyAsyncUnitOfWork
-    url: postgresql+asyncpg://user:pass@localhost:5432/demo
-    metadata: !module app.example.store.metadata
-  protocol:
-    module: !module bollydog.adapters.rdb.SqlAlchemyProtocol
-  handlers:
-    - app.example.handler
-```
-
-## Complete example covering Command/Event/Handler/Protocol/AppService and globals
+### Streaming Command (async generator)
 
 ```python
-# This end-to-end example shows:
-# - Command / Event definitions
-# - A custom Protocol (wrapping built-in SqlAlchemyProtocol capabilities)
-# - An AppService
-# - Handlers using all globals: hub, message, protocol, session, app
-# - How to chain messages via hub.execute()
+class StreamDemo(BaseCommand):
 
-# 1) Messages
-from bollydog.models.base import Command, Event
-
-class UpdateUserEmail(Command):
-    user_id: int
-    new_email: str
-
-class UserEmailUpdated(Event):
-    user_id: int
-    new_email: str
-
-# 2) Domain model
-from typing import Optional
-from sqlmodel import SQLModel, Field
-from bollydog.adapters.rdb import SQLModelDomain
-
-class User(SQLModel, SQLModelDomain, table=True):
-    __tablename__ = "users"
-    id: Optional[int] = Field(default=None, primary_key=True)
-    username: str
-    email: str
-
-# 3) Custom Protocol (wrapping built-in CRUD)
-from bollydog.adapters.rdb import SqlAlchemyProtocol
-
-class Example2Protocol(SqlAlchemyProtocol):
-    async def update_user_email(self, user_id: int, new_email: str):
-        # Uses built-in `update` to modify the email field
-        await self.update(User, user_id, email=new_email)
-        # Return a normalized dict-like object to callers
-        row = await self.get(User, id=user_id)
-        return row
-
-# 4) AppService
-from bollydog.models.service import AppService
-
-class Example2Service(AppService):
-    domain = "example2"
-
-# 5) Handlers using all globals
-from bollydog.globals import hub, message, protocol, session, app
-
-async def update_user_email(cmd: UpdateUserEmail) -> UserEmailUpdated:
-    # session: carry operator information into auditing
-    session.username = session.username or "operator"
-
-    # app: log within current AppService
-    app.logger.info(f"updating user={cmd.user_id} -> {cmd.new_email}")
-
-    # protocol: call domain port
-    row = await protocol.update_user_email(cmd.user_id, cmd.new_email)
-
-    # message: inspect trace/span for debugging or correlation
-    app.logger.debug(f"trace={message.trace_id} span={message.span_id}")
-
-    # Chain another message synchronously if needed (example only)
-    # await hub.execute(SomeFollowUpCommand(...))
-
-    return UserEmailUpdated(user_id=row["id"] if isinstance(row, dict) else row.id,
-                            new_email=row["email"] if isinstance(row, dict) else row.email)
-
-async def on_user_email_updated(evt: UserEmailUpdated):
-    # All globals still available in this handler
-    app.logger.info(f"updated user={evt.user_id} to {evt.new_email} by {session.username}")
-    # message: current envelope
-    app.logger.debug(f"handled event={message.name} iid={message.iid}")
+    async def __call__(self, *args, **kwargs):
+        for i in range(5):
+            yield {'chunk': i}       # each yielded value is pushed via StreamState
 ```
 
-### Minimal config (illustrative)
+`StreamState` is activated automatically: Hub `put`s each yielded value into `message.state`. Consumers can `async for value in message.state` to receive items incrementally, or `await message.state` to get all accumulated results at once.
+
+### Sub-command Orchestration
+
+```python
+class Orchestrator(BaseCommand):
+
+    async def __call__(self, *args, **kwargs):
+        result = yield SubCommand(param='value')  # yield a sub-command; Hub dispatches and asends the result back
+        yield {'final': result}
+```
+
+Hub's `_iterate` method intercepts yielded `BaseCommand` instances, automatically dispatches them, and passes the execution result back via `gen.asend(result)`. If a sub-command raises an exception, it is propagated via `gen.athrow(exc)`, allowing the generator to handle it with `try/except`.
+
+## CLI
+
+```shell
+# list all registered commands
+bollydog ls
+
+# execute a command (full Hub lifecycle)
+bollydog execute taskcount
+bollydog execute myapp.commands.ping --param=value
+
+# start services
+bollydog service
+bollydog service --config ./config.yaml
+bollydog service --apps '["http","ws"]'
+
+# interactive Shell
+bollydog shell
+bollydog shell --config ./config.yaml
+```
+
+### Command Resolution
+
+`BaseCommand.resolve(name)` supports two lookup modes:
+- **alias** — e.g. `taskcount`, matches directly when unambiguous
+- **FQN** — e.g. `bollydog.service.commands.taskcount`, exact fully-qualified name match
+
+## Route Mapping (router_mapping)
+
+Declare `router_mapping` in `AppService` subclasses. `HttpService` aggregates all mappings from registered AppServices at startup and registers routes automatically.
+
+```python
+class MyService(AppService):
+    router_mapping = {
+        'Ping': ['GET', '/api/ping'],           # custom method and path
+        'UserList': ['POST'],                    # method only, path auto-generated
+        'StreamChat': ['SSE', '/api/chat'],      # SSE streaming endpoint
+    }
+```
+
+**Value format** — `[methods, path]`, both optional:
+- `methods`: string or list; `'SSE'` triggers `SseHandler`
+- `path`: when `None`, auto-generates `/api/{domain}/{alias}` (if `destination` is set) or `/api/{alias}`
+
+**YAML example**:
 
 ```yaml
-example2:
-  app: !module app.example2.service.Example2Service
-  unit_of_work:
-    module: !module bollydog.adapters.rdb.SqlAlchemyAsyncUnitOfWork
-    url: postgresql+asyncpg://user:pass@localhost:5432/demo
-    metadata: !module app.example.store.metadata  # reuse or define your own
-  protocol:
-    module: !module app.example2.protocol.Example2Protocol
-  handlers:
-    - app.example2.handler
+myapp:
+  app: !module myapp.service.MyService
+  router_mapping:
+    Ping: ['GET', '/api/ping']
+    UserList: ['POST']
 ```
+
+## Environment Variables
+
+### Global (service/config.py)
+
+| Variable | Default | Description |
+|---|---|---|
+| `BOLLYDOG_COMMAND_EXPIRE_TIME` | `3600` | Command timeout (seconds) |
+| `BOLLYDOG_EVENT_EXPIRE_TIME` | `120` | Event timeout (seconds) |
+| `BOLLYDOG_QUEUE_MAX_SIZE` | `1000` | Broker queue max capacity |
+| `BOLLYDOG_HISTORY_MAX_SIZE` | `1000` | Broker history queue length |
+| `BOLLYDOG_DEFAULT_SIGN` | `1` | Default sign flag |
+| `BOLLYDOG_DELIVERY_COUNT` | `0` | Default retry count |
+| `BOLLYDOG_DEFAULT_QOS` | `1` | Default QoS (0=async queue, 1=sync execute) |
+| `BOLLYDOG_HTTP_ENABLED` | `0` | Enable HTTP service (0/1) |
+| `BOLLYDOG_WS_ENABLED` | `0` | Enable WebSocket service (0/1) |
+
+### HTTP (entrypoint/http/config.py)
+
+| Variable | Default | Description |
+|---|---|---|
+| `BOLLYDOG_HTTP_SERVICE_HOST` | `0.0.0.0` | Listen address |
+| `BOLLYDOG_HTTP_SERVICE_PORT` | `8000` | Listen port |
+| `BOLLYDOG_HTTP_SERVICE_DEBUG` | `False` | Debug mode |
+| `BOLLYDOG_HTTP_SERVICE_LOG_LEVEL` | `info` | Log level |
+| `BOLLYDOG_HTTP_SERVICE_PRIVATE_KEY_PATH` | - | SSL private key path |
+| `BOLLYDOG_HTTP_SERVICE_PUBLIC_KEY_PATH` | - | SSL certificate path |
+| `BOLLYDOG_HTTP_SERVICE_LOOP` | `uvloop` | Event loop implementation |
+| `BOLLYDOG_HTTP_SERVICE_HTTP` | `httptools` | HTTP parser |
+| `BOLLYDOG_HTTP_SERVICE_LIMIT_CONCURRENCY` | `0` | Concurrency limit |
+| `BOLLYDOG_HTTP_SERVICE_LIMIT_MAX_REQUESTS` | `2000` | Max requests |
+| `BOLLYDOG_HTTP_SERVICE_TIMEOUT_KEEP_ALIVE` | `5` | Keep-Alive timeout |
+| `BOLLYDOG_HTTP_SERVICE_BACKLOG` | `128` | TCP backlog |
+| `BOLLYDOG_HTTP_MIDDLEWARE_SESSION` | `1` | Session middleware (0/1) |
+| `BOLLYDOG_HTTP_MIDDLEWARE_AUTH` | `1` | Auth middleware (0/1) |
+| `BOLLYDOG_HTTP_MIDDLEWARE_CORS` | `1` | CORS middleware (0/1) |
+| `HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY` | - | Session secret key |
+
+### WebSocket (entrypoint/websocket/config.py)
+
+| Variable | Default | Description |
+|---|---|---|
+| `BOLLYDOG_WS_SERVICE_HOST` | `0.0.0.0` | Listen address |
+| `BOLLYDOG_WS_SERVICE_PORT` | `8001` | Listen port |
+| `BOLLYDOG_WS_SERVICE_DEBUG` | `False` | Debug mode |
+| `BOLLYDOG_WS_SERVICE_LOG_LEVEL` | `info` | Log level |
+
+## Adapters
+
+The framework uses the `Protocol` abstraction layer to interface with different storage backends:
+
+| Adapter | Module | Purpose |
+|---|---|---|
+| `MemoryProtocol` | `adapters.local` | In-memory KV, default Session backend |
+| `RedisProtocol` | `adapters.redis` | Redis KV, optional Session backend |
+| `FileProtocol` | `adapters.local` | File read/write |
+| `SqlAlchemyProtocol` | `adapters.rdb` | Relational database CRUD |
+| `ElasticProtocol` | `adapters.elastic` | Elasticsearch |
+| `Neo4jProtocol` | `adapters.neo4j` | Neo4j graph database |
+
+## Global Context (globals)
+
+Request-scoped context proxies via `LocalStack`, available directly inside `BaseCommand.__call__`:
+
+```python
+from bollydog.globals import hub, message, protocol, session, app
+
+class MyCommand(BaseCommand):
+    destination = 'myapp.myservice'
+
+    async def __call__(self, *args, **kwargs):
+        session.username        # current operator
+        message.trace_id        # current trace ID
+        app.logger.info(...)    # logger bound to the AppService
+        await hub.dispatch(SubCommand())  # dispatch a sub-command
+        await protocol.get(...)  # use the bound Protocol
+```
+
+| Proxy | Description |
+|---|---|
+| `hub` | Current Hub instance |
+| `message` | Currently executing BaseCommand |
+| `session` | Current SessionContext |
+| `app` | AppService bound to the current Command |
+| `protocol` | Protocol bound to the current AppService |
+
+## Project Structure
+
+```
+bollydog/
+├── models/
+│   ├── base.py          # BaseCommand, BaseEvent, StreamState, _ModelMixin
+│   ├── service.py       # BaseService, AppService
+│   └── protocol.py      # Protocol abstract base class
+├── service/
+│   ├── app.py           # Hub (central dispatcher)
+│   ├── broker.py        # Broker (message queue / lifecycle)
+│   ├── session.py       # Session, SessionContext
+│   ├── router.py        # Router (internal event pub/sub)
+│   ├── commands.py      # Built-in commands (TaskCount)
+│   └── config.py        # Global environment variable config
+├── entrypoint/
+│   ├── cli/             # CLI entrypoint (fire)
+│   ├── http/            # HTTP entrypoint (Starlette + uvicorn)
+│   │   ├── app.py       # HttpHandler, SseHandler, HttpService
+│   │   ├── config.py    # HTTP environment variables
+│   │   └── middleware.py # Auth / Session / CORS middleware
+│   └── websocket/       # WebSocket entrypoint (Starlette + uvicorn)
+│       ├── app.py       # SocketService
+│       └── config.py    # WS environment variables
+├── adapters/            # Protocol implementations (local, redis, rdb, elastic, neo4j)
+├── globals.py           # Global context proxies (hub, message, session, app, protocol)
+├── bootstrap.py         # Worker bootstrap
+├── exception.py         # Custom exceptions
+└── utils/               # Utility functions
+```
+
+## TODO
+
+- [ ] Telemetry service (OpenTelemetry integration)
+- [ ] Priority queue
+- [ ] WebSocket middleware
+- [ ] User-defined middleware registration
+- [ ] Production deployment guide (supervisord + nginx multi-process)
