@@ -305,3 +305,4 @@ bollydog/
 - [ ] WebSocket middleware
 - [ ] User-defined middleware registration
 - [ ] Production deployment guide (supervisord + nginx multi-process)
+- [ ] if yaml has not router_mapping,disable HTTP service

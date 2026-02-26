@@ -170,7 +170,10 @@ class HttpService(AppService):
 
     async def on_stop(self) -> None:
         try:
-            await self.uvicorn.shutdown()
+            if self.uvicorn:
+                self.uvicorn.should_exit = True
+                await asyncio.sleep(0.3)
+                await self.uvicorn.shutdown()
         except Exception as e:
             self.logger.error(e)
         await super(HttpService, self).on_stop()

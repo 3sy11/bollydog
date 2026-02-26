@@ -70,7 +70,7 @@ class AppService(BaseService, abstract=True):
             try:
                 smart_import(fqn)
                 logger.debug(f'autodiscover: loaded {fqn}')
-            except (ImportError, ModuleNotFoundError):
+            except (ImportError, ModuleNotFoundError, AttributeError) as e:
                 logger.debug(f'autodiscover: {fqn} not found, skipping')
 
     @classmethod
