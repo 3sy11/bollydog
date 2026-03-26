@@ -10,12 +10,12 @@ from bollydog.models.service import AppService
 from bollydog.service.router import Router
 from bollydog.service.session import Session
 from bollydog.service.broker import Broker
-from bollydog.service.config import DOMAIN
+from bollydog.service.config import DOMAIN, HUB_ROUTER_MAPPING
 
 
 class Hub(AppService):
     domain = DOMAIN
-    router_mapping = {'TaskCount': ['GET', '/api/ping']}
+    router_mapping = HUB_ROUTER_MAPPING
     apps: dict
     router: Router
     session: Session

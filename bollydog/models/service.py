@@ -46,7 +46,7 @@ class BaseService(mode.Service):
 
 class AppService(BaseService, abstract=True):
     router_mapping: ClassVar[dict] = {}
-    autodiscover: ClassVar[List[str]] = ['commands']
+    commands: ClassVar[List[str]] = []
 
     async def on_first_start(self) -> None:
         await super(AppService, self).on_first_start()
@@ -63,19 +63,25 @@ class AppService(BaseService, abstract=True):
         self.router_mapping = router_mapping if router_mapping is not None else self.__class__.router_mapping
 
     @classmethod
-    def _autodiscover(cls, modules: List[str]):
+    def _load_commands(cls, modules: List[str]):
+        from bollydog.models.base import BaseCommand
         pkg = cls.__module__.rsplit('.', 1)[0]
+        dest = f'{cls.domain}.{cls.alias}'
         for name in modules:
             fqn = f'{pkg}.{name}' if '.' not in name else name
+            before = set(BaseCommand._registry.keys())
             try:
                 smart_import(fqn)
-                logger.debug(f'autodiscover: loaded {fqn}')
-            except (ImportError, ModuleNotFoundError, AttributeError) as e:
-                logger.debug(f'autodiscover: {fqn} not found, skipping')
+            except (ImportError, ModuleNotFoundError, AttributeError):
+                continue
+            for key in set(BaseCommand._registry.keys()) - before:
+                cmd_cls = BaseCommand._registry[key]
+                if 'destination' not in cmd_cls.__dict__:
+                    cmd_cls.destination = dest
 
     @classmethod
-    def create_from(cls, protocol=None, router_mapping=None, autodiscover=None, **kwargs):
-        cls._autodiscover(autodiscover if autodiscover is not None else cls.autodiscover)
+    def create_from(cls, protocol=None, router_mapping=None, commands=None, **kwargs):
+        cls._load_commands(commands if commands is not None else cls.commands)
         logger.debug(f'create_from {cls.__name__} {protocol}')
         if protocol:
             protocol = protocol['module'](**protocol)

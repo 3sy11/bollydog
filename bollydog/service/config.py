@@ -14,3 +14,4 @@ DELIVERY_COUNT = int(os.getenv('BOLLYDOG_DELIVERY_COUNT', 0))
 DEFAULT_QOS = int(os.getenv('BOLLYDOG_DEFAULT_QOS', 1))
 BOLLYDOG_HTTP_ENABLED = os.getenv('BOLLYDOG_HTTP_ENABLED', '0') == '1'
 BOLLYDOG_WS_ENABLED = os.getenv('BOLLYDOG_WS_ENABLED', '0') == '1'
+HUB_ROUTER_MAPPING = {'TaskCount': ['GET', '/api/ping']}

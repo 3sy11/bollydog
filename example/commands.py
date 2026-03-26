@@ -5,7 +5,6 @@ from bollydog.models.base import BaseCommand
 
 class Ping(BaseCommand):
     """Simple health-check command."""
-    destination = 'example.exampleservice'
 
     async def __call__(self, *args, **kwargs) -> Any:
         return {'pong': True, 'tasks': len(asyncio.all_tasks())}
@@ -13,7 +12,6 @@ class Ping(BaseCommand):
 
 class Echo(BaseCommand):
     """Echoes user input back."""
-    destination = 'example.exampleservice'
     text: str = 'hello bollydog'
 
     async def __call__(self, *args, **kwargs) -> Any:
@@ -22,7 +20,6 @@ class Echo(BaseCommand):
 
 class Countdown(BaseCommand):
     """Streaming command — yields a countdown sequence via SSE."""
-    destination = 'example.exampleservice'
     n: int = 5
 
     async def __call__(self, *args, **kwargs):

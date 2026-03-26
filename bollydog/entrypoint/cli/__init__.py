@@ -41,6 +41,10 @@ def get_apps(config: str = None) -> Dict[str, AppService]:
     if config:
         work_dir = pathlib.Path(config).parent
         sys.path.insert(0, work_dir.as_posix())
+        try:
+            smart_import('commands')
+        except (ImportError, ModuleNotFoundError):
+            logging.info('no `commands` module found, skipping')
         for domain, app_config in (_load_config(config) or {}).items():
             if domain in apps:
                 raise ValueError(f'duplicate domain: {domain}')

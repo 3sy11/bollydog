@@ -3,6 +3,7 @@ from bollydog.models.service import AppService
 
 class ExampleService(AppService):
     domain = 'example'
+    commands = ['commands']
     router_mapping = {
         'Ping': ['GET', '/api/ping'],
         'Echo': ['POST', '/api/echo'],
