@@ -1,124 +1,90 @@
 import asyncio
 import inspect
-import pathlib
 import time
 import uuid
-from functools import lru_cache
-from typing import Dict, Type, List, Any, ClassVar
+from abc import abstractmethod
+from typing import Dict, List, Type, Any, ClassVar
 
-import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
-from pydantic_core import PydanticUndefined
-from typing_extensions import Annotated
 
-from bollydog.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, EVENT_EXPIRE_TIME
+from bollydog.service.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, DEFAULT_SIGN, DELIVERY_COUNT, DEFAULT_QOS
 from bollydog.globals import message, session
 
-_DEFAULT_SIGN = 1
-_DELIVERY_COUNT = 0
-_DEFAULT_QOS = 1
-# ModulePathWithDot = Annotated[str, lambda path: smart_import(path)]
-ModulePathWithDot = Annotated[str, lambda path: '.' in path]
-MessageName = Annotated[str, 'MessageName']
-MessageId = Annotated[str, 'MessageId']
-MessageTraceId = Annotated[str, 'MessageTraceId']
-DomainName = Annotated[str, 'Domain']
 
+class StreamState(asyncio.Queue):
+    def __init__(self):
+        super().__init__()
+        self._results, self._done_event, self._exception = [], asyncio.Event(), None
 
-@lru_cache
-def get_model_name(o) -> str:
-    """
-    Get a standardized name for a model, function, or class.
-    
-    This function provides a consistent naming convention for different types of objects:
-    - For functions: returns 'module.function_name'
-    - For Pydantic models: returns the model's 'name' field if defined, otherwise 'module.class_name'
-    - For other classes: returns 'module.class_name'
-    
-    The function is cached with @lru_cache for performance optimization.
-    
-    Examples:
-        # For a function
-        def my_handler():
-            pass
-        get_model_name(my_handler)  # Returns: 'my_module.my_handler'
-        
-        # For a Pydantic model with explicit name
-        class TaskCount(BaseMessage):
-            name = 'task.count'
-        get_model_name(TaskCount)  # Returns: 'task.count'
-        
-        # For a Pydantic model without explicit name
-        class UserProfile(BaseMessage):
-            pass
-        get_model_name(UserProfile)  # Returns: 'my_module.userprofile'
-        
-        # For a regular class
-        class MyService:
-            pass
-        get_model_name(MyService)  # Returns: 'my_module.myservice'
-    
-    Args:
-        o: The object to get the name for (function, class, or Pydantic model)
-        
-    Returns:
-        str: A standardized name string in the format 'module.name' or custom name for Pydantic models
-    """
-    if inspect.isfunction(o):
-        return f'{o.__module__}.{o.__name__}'
-    if issubclass(o, BaseModel):
-        if 'name' in o.model_fields \
-                and o.model_fields['name'].default \
-                and o.model_fields['name'].default != PydanticUndefined:
-            return o.model_fields['name'].default
-    return f'{o.__module__}.{o.__name__}'
+    async def put(self, value):
+        if value is None: self._done_event.set()
+        else: self._results.append(value)
+        await super().put(value)
 
+    def set_result(self, result):
+        self._results = [result] if not self._results else self._results
+        self._done_event.set()
 
-def get_class_domain(cls: Type) -> str:
-    return inspect.getfile(cls).split('/')[-2]
+    def set_exception(self, exc):
+        self._exception = exc
+        self._done_event.set()
+        self.put_nowait(None)
+
+    def done(self): return self._done_event.is_set()
+    def cancelled(self): return False
+    def exception(self): return self._exception
+    def result(self):
+        if self._exception: raise self._exception
+        return self._results[0] if len(self._results) == 1 else self._results
+
+    @property
+    def _state(self): return 'FINISHED' if self.done() else 'PENDING'
+
+    def __await__(self):
+        async def _wait():
+            await self._done_event.wait()
+            if self._exception: raise self._exception
+            return self.result()
+        return _wait().__await__()
+
+    async def __aiter__(self):
+        while True:
+            value = await self.get()
+            if value is None: break
+            yield value
 
 
 class _ModelMixin(BaseModel):
     created_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     update_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     iid: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
-    sign: int = Field(default=_DEFAULT_SIGN, description='1:normal, -1:deleted')
+    sign: int = Field(default=DEFAULT_SIGN, description='1:normal, -1:deleted')
     created_by: str = Field(default=None, max_length=50)
 
     def model_post_init(self, __context: Any) -> None:
-        self.created_by = getattr(session,'username',None) or HOSTNAME
-
-
-Domains: Dict[DomainName, Type['BaseDomain']] = {}
+        if self.created_by is None:
+            self.created_by = getattr(session, 'username', None) or HOSTNAME
 
 
 class BaseDomain(_ModelMixin):
+    """BaseDomain is the base class for DDD."""
     model_config = ConfigDict(extra='ignore')
 
-    @classmethod
-    def __pydantic_init_subclass__(cls, **kwargs):
-        super().__pydantic_init_subclass__(**kwargs)
-        Domains[get_model_name(cls)] = cls
 
-
-class BaseMessage(_ModelMixin):
+class BaseCommand(_ModelMixin):
     model_config = ConfigDict(extra='allow')
-    # # system
+    _registry: ClassVar[Dict[str, Type['BaseCommand']]] = {}
     host: ClassVar[str] = HOSTNAME
     version: ClassVar[str] = REPOSITORY_VERSION
     module: ClassVar[str]
-    domain: ClassVar[DomainName]
-    name: ClassVar[MessageName]
-    expire_time: ClassVar[float] = COMMAND_EXPIRE_TIME
-    # destination: str = Field(default=None)  # <
+    alias: ClassVar[str]
+    destination: ClassVar[str] = None
 
-    # # state
-    handler: ModulePathWithDot = Field(default=None)
-    delivery_count: ClassVar[int] = _DELIVERY_COUNT
+    # instance
+    expire_time: float = Field(default=COMMAND_EXPIRE_TIME)
+    qos: int = Field(default=DEFAULT_QOS)
+    delivery_count: int = Field(default=DELIVERY_COUNT)
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
-    qos: ClassVar[int] = _DEFAULT_QOS
-
-    # conditions: Dict = Field(default=None)  # <
 
     @field_serializer('state')
     def serialize_state(self, state: asyncio.Future, _info) -> List:
@@ -130,93 +96,75 @@ class BaseMessage(_ModelMixin):
                 else:
                     _result = state.result()
             else:
-                _result = state._cancel_message  # # noqa
-        return [state._state, _result]  # # noqa
+                _result = state._cancel_message  # noqa
+        return [state._state, _result]  # noqa
 
-    # # trace
+    # trace
     trace_id: str = Field(default_factory=lambda: getattr(message, 'trace_id', uuid.uuid4().hex))
     span_id: str = Field(default='--')
     parent_span_id: str = Field(default=getattr(message, 'span_id', '--'))
 
-    # # data
     data: dict = Field(default_factory=dict)
 
-    # subject: str = Field(default=None)  # <
-    # schema: str = Field(default=None)  # <
-    # schema_version: str = Field(default='0')  # <
+    def add_event(self, event) -> None:
+        self.data.setdefault("events", []).append(event.model_dump() if hasattr(event, 'model_dump') else event)
+
+    def get_event(self, index: int = -1):
+        events = self.data.get("events", [])
+        return events[index] if events else None
+
+    @property
+    def is_async_gen(self) -> bool:
+        return inspect.isasyncgenfunction(type(self).__call__)
 
     def model_post_init(self, __context: Any) -> None:
-        # self.state = asyncio.Future()
         super().model_post_init(__context)
         self.span_id = self.span_id if self.span_id != '--' else self.iid
-        self.data['model_fields_set'] = list(self.model_fields_set)  # # `set` type not satisfy database
-        self.data['model_extra'] = self.model_extra
         if message:
-            # self.state = message.state
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
+        if self.is_async_gen:
+            self.state = StreamState()
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
-        if not abstract and not hasattr(cls,'name'):
-            cls.name = cls.__name__.lower()
-        cls.module = cls.__module__
+        if 'module' not in cls.__dict__:
+            cls.module = cls.__module__
+        if 'alias' not in cls.__dict__:
+            cls.alias = cls.__name__
+        if not abstract and '__call__' in cls.__dict__:
+            if 'destination' not in cls.__dict__ or cls.__dict__.get('destination') is None:
+                cls.destination = f'_._.{cls.alias}'
+            elif len(str(cls.destination).split('.')) <= 2:
+                cls.destination = f'{cls.destination}.{cls.alias}'
+            cls._registry[f'{cls.module}.{cls.alias}'] = cls
 
+    @classmethod
+    def topics(cls) -> Dict[str, Type['BaseCommand']]:
+        return {cmd.destination: cmd for cmd in cls._registry.values()}
 
-class Command(BaseMessage, abstract=True):
-    
-    def __init_subclass__(cls, abstract: bool = False, **kwargs):
-        super().__init_subclass__(abstract=abstract, **kwargs)
-        
-        if not abstract and hasattr(cls, '__call__') and hasattr(cls, 'name'):
-            call = getattr(cls, '__call__')
-            if inspect.iscoroutinefunction(call) or inspect.isasyncgenfunction(call):
-                call.__name__ = cls.name
+    @classmethod
+    def resolve(cls, name: str) -> Type['BaseCommand']:
+        if name in cls._registry:
+            return cls._registry[name]
+        matches = {k: v for k, v in cls._registry.items() if k.endswith(f'.{name}')}
+        if len(matches) == 1:
+            return next(iter(matches.values()))
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous alias '{name}', candidates: {list(matches.keys())}")
+        nl = name.lower()
+        matches = {k: v for k, v in cls._registry.items() if v.alias.lower() == nl}
+        if len(matches) == 1:
+            return next(iter(matches.values()))
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous alias '{name}', candidates: {list(matches.keys())}")
+        raise KeyError(f"Command '{name}' not found")
 
+    @abstractmethod
+    async def __call__(self, *args, **kwargs) -> Any:
+        ...
 
-class Event(BaseMessage, abstract=True):
-    expire_time: ClassVar[float] = EVENT_EXPIRE_TIME
-    qos: ClassVar[int] = not _DEFAULT_QOS
+class BaseEvent(BaseCommand, abstract=True):
 
-
-class BaseService(mode.Service):
-    abstract = True
-    domain: DomainName = None
-    name: str = None
-    path: pathlib.Path
-
-    def __init__(self, domain, name=None, *args, **kwargs):
-        super().__init__()
-        self.domain = domain or self.domain
-        self.name = name or self.name or self.__class__.__name__.lower()
-        self.name = f'{self.domain}.{self.name}'
-
-    def add_dependency(self, service: 'BaseService') -> 'BaseService':
-        service.name = f'{self.name}.{service.name}'
-        super().add_dependency(service)
-        return service
-
-    async def on_first_start(self) -> None:
-        supervisor = mode.OneForOneSupervisor()
-        supervisor.add(self)
-        await supervisor.start()
-
-    async def crash(self, reason: BaseException) -> None:
-        self.logger.error(reason)
-        await super(BaseService, self).crash(reason)
-
-    def __init_subclass__(cls, abstract=False, **kwargs):
-        super(BaseService, cls).__init_subclass__()
-        cls.path = pathlib.Path(inspect.getmodule(cls).__file__).parent
-
-    def __repr__(self) -> str:
-        return f"<{self._repr_name()}: {self.state}: {id(self)}>"
-
-    def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)  # < 3
-
-
-class Session(BaseModel):
-    uid: str = Field(default_factory=lambda: uuid.uuid4().hex)
-    username: str = Field(default=HOSTNAME)
-    collection: dict = Field(default_factory=dict)
+    async def __call__(self, *args, **kwargs) -> Any:
+        self.state.set_result(True)

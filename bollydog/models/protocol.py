@@ -1,18 +1,26 @@
 import abc
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, List, Any
+from typing import AsyncGenerator, Any
 
-from bollydog.models.base import BaseService, BaseMessage
+from bollydog.models.service import BaseService
 
 
-class UnitOfWork(BaseService, abstract=True):
+class Protocol(BaseService, abstract=True):
     adapter: Any
+    # queue: list[BaseEvent]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.adapter = self.create()
+        assert self.adapter is not None
 
-    def __repr__(self):
-        return f'<UnitOfWork {self.__class__.__name__}>'
+    @abc.abstractmethod
+    def create(self) -> Any:
+        """创建底层适配器/连接，子类必须实现"""
+        ...
+
+    def delete(self):
+        ...
 
     async def on_stop(self) -> None:
         self.delete()
@@ -22,33 +30,5 @@ class UnitOfWork(BaseService, abstract=True):
     async def connect(self) -> AsyncGenerator:
         yield self.adapter
 
-    @abc.abstractmethod
-    def create(self) -> Any:
-        # implementation depends on the adapter
-        # assert self.adapter
-        ...
-
-    def delete(self):
-        ...
-
-
-class Protocol(abc.ABC):
-    events: List[BaseMessage]
-    unit_of_work: UnitOfWork
-
-    def __init__(self, unit_of_work: UnitOfWork, *args, **kwargs):
-        super().__init__()
-        self.events = []
-        self.unit_of_work = unit_of_work
-        self.unit_of_work.adapter = self.unit_of_work.create()
-        assert self.unit_of_work.adapter
-
     def __repr__(self):
-        return f'<Protocol {self.__class__.__name__}>: {self.unit_of_work.__repr__()}'
-
-    def __str__(self):
-        return self.__repr__()
-
-    @property
-    def adapter(self):
-        return self.unit_of_work.adapter
+        return f'<Protocol {self.__class__.__name__}>'

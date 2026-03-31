@@ -1,6 +1,11 @@
 from bollydog.models.service import AppService
 
-class ExampleService(AppService):
 
-    def __init__(self, *args, **kwargs):
-        super(ExampleService, self).__init__(*args, **kwargs)
+class ExampleService(AppService):
+    domain = 'example'
+    commands = ['commands']
+    router_mapping = {
+        'Ping': ['GET', '/api/ping'],
+        'Echo': ['POST', '/api/echo'],
+        'Countdown': ['SSE', '/api/countdown'],
+    }

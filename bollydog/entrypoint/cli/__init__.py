@@ -4,24 +4,25 @@ import logging
 import os
 import pathlib
 import sys
-from typing import Dict, Coroutine
+from typing import Dict
 import environs
 import fire
 from mode.utils.imports import smart_import
 from ptpython.repl import embed
 
-# import warnings
-# warnings.filterwarnings("ignore", category=UserWarning)
 logging.info(f'load .env from {os.getcwd()}')
 environs.Env().read_env(os.getcwd() + '/.env', recurse=False, verbose=True)
 
 from bollydog.patch import yaml
 from bollydog.bootstrap import Bootstrap
-from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _session_ctx_stack  # # noqa
+from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack
 from bollydog.models.service import AppService
-from bollydog.models.base import MessageName, BaseMessage, Session
-from bollydog.service.app import HubService
-from bollydog.service.handler import AppHandler
+from bollydog.models.base import BaseCommand
+from bollydog.service.config import BOLLYDOG_HTTP_ENABLED, BOLLYDOG_WS_ENABLED
+from bollydog.service.app import Hub
+from bollydog.entrypoint.http.app import HttpService
+from bollydog.entrypoint.websocket.app import SocketService
+
 
 def _load_config(config: str) -> Dict:
     if not config:
@@ -35,71 +36,92 @@ def _load_config(config: str) -> Dict:
         return smart_import(config)
 
 
-def get_apps(config: str) -> Dict[str, AppService]:
-    work_dir = pathlib.Path(config).parent
-    sys.path.insert(0, work_dir.as_posix())
-    config = _load_config(config)
+def get_apps(config: str = None) -> Dict[str, AppService]:
     apps = {}
-    for domain, app_config in config.items():
-        if domain in apps:
-            raise ValueError(f'duplicate domain: {domain}')
-        app = app_config.pop('app')
-        app = app.create_from(domain=domain,**app_config)
-        apps[domain] = app
+    if config:
+        work_dir = pathlib.Path(config).parent
+        sys.path.insert(0, work_dir.as_posix())
+        try:
+            smart_import('commands')
+        except (ImportError, ModuleNotFoundError):
+            logging.info('no `commands` module found, skipping')
+        for domain, app_config in (_load_config(config) or {}).items():
+            if domain in apps:
+                raise ValueError(f'duplicate domain: {domain}')
+            app = app_config.pop('app')
+            apps[domain] = app.create_from(**app_config)
+    if BOLLYDOG_HTTP_ENABLED:
+        apps['http'] = HttpService.create_from()
+    if BOLLYDOG_WS_ENABLED:
+        apps['ws'] = SocketService.create_from()
     return apps
 
 
 class CLI:
 
-    # # 入参如果是字符串，需要做一次转义或者使用单引号，例如：'"str"',"'str'",\"str\"
-
     @staticmethod
-    def service(
-            config: str,
-            exclude: list = None,
-            include: list = None
-    ):
-        apps = get_apps(config)
-        if exclude:
-            for app_name in exclude:
-                apps.pop(app_name)
-        if include:
-            apps = {k: v for k, v in apps.items() if k in include}
-        hub = HubService(apps=apps.values())
+    def service(config: str = None, apps: list = None):
+        _apps = get_apps(config)
+        if apps:
+            _apps = {k: v for k, v in _apps.items() if k in apps}
+        hub = Hub(apps=_apps.values())
         worker = Bootstrap(hub, override_logging=False)
         raise worker.execute_from_commandline()
 
     @staticmethod
-    def execute(
-            config: str,
-            message: MessageName,  # # instance or class name
-            **kwargs):
-        apps = get_apps(config)
-        hub = HubService(apps=apps.values())
-        msg = smart_import(message)
-        assert issubclass(msg, BaseMessage)
-        msg = msg(**kwargs)
-        logging.info(
-            f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare to execute')
-
-        async def _execute():
-            with _session_ctx_stack.push(Session()):
-                await hub.execute(msg)
-
-        asyncio.run(_execute())
-        logging.info(f'{json.dumps(msg.model_dump(), ensure_ascii=False)}')
+    def ls(config: str = None):
+        get_apps(config)
+        _base_fields = set(BaseCommand.model_fields.keys())
+        alias_count: Dict[str, list] = {}
+        for fqn, cmd_cls in BaseCommand._registry.items():
+            alias_count.setdefault(cmd_cls.alias, []).append(fqn)
+        rows = []
+        for fqn, cmd_cls in BaseCommand._registry.items():
+            name = cmd_cls.alias if len(alias_count[cmd_cls.alias]) == 1 else fqn
+            topic = cmd_cls.destination or '-'
+            user_fields = {k: v for k, v in cmd_cls.model_fields.items() if k not in _base_fields}
+            params = ', '.join(f'{k}: {v.annotation.__name__}' for k, v in user_fields.items()) if user_fields else '-'
+            rows.append((name, topic, params))
+        if not rows:
+            print('No commands registered.')
+            return
+        w0 = max(len(r[0]) for r in rows)
+        w1 = max(len(r[1]) for r in rows)
+        header = f'{"COMMAND":<{w0}}  {"TOPIC":<{w1}}  PARAMS'
+        print(header)
+        print('-' * len(header))
+        for name, topic, params in rows:
+            print(f'{name:<{w0}}  {topic:<{w1}}  {params}')
 
     @staticmethod
-    def shell(config: str, ):
+    def execute(command: str, **kwargs):
+        config = kwargs.pop('config', None)
         apps = get_apps(config)
-        hub = HubService(apps=apps.values())
-        for msg, handlers in AppHandler.commands.items():
-            print(f'{msg} -> {handlers}')
-        embed_result: Coroutine = embed(globals(), locals(), return_asyncio_coroutine=True, history_filename='.ptpython.tmp',patch_stdout=True)  # # noqa
-        # print("Starting ptpython asyncio REPL")
-        # print('Use "await" directly instead of "asyncio.run()".')
-        with _session_ctx_stack.push(Session()):
-            asyncio.run(embed_result)
+        hub = Hub(apps=apps.values())
+        cmd = BaseCommand.resolve(command)
+        msg = cmd(**kwargs)
+        logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
+
+        async def _run():
+            async with hub:
+                await hub.execute(msg)
+
+        asyncio.run(_run())
+        logging.info(json.dumps(msg.model_dump(), ensure_ascii=False))
+
+    @staticmethod
+    def shell(config: str = None):
+        apps = get_apps(config)
+        hub = Hub(apps=apps.values())
+        for key, cmd_cls in BaseCommand._registry.items():
+            print(f'{key} -> {cmd_cls}')
+        ns = {**globals(), 'apps': apps, 'hub': hub, 'BaseCommand': BaseCommand}
+
+        async def _run():
+            async with hub:
+                await embed(ns, ns, return_asyncio_coroutine=True, history_filename='.ptpython.tmp', patch_stdout=True)
+
+        asyncio.run(_run())
 
 
 def main():
