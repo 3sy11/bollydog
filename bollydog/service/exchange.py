@@ -1,6 +1,7 @@
 from collections import defaultdict
-from typing import Any, Callable
+from typing import ClassVar
 
+from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService
 from bollydog.service.config import DOMAIN
 
@@ -30,22 +31,26 @@ class Exchange(AppService):
         super().__init__(**kwargs)
         self._exact = defaultdict(set)
         self._patterns = defaultdict(set)
+        self._hub = None
 
-    def subscribe(self, topic: str, callback: Callable):
+    def subscribe(self, topic: str, handler):
+        if not (isinstance(handler, type) and issubclass(handler, BaseCommand)):
+            raise TypeError(f'Exchange.subscribe only accepts Command classes, got {handler!r}')
         store = self._patterns if ('#' in topic or '*' in topic) else self._exact
-        store[topic].add(callback)
+        store[topic].add(handler)
 
-    def unsubscribe(self, topic: str, callback: Callable):
+    def unsubscribe(self, topic: str, handler):
         store = self._patterns if ('#' in topic or '*' in topic) else self._exact
-        store.get(topic, set()).discard(callback)
+        store.get(topic, set()).discard(handler)
 
-    async def publish(self, topic: str, message: Any):
-        for cb in self._exact.get(topic, set()):
-            await cb(message)
-        for pattern, cbs in self._patterns.items():
+    def match(self, topic: str) -> set:
+        matched = set()
+        for h in self._exact.get(topic, set()):
+            matched.add(h)
+        for pattern, handlers in self._patterns.items():
             if match_topic(pattern, topic):
-                for cb in cbs:
-                    await cb(message)
+                matched.update(handlers)
+        return matched
 
     def list_topics(self):
         return {'exact': list(self._exact.keys()), 'patterns': list(self._patterns.keys())}

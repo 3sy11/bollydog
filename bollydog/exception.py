@@ -24,3 +24,11 @@ class HandlerMaxRetryError(Exception):
 
 class HandlerNoneError(Exception):
     pass
+
+
+class DestinationNotFoundError(Exception):
+    pass
+
+
+class ServiceNotFoundError(Exception):
+    pass

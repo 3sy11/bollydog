@@ -1,38 +1,53 @@
-# Bollydog 后续设计与增强（来自 fit 分析与架构讨论）
+# Bollydog design & enhancement backlog
 
-## 待实现（本阶段未做）
+## Pending (current phase)
 
-- **Exchange 发布 Command**：在 Exchange（或 Hub）侧暴露一个 **BaseCommand**，用于将人工/运维注入的事件发布到 Exchange（与 `hub.emit` 互补，可走统一入口与审计）。当前版本仅 `hub.emit` + `_process_message` 完成后 publish。
+- **Exchange publish Command**: expose a `BaseCommand` on Exchange/Hub for manual/ops event injection (complements `hub.emit`, enables unified entry + audit).
+- **Async generator yield Command**: `_run_gen` supports `yield SomeCommand(...)` — Hub dispatches sub-task, sends result back to generator. Current `_run_gen` has basic yield-Command support; needs refinement for error propagation.
+- **Async generator yield Event**: `_run_gen` supports `yield SomeEvent(...)` — Hub broadcasts via Exchange, fire-and-forget, generator continues without blocking. Needs branch in `_run_gen` to distinguish Command (await result) vs Event (fire-and-forget).
 
-## L0 核心
+## L0 core (completed)
 
-- destination 路由语义完善（P1）
-- `@timer` / `@cron`（P2）
-- `hub.get_service(cls)`（P2）
-- Service 级 `@handle(CommandClass)`（P3）
+- ~~Hub pipeline: _fire + _publish + _run/_run_gen pure execution~~
+- ~~_with_context lifted to call sites (_fire, _process_queued, execute)~~
+- ~~Hub._publish: match topic via exchange.match(), instantiate handler Command~~
+- ~~Exchange pure router: match(topic)->set, no handler instantiation~~
+- ~~Hub._resolve_app destination fast-fail (DestinationNotFoundError)~~
+- ~~hub.get_service(cls_or_key, required=True)~~
+- ~~_run_gen/_iterate merged into single method~~
+- ~~Hub dispatch three-tier: Event/Command qos0/Command qos1~~
+- ~~BaseEvent duck-typing (removed qos override)~~
+- ~~Callable subscription removed: subscribe only supports Command classes~~
+- ~~BaseCommand.data + add_event/get_event~~
 
-## L2 编排
+## L0 core (pending)
 
-- Thread 多轮会话（P0）
-- Middleware 链（P0）
-- Parallel 扇出聚合（P0）
-- Handoff（P1）
-- capabilities 声明（P1）
+- destination routing semantics refinement (P1)
+- `@timer` / `@cron` (P2)
+- Service-level `@handle(CommandClass)` (P3)
 
-## L1 分布式
+## L2 orchestration
 
-- Transport（P0）
-- Registry（P0）
-- RemoteDispatch（P0）
-- Event Federation（P1）
-- Envelope 序列化（P0）
-- Hub Identity（P0）
-- 负载均衡（P1）
+- Thread multi-turn session (P0)
+- Middleware chain (P0)
+- Parallel fan-out aggregation (P0)
+- Handoff (P1)
+- capabilities declaration (P1)
 
-## L3 Agent
+## L1 distributed
 
-- Tool + MCP（P1）
-- 分层 Memory（P2）
-- 声明式 DAG（P3）
+- Transport (P0)
+- Registry (P0)
+- RemoteDispatch (P0)
+- Event Federation (P1)
+- Envelope serialization (P0)
+- Hub Identity (P0)
+- Load balancing (P1)
 
-详见 `timing/ANALYSIS_BOLLYDOG_FIT.md`。
+## L3 agent
+
+- Tool + MCP (P1)
+- Layered Memory (P2)
+- Declarative DAG (P3)
+
+See `timing/ANALYSIS_BOLLYDOG_FIT.md` for details.

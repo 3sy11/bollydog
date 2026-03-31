@@ -1,60 +1,107 @@
 ---
 name: bollydog-framework
-description: bollydog AI 速查：Command 两条加载路径、destination 即 Exchange topic、Exchange/Queue、globals 与 Command/Service 边界。
+description: bollydog AI quick-ref — pipeline (_fire/_publish), Command loading, destination as Exchange topic, Exchange/Queue, data/events, globals, Command/Service boundary.
 ---
 
-# Bollydog — AI 速查
+# Bollydog — AI Quick Reference
 
-细节见 [README.md](../README.md)。
+Details in [README.md](../README.md).
 
-## 概念
+## Concepts
 
-`BaseCommand`（`__call__`）→ `Hub` 调度；`AppService`（`router_mapping` HTTP 路由、可选 `protocol`、`subscribe` 订阅模式）；**`destination`** = 三段式 **topic**（`domain.ServiceAlias.CommandAlias`），未绑定默认为 `_._.CommandAlias`。链：`入口 → Hub → Session → Command.__call__`。
+`BaseCommand`(`__call__`) → `Hub` dispatches; `AppService`(`router_mapping` HTTP routes, optional `protocol`, `subscribe` patterns); **`destination`** = 3-part **topic** (`domain.ServiceAlias.CommandAlias`), unbound defaults to `_._.CommandAlias`.
 
-## destination（topic）
+## Pipeline
 
-- **路由**：`Hub._resolve_app` 取 `destination` 的前两段 `domain.ServiceAlias` 在 `Hub.apps` 中查找；`_._` 表示无绑定 app。
-- **Exchange**：`hub.emit`、命令执行完成后的 `publish` 均使用同一 `destination` 字符串作为 topic（AMQP 风格 `*` / `#` 通配）。
-- 显式声明：旧两段 `domain.Service` 会在类定义时自动补成三段 `domain.Service.CommandAlias`。
+`Hub.dispatch(message)` routes by type and qos:
 
-## Command 加载：两条路径
+| Path | Type | Routing | Queue | Elevate |
+|------|------|---------|-------|---------|
+| Event | `BaseEvent` | `create_task(_fire)` | No | Yes |
+| Command qos=0 | `BaseCommand` | `create_task(_fire)` | No | Yes |
+| Command qos=1 | `BaseCommand` | `queue.put` → consumer | Yes | Yes |
 
-- **自动发现**（无依赖 app）：项目根 `commands.py` 或 `commands/` 包，`get_apps` 时 `smart_import('commands')`。默认 `destination = '_._.CommandAlias'`。
-- **显式绑定**：`AppService.commands` 或 YAML `commands:`。`_load_commands` 若 `destination` 以 `_._` 开头，则设为 `{domain}.{alias}.{CommandAlias}`。
+### Execution methods
 
-## 订阅
+- `_fire(msg)`: `async with _with_context(msg)` → `_run` or `_run_gen` → `_elevate(msg)`. Shared by Event and Command qos=0.
+- `_fire(msg)`: `async with _with_context(msg)` → `_run` or `_run_gen` → `_publish(msg)`. Shared by Event and Command qos=0.
+- `_run`: coroutine with retry loop. Pure execution, no context management.
+- `_run_gen`: async generator, no retry. Handles `yield Command` (dispatch + send result back) and `yield value` (stream to state). Pure execution, no context management.
+- `_process_queued(msg)`: `async with _with_context(msg)` → `_run`/`_run_gen` → `ack`/`nack` → `_publish(msg)`.
+- `execute(msg)`: CLI direct mode. `async with _with_context(msg)` → `_run`/`_run_gen`. No elevate, no queue.
+- `_with_context`: asynccontextmanager — session acquire/release + globals push/pop. Wraps execution at call sites, not inside `_run`/`_run_gen`.
 
-- `AppService.subscribe: ClassVar[dict]` — `topic_pattern: method_name`，与 `commands` / `router_mapping` 一样支持 YAML 覆盖。
-- 启动时 `Hub.on_started` 对 `exchange.subscribe` 注册。
+### _publish
 
-## Command / AppService 边界
+`Hub._publish(msg)` matches `type(msg).destination` via `exchange.match(topic)`:
+- **Command class** handler → instantiate, `add_event(msg)`, dispatch
 
-- **Command**：流程与编排；宜薄。
-- **AppService**：绑定在本域的实例方法；Command 通过 **`globals.app`** 调用。
-- **数据**：基础/可 JSON 类型。
+Runs **inside** `_with_context`, so handler Commands inherit trace correctly.
 
-## globals（重要）
+## Exchange (pub/sub, pure router)
 
-- `hub`、`app`、`protocol`、`message`、`session`；**不要**把 Service 类当单例。
-- **`app`** 由 `destination` 前两段解析；跨域用 `await hub.dispatch(cmd)` 或 `hub.apps['domain.ServiceAlias']`。
+- `exchange.subscribe(topic, handler)`: handler is **Command class** only.
+- `exchange.match(topic) -> set`: returns matched handlers (exact + pattern).
+- Exchange does **not** instantiate Commands or create tasks. Hub._publish handles that.
+- AMQP-style wildcards: `*` = one segment, `#` = zero or more.
 
-## 布局与配置
+## data & events
 
-- YAML 顶层 **domain**，块内 `app: !module ...`；`commands`、`router_mapping`、`subscribe` 均可写在 YAML。
-- 无依赖 Command 放项目根 `commands/`。
-- **`!module`**、`protocol.module`、`!env` 规则不变。
+`BaseCommand.data: dict`, general-purpose data field. `events` sub-key stores list of dict:
+
+- `cmd.add_event(event)` → append `event.model_dump()`
+- `cmd.get_event()` → latest `[-1]`; `get_event(0)` → earliest
+
+Exchange handler Commands retrieve trigger event via `self.get_event()`.
+
+## destination (topic)
+
+- **Routing**: `Hub._resolve_app` takes first two segments `domain.ServiceAlias`; `_._` = unbound.
+- **Fast-fail**: non-`_._` destination pointing to unregistered service raises `DestinationNotFoundError`.
+- **Exchange**: `_publish` uses `destination` as topic for pattern matching.
+
+## hub.get_service
+
+`hub.get_service(cls_or_key, *, required=True)` — retrieve registered `AppService` by class, instance, or string key. Raises `ServiceNotFoundError` if `required=True` and not found.
+
+## Command loading: two paths
+
+- **Auto-discover**: project root `commands/`, `smart_import` during `get_apps`. Default `destination = '_._.CommandAlias'`.
+- **Explicit binding**: `AppService.commands` or YAML. `_load_commands` rewrites `_._` prefix to `{domain}.{alias}.{CommandAlias}`.
+
+## Subscriptions
+
+- `AppService.subscribe: ClassVar[dict]` — `topic_pattern: CommandClass` only.
+- YAML overridable. Registered in `Hub.on_started` to `exchange`.
+
+## Command / AppService boundary
+
+- **Command**: orchestration and flow; keep thin.
+- **AppService**: domain-bound instance methods; Command calls via **`globals.app`**.
+- **Data**: primitive / JSON-serializable types between them.
+
+## globals (important)
+
+- `hub`, `app`, `protocol`, `message`, `session`; **never** treat Service classes as singletons.
+- **`app`** resolved from `destination` first two segments; cross-domain use `await hub.dispatch(cmd)`.
+
+## Layout & Config
+
+- YAML top-level **domain**, block `app: !module ...`; `commands`, `router_mapping`, `subscribe` all configurable in YAML.
+- Unbound Commands go in project root `commands/`.
+- `!module`, `protocol.module`, `!env` conventions unchanged.
 
 ## CLI
 
-`bollydog ls` 列出 `TOPIC`（即 `destination`）。`execute` / `service` / `shell` 同前。
+`bollydog ls` lists `TOPIC` (= `destination`). `execute` / `service` / `shell` as before.
 
-## 排查
+## Troubleshooting
 
-| 现象 | 处理 |
-|------|------|
-| `ls` 无业务命令 | `--config`；检查 `commands` |
-| `resolve` 失败 | 别名区分大小写（与类名一致）；冲突用 FQN |
-| `destination` / app 无解 | 前两段须与 `Hub.apps` 的 key 一致 |
-| 错 `app` | 只用 `globals.app` |
+| Symptom | Fix |
+|---------|-----|
+| `ls` shows no commands | check `--config`; verify `commands` |
+| `resolve` fails | alias is case-sensitive (matches class name); use FQN on conflict |
+| destination / app unresolved | first two segments must match `Hub.apps` key |
+| wrong `app` | always use `globals.app` |
 
-与 README 冲突时以 **源码 + 业务 YAML** 为准。
+When in doubt, source code + YAML config takes precedence.

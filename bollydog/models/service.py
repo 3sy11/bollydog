@@ -47,7 +47,7 @@ class BaseService(mode.Service):
 class AppService(BaseService, abstract=True):
     router_mapping: ClassVar[dict] = {}
     commands: ClassVar[List[str]] = []
-    subscribe: ClassVar[dict] = {}
+    subscribe: ClassVar[dict] = {}  # topic_pattern -> CommandClass
 
     async def on_first_start(self) -> None:
         await super(AppService, self).on_first_start()

@@ -104,8 +104,14 @@ class BaseCommand(_ModelMixin):
     span_id: str = Field(default='--')
     parent_span_id: str = Field(default=getattr(message, 'span_id', '--'))
 
-    # # data
-    # data: dict = Field(default_factory=dict)
+    data: dict = Field(default_factory=dict)
+
+    def add_event(self, event) -> None:
+        self.data.setdefault("events", []).append(event.model_dump() if hasattr(event, 'model_dump') else event)
+
+    def get_event(self, index: int = -1):
+        events = self.data.get("events", [])
+        return events[index] if events else None
 
     @property
     def is_async_gen(self) -> bool:
@@ -159,8 +165,6 @@ class BaseCommand(_ModelMixin):
         ...
 
 class BaseEvent(BaseCommand, abstract=True):
-    
-    qos: ClassVar[int] = not DEFAULT_QOS
 
     async def __call__(self, *args, **kwargs) -> Any:
         self.state.set_result(True)
