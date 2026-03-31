@@ -125,15 +125,29 @@ class BaseCommand(_ModelMixin):
         if 'module' not in cls.__dict__:
             cls.module = cls.__module__
         if 'alias' not in cls.__dict__:
-            cls.alias = cls.__name__.lower()
+            cls.alias = cls.__name__
         if not abstract and '__call__' in cls.__dict__:
+            if 'destination' not in cls.__dict__ or cls.__dict__.get('destination') is None:
+                cls.destination = f'_._.{cls.alias}'
+            elif len(str(cls.destination).split('.')) <= 2:
+                cls.destination = f'{cls.destination}.{cls.alias}'
             cls._registry[f'{cls.module}.{cls.alias}'] = cls
+
+    @classmethod
+    def topics(cls) -> Dict[str, Type['BaseCommand']]:
+        return {cmd.destination: cmd for cmd in cls._registry.values()}
 
     @classmethod
     def resolve(cls, name: str) -> Type['BaseCommand']:
         if name in cls._registry:
             return cls._registry[name]
         matches = {k: v for k, v in cls._registry.items() if k.endswith(f'.{name}')}
+        if len(matches) == 1:
+            return next(iter(matches.values()))
+        if len(matches) > 1:
+            raise KeyError(f"Ambiguous alias '{name}', candidates: {list(matches.keys())}")
+        nl = name.lower()
+        matches = {k: v for k, v in cls._registry.items() if v.alias.lower() == nl}
         if len(matches) == 1:
             return next(iter(matches.values()))
         if len(matches) > 1:

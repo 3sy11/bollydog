@@ -7,9 +7,9 @@ from bollydog.exception import ServiceRejectException, HandlerTimeOutError, Hand
 from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack, _app_ctx_stack, _session_ctx_stack
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
-from bollydog.service.router import Router
+from bollydog.service.exchange import Exchange
 from bollydog.service.session import Session
-from bollydog.service.broker import Broker
+from bollydog.service.queue import Queue
 from bollydog.service.config import DOMAIN, HUB_ROUTER_MAPPING
 
 
@@ -17,30 +17,35 @@ class Hub(AppService):
     domain = DOMAIN
     router_mapping = HUB_ROUTER_MAPPING
     apps: dict
-    router: Router
+    exchange: Exchange
     session: Session
-    broker: Broker
+    queue: Queue
 
     def __init__(self, apps: Iterable[AppService] = None, **kwargs):
         super().__init__(**kwargs)
-        self.router = Router()
+        self.exchange = Exchange()
         self.session = Session()
-        self.broker = Broker()
-        self.add_dependency(self.router)
+        self.queue = Queue()
+        self.add_dependency(self.exchange)
         self.add_dependency(self.session)
-        self.add_dependency(self.broker)
+        self.add_dependency(self.queue)
         _id = lambda s: f'{s.domain}.{s.alias}'
-        self.apps = {_id(self): self, _id(self.router): self.router, _id(self.session): self.session, _id(self.broker): self.broker}
+        self.apps = {_id(self): self, _id(self.exchange): self.exchange, _id(self.session): self.session, _id(self.queue): self.queue}
         for app in apps or []:
             self.add_service(app)
         self.exit_stack.enter_context(_hub_ctx_stack.push(self))
 
     async def on_started(self) -> None:
         for service in self.apps.values():
+            for topic, method in getattr(service, 'subscribe', {}).items():
+                self.exchange.subscribe(topic, getattr(service, method))
             if service == self:
                 continue
             await service.maybe_start()
         self.logger.info(self.apps)
+
+    async def emit(self, event: Message, topic: str = None):
+        await self.exchange.publish(topic or type(event).destination, event)
 
     def add_service(self, service: AppService):
         key = f'{service.domain}.{service.alias}'
@@ -50,7 +55,7 @@ class Hub(AppService):
     async def put_message(self, message: Message) -> Message:
         if self.should_stop:
             raise ServiceRejectException()
-        msg = await self.broker.put(message)
+        msg = await self.queue.put(message)
         self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
         return msg
 
@@ -61,8 +66,8 @@ class Hub(AppService):
 
     @mode.Service.task
     async def run(self):
-        while not self.should_stop or self.broker.size > 0:
-            message = await self.broker.take()
+        while not self.should_stop or self.queue.size > 0:
+            message = await self.queue.take()
             if not message:
                 continue
             self.logger.debug(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias} {message.model_dump()}')
@@ -72,15 +77,20 @@ class Hub(AppService):
     async def _process_message(self, message: Message):
         try:
             await self.execute(message)
-            await self.router.publish(message)
+            await self.exchange.publish(type(message).destination, message)
         except Exception as e:
             self.logger.error(f'process message error: {e}')
             self.logger.exception(e)
 
     def _resolve_app(self, message: Message):
-        if not message.destination:
+        dest = type(message).destination
+        if not dest:
             return None
-        return self.apps.get(message.destination)
+        parts = dest.split('.')
+        service_key = '.'.join(parts[:2])
+        if service_key == '_._':
+            return None
+        return self.apps.get(service_key)
 
     async def _iterate(self, message: Message, gen):
         feedback, pending = None, []
@@ -115,18 +125,18 @@ class Hub(AppService):
                 else:
                     result = await asyncio.wait_for(coro, timeout=message.expire_time)
                     message.state.set_result(result)
-                self.broker.ack(message.iid, result)
+                self.queue.ack(message.iid, result)
             except (TimeoutError, HandlerTimeOutError, HandlerMaxRetryError) as e:
                 if message.delivery_count:
                     self.logger.info(f'{message.alias} retrying {message.delivery_count}')
                     message.delivery_count -= 1
                     continue
                 message.state.set_exception(e)
-                self.broker.nack(message.iid, e)
+                self.queue.nack(message.iid, e)
             except Exception as e:
                 self.logger.exception(e)
                 message.state.set_exception(e)
-                self.broker.nack(message.iid, e)
+                self.queue.nack(message.iid, e)
             break
 
     async def execute(self, message: Message) -> Message:

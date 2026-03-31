@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections import OrderedDict, deque
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 PENDING, IN_FLIGHT, DONE, FAILED = 1, 2, 0, 3
 
 
-class Broker(AppService):
+class Queue(AppService):
     domain = DOMAIN
     _store: OrderedDict[str, Tuple[Message, asyncio.Future, int]]
     _history: deque

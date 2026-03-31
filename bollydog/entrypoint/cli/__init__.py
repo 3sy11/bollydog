@@ -78,20 +78,20 @@ class CLI:
         rows = []
         for fqn, cmd_cls in BaseCommand._registry.items():
             name = cmd_cls.alias if len(alias_count[cmd_cls.alias]) == 1 else fqn
-            dest = cmd_cls.destination or '-'
+            topic = cmd_cls.destination or '-'
             user_fields = {k: v for k, v in cmd_cls.model_fields.items() if k not in _base_fields}
             params = ', '.join(f'{k}: {v.annotation.__name__}' for k, v in user_fields.items()) if user_fields else '-'
-            rows.append((name, dest, params))
+            rows.append((name, topic, params))
         if not rows:
             print('No commands registered.')
             return
         w0 = max(len(r[0]) for r in rows)
         w1 = max(len(r[1]) for r in rows)
-        header = f'{"COMMAND":<{w0}}  {"DESTINATION":<{w1}}  PARAMS'
+        header = f'{"COMMAND":<{w0}}  {"TOPIC":<{w1}}  PARAMS'
         print(header)
         print('-' * len(header))
-        for name, dest, params in rows:
-            print(f'{name:<{w0}}  {dest:<{w1}}  {params}')
+        for name, topic, params in rows:
+            print(f'{name:<{w0}}  {topic:<{w1}}  {params}')
 
     @staticmethod
     def execute(command: str, **kwargs):

@@ -35,7 +35,7 @@ class BaseService(mode.Service):
         if 'domain' not in cls.__dict__:
             cls.domain = pathlib.Path(inspect.getmodule(cls).__file__).parent.name
         if 'alias' not in cls.__dict__:
-            cls.alias = cls.__name__.lower()
+            cls.alias = cls.__name__
 
     def __repr__(self) -> str:
         return f"<{self._repr_name()}: {self.state}: {id(self)}>"
@@ -47,6 +47,7 @@ class BaseService(mode.Service):
 class AppService(BaseService, abstract=True):
     router_mapping: ClassVar[dict] = {}
     commands: ClassVar[List[str]] = []
+    subscribe: ClassVar[dict] = {}
 
     async def on_first_start(self) -> None:
         await super(AppService, self).on_first_start()
@@ -57,16 +58,17 @@ class AppService(BaseService, abstract=True):
     async def on_started(self) -> None:
         await super(AppService, self).on_started()
 
-    def __init__(self, protocol=None, router_mapping=None, **kwargs):
+    def __init__(self, protocol=None, router_mapping=None, subscribe=None, **kwargs):
         super().__init__(**kwargs)
         self.protocol = protocol
         self.router_mapping = router_mapping if router_mapping is not None else self.__class__.router_mapping
+        self.subscribe = subscribe if subscribe is not None else self.__class__.subscribe
 
     @classmethod
     def _load_commands(cls, modules: List[str]):
         from bollydog.models.base import BaseCommand
         pkg = cls.__module__.rsplit('.', 1)[0]
-        dest = f'{cls.domain}.{cls.alias}'
+        dest_prefix = f'{cls.domain}.{cls.alias}'
         for name in modules:
             fqn = f'{pkg}.{name}' if '.' not in name else name
             before = set(BaseCommand._registry.keys())
@@ -76,16 +78,16 @@ class AppService(BaseService, abstract=True):
                 continue
             for key in set(BaseCommand._registry.keys()) - before:
                 cmd_cls = BaseCommand._registry[key]
-                if 'destination' not in cmd_cls.__dict__:
-                    cmd_cls.destination = dest
+                if str(cmd_cls.destination).startswith('_._'):
+                    cmd_cls.destination = f'{dest_prefix}.{cmd_cls.alias}'
 
     @classmethod
-    def create_from(cls, protocol=None, router_mapping=None, commands=None, **kwargs):
+    def create_from(cls, protocol=None, router_mapping=None, commands=None, subscribe=None, **kwargs):
         cls._load_commands(commands if commands is not None else cls.commands)
         logger.debug(f'create_from {cls.__name__} {protocol}')
         if protocol:
             protocol = protocol['module'](**protocol)
-        app_service = cls(protocol=protocol, router_mapping=router_mapping, **kwargs)
+        app_service = cls(protocol=protocol, router_mapping=router_mapping, subscribe=subscribe, **kwargs)
         if protocol:
             app_service.add_dependency(protocol)
         return app_service

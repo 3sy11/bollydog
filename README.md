@@ -10,7 +10,7 @@ Async microservice framework built on [mode](https://github.com/faust-streaming/
 - **Command as executable** — `BaseCommand` carries business logic directly via `async def __call__`, no external Handler needed
 - **Polymorphic State** — regular commands use `asyncio.Future`, async generator commands automatically switch to `StreamState` (compatible with both `await` and `async for`)
 - **Unified entrypoints** — the same Command can be executed via HTTP, WebSocket, CLI, or Shell
-- **Broker message lifecycle** — PENDING → IN_FLIGHT → DONE / FAILED, with fixed-length history queue
+- **Queue message lifecycle** — PENDING → IN_FLIGHT → DONE / FAILED, with fixed-length history queue
 - **Session context isolation** — each Command gets independent context keyed by `trace_id`, with pluggable Memory / Redis backends
 - **SSE streaming** — async generator commands natively support Server-Sent Events
 - **Orchestration** — `yield` sub-commands inside an async generator; Hub automatically dispatches and `asend`s the result back
@@ -28,10 +28,10 @@ Async microservice framework built on [mode](https://github.com/faust-streaming/
 | `BaseService` | `models.service` | Service base class, inherits `mode.Service`, auto-derives `domain` and `alias` |
 | `AppService` | `models.service` | Application service base class, supports `protocol` injection and `router_mapping` declaration |
 | `Protocol` | `models.protocol` | Adapter abstract base class, subclasses implement `create()` to initialize underlying connections |
-| `Hub` | `service.app` | Central dispatcher, manages Router / Session / Broker / AppService |
-| `Broker` | `service.broker` | Message queue management, FIFO scheduling + state tracking + history archival |
+| `Hub` | `service.app` | Central dispatcher, manages Exchange / Session / Queue / AppService |
+| `Queue` | `service.queue` | Message queue management, FIFO scheduling + state tracking + history archival |
 | `Session` | `service.session` | Context management service, isolates `SessionContext` per `trace_id` |
-| `Router` | `service.router` | Hub-internal event pub/sub |
+| `Exchange` | `service.exchange` | Hub-internal pub/sub (AMQP-style topic `*` / `#`) |
 
 ## Architecture
 
@@ -39,10 +39,10 @@ Async microservice framework built on [mode](https://github.com/faust-streaming/
 CLI / HTTP / WebSocket
         │
         ▼
-      Hub  ──── dispatch ──→  Broker.put (qos=0)
+      Hub  ──── dispatch ──→  Queue.put (qos=0)
        │                         │
        │                         ▼
-       │                      Broker.take → Hub._process_message
+       │                      Queue.take → Hub._process_message
        │
        ├── execute ──→ Session.acquire → _execute → Session.release
        │                                    │
@@ -53,9 +53,9 @@ CLI / HTTP / WebSocket
        │                     ├── yield Command → dispatch (sub-command orchestration)
        │                     └── yield data    → state.put (streaming output)
        │
-       ├── Router (internal event publishing)
+       ├── Exchange (internal pub/sub)
        ├── Session (context management)
-       └── Broker (message lifecycle)
+       └── Queue (message lifecycle)
 ```
 
 ## Installation
@@ -86,7 +86,7 @@ from typing import Any
 from bollydog.models.base import BaseCommand
 
 class Ping(BaseCommand):
-    destination = 'myapp.myservice'  # points to the target AppService's domain.alias
+    # destination 默认为三段 topic；由 AppService.commands 加载时绑定为 myapp.MyService.Ping
 
     async def __call__(self, *args, **kwargs) -> Any:
         return {'pong': True}
@@ -190,8 +190,8 @@ myapp:
 |---|---|---|
 | `BOLLYDOG_COMMAND_EXPIRE_TIME` | `3600` | Command timeout (seconds) |
 | `BOLLYDOG_EVENT_EXPIRE_TIME` | `120` | Event timeout (seconds) |
-| `BOLLYDOG_QUEUE_MAX_SIZE` | `1000` | Broker queue max capacity |
-| `BOLLYDOG_HISTORY_MAX_SIZE` | `1000` | Broker history queue length |
+| `BOLLYDOG_QUEUE_MAX_SIZE` | `1000` | Queue max capacity |
+| `BOLLYDOG_HISTORY_MAX_SIZE` | `1000` | Queue history length |
 | `BOLLYDOG_DEFAULT_SIGN` | `1` | Default sign flag |
 | `BOLLYDOG_DELIVERY_COUNT` | `0` | Default retry count |
 | `BOLLYDOG_DEFAULT_QOS` | `1` | Default QoS (0=async queue, 1=sync execute) |
@@ -249,7 +249,7 @@ Request-scoped context proxies via `LocalStack`, available directly inside `Base
 from bollydog.globals import hub, message, protocol, session, app
 
 class MyCommand(BaseCommand):
-    destination = 'myapp.myservice'
+    # destination 为 topic（如 myapp.MyService.MyCommand），前两段用于 Hub 解析 app
 
     async def __call__(self, *args, **kwargs):
         session.username        # current operator
@@ -277,9 +277,9 @@ bollydog/
 │   └── protocol.py      # Protocol abstract base class
 ├── service/
 │   ├── app.py           # Hub (central dispatcher)
-│   ├── broker.py        # Broker (message queue / lifecycle)
+│   ├── queue.py         # Queue (message queue / lifecycle)
 │   ├── session.py       # Session, SessionContext
-│   ├── router.py        # Router (internal event pub/sub)
+│   ├── exchange.py      # Exchange (internal pub/sub)
 │   ├── commands.py      # Built-in commands (TaskCount)
 │   └── config.py        # Global environment variable config
 ├── entrypoint/
