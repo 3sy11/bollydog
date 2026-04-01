@@ -19,6 +19,7 @@
 - ~~BaseEvent duck-typing (removed qos override)~~
 - ~~Callable subscription removed: subscribe only supports Command classes~~
 - ~~BaseCommand.data + add_event/get_event~~
+- ~~UDS entrypoint (`UdsService`, length-prefixed JSON, CLI execute socket forward / `--local`)~~
 
 ## L0 core (pending)
 

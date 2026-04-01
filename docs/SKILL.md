@@ -15,7 +15,7 @@ Details in [README.md](../README.md).
 
 `Hub.dispatch(message)` routes by type and qos:
 
-| Path | Type | Routing | Queue | Elevate |
+| Path | Type | Routing | Queue | Publish |
 |------|------|---------|-------|---------|
 | Event | `BaseEvent` | `create_task(_fire)` | No | Yes |
 | Command qos=0 | `BaseCommand` | `create_task(_fire)` | No | Yes |
@@ -23,7 +23,6 @@ Details in [README.md](../README.md).
 
 ### Execution methods
 
-- `_fire(msg)`: `async with _with_context(msg)` → `_run` or `_run_gen` → `_elevate(msg)`. Shared by Event and Command qos=0.
 - `_fire(msg)`: `async with _with_context(msg)` → `_run` or `_run_gen` → `_publish(msg)`. Shared by Event and Command qos=0.
 - `_run`: coroutine with retry loop. Pure execution, no context management.
 - `_run_gen`: async generator, no retry. Handles `yield Command` (dispatch + send result back) and `yield value` (stream to state). Pure execution, no context management.
@@ -93,7 +92,13 @@ Exchange handler Commands retrieve trigger event via `self.get_event()`.
 
 ## CLI
 
-`bollydog ls` lists `TOPIC` (= `destination`). `execute` / `service` / `shell` as before.
+`bollydog ls` lists `TOPIC` (= `destination`). `execute` / `send` / `service` / `shell`.
+
+## UDS entrypoint (optional)
+
+- Env: `BOLLYDOG_UDS_ENABLED=1` registers `UdsService`. `BOLLYDOG_UDS_SOCK_PATH` (server bind). `BOLLYDOG_SEND_DEFAULT_CONFIG` optional default `--config` for `send`.
+- Wire: length-prefixed JSON `{"command":"<alias>","kwargs":{}}` → server `resolve` → instance → `hub.dispatch` → `await msg.state`.
+- `bollydog send <CommandAlias> <socket_path> ...` — **socket required**; `config` defaults from `BOLLYDOG_SEND_DEFAULT_CONFIG` or pass `--config`. Client: `UdsService(sock_path=socket).send(command, kwargs)`. In-process one-shot remains `execute`.
 
 ## Troubleshooting
 

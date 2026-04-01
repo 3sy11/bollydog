@@ -18,10 +18,11 @@ from bollydog.bootstrap import Bootstrap
 from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack
 from bollydog.models.service import AppService
 from bollydog.models.base import BaseCommand
-from bollydog.service.config import BOLLYDOG_HTTP_ENABLED, BOLLYDOG_WS_ENABLED
+from bollydog.service.config import BOLLYDOG_HTTP_ENABLED, BOLLYDOG_WS_ENABLED, BOLLYDOG_UDS_ENABLED
 from bollydog.service.app import Hub
 from bollydog.entrypoint.http.app import HttpService
 from bollydog.entrypoint.websocket.app import SocketService
+from bollydog.entrypoint.uds.config import SEND_DEFAULT_CONFIG
 
 
 def _load_config(config: str) -> Dict:
@@ -54,6 +55,9 @@ def get_apps(config: str = None) -> Dict[str, AppService]:
         apps['http'] = HttpService.create_from()
     if BOLLYDOG_WS_ENABLED:
         apps['ws'] = SocketService.create_from()
+    if BOLLYDOG_UDS_ENABLED:
+        from bollydog.entrypoint.uds.app import UdsService
+        apps['uds'] = UdsService.create_from()
     return apps
 
 
@@ -108,6 +112,17 @@ class CLI:
 
         asyncio.run(_run())
         logging.info(json.dumps(msg.model_dump(), ensure_ascii=False))
+
+    @staticmethod
+    def send(command: str, socket: str, **kwargs):
+        config = kwargs.pop('config', SEND_DEFAULT_CONFIG)
+        get_apps(config)
+        cmd_cls = BaseCommand.resolve(command)
+        cmd_cls(**kwargs)
+        from bollydog.entrypoint.uds.app import UdsService
+        uds = UdsService(sock_path=socket)
+        resp = asyncio.run(uds.send(command, kwargs))
+        logging.info(json.dumps(resp, ensure_ascii=False))
 
     @staticmethod
     def shell(config: str = None):
