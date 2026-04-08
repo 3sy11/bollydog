@@ -22,9 +22,10 @@ class BaseService(mode.Service):
         return service
 
     async def on_first_start(self) -> None:
-        supervisor = mode.OneForOneSupervisor()
-        supervisor.add(self)
-        await supervisor.start()
+        if False:  # < TODO
+            supervisor = mode.OneForOneSupervisor()
+            supervisor.add(self)
+            await supervisor.start()
 
     async def crash(self, reason: BaseException) -> None:
         self.logger.error(reason)
@@ -47,7 +48,7 @@ class BaseService(mode.Service):
 class AppService(BaseService, abstract=True):
     router_mapping: ClassVar[dict] = {}
     commands: ClassVar[List[str]] = []
-    subscribe: ClassVar[dict] = {}  # topic_pattern -> CommandClass
+    subscriber: ClassVar[dict] = {}  # topic_pattern -> CommandClass
 
     async def on_first_start(self) -> None:
         await super(AppService, self).on_first_start()
@@ -62,7 +63,7 @@ class AppService(BaseService, abstract=True):
         super().__init__(**kwargs)
         self.protocol = protocol
         self.router_mapping = router_mapping if router_mapping is not None else self.__class__.router_mapping
-        self.subscribe = subscribe if subscribe is not None else self.__class__.subscribe
+        self.subscriber = subscribe if subscribe is not None else self.__class__.subscriber
 
     @classmethod
     def _load_commands(cls, modules: List[str]):

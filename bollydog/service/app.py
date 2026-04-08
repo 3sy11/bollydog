@@ -81,7 +81,7 @@ class Hub(AppService):
 
     async def on_started(self) -> None:
         for service in self.apps.values():
-            for topic, handler in getattr(service, 'subscribe', {}).items():
+            for topic, handler in getattr(service, 'subscriber', {}).items():
                 self.exchange.subscribe(topic, handler)
             if service == self: continue
             await service.maybe_start()

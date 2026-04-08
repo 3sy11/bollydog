@@ -11,10 +11,6 @@ class Bootstrap(mode.Worker):
         return self.services
 
     async def on_first_start(self) -> None:
-
-        # < 启动前打印各项资源对象和资源类
-        # < 初始化日志
-        # < 初始化监控aiomonitor
         self.install_signal_handlers()
         await super(Bootstrap, self).on_first_start()
 
