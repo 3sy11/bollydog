@@ -51,8 +51,11 @@ class UdsService(AppService):
             except OSError as e:
                 self.logger.warning(f'uds unlink stale sock: {e}')
         self._server = await asyncio.start_unix_server(self._handle, path=self._sock_path)
-        self.logger.info(f'uds listening {self._sock_path}')
         await super().on_start()
+
+    async def on_started(self) -> None:
+        self.logger.info(f'uds unix://{self._sock_path}')
+        await super().on_started()
 
     @mode.task
     async def run_server(self):

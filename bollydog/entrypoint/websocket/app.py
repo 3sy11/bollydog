@@ -79,6 +79,10 @@ class SocketService(AppService):
         self.init_server()
         await super(SocketService, self).on_start()
 
+    async def on_started(self) -> None:
+        self.logger.info(f'ws ws://{SERVICE_HOST}:{SERVICE_PORT}/')
+        await super(SocketService, self).on_started()
+
     @mode.task
     async def run_server(self):
         await self.uvicorn.serve()

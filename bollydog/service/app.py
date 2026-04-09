@@ -59,6 +59,7 @@ class Hub(AppService):
     """
     domain = DOMAIN
     router_mapping = HUB_ROUTER_MAPPING
+    commands = ['commands']
     apps: dict
     exchange: Exchange
     session: Session
@@ -66,6 +67,7 @@ class Hub(AppService):
 
     def __init__(self, apps: Iterable[AppService] = None, **kwargs):
         super().__init__(**kwargs)
+        self._load_commands(self.commands)
         self.exchange = Exchange()
         self.exchange._hub = self
         self.session = Session()
@@ -81,19 +83,26 @@ class Hub(AppService):
 
     async def on_started(self) -> None:
         for service in self.apps.values():
-            for topic, handler in getattr(service, 'subscriber', {}).items():
-                self.exchange.subscribe(topic, handler)
             if service == self: continue
             await service.maybe_start()
-        self.logger.info(self.apps)
+        for sid, svc in self.apps.items():
+            cmds = getattr(svc, 'commands', None)
+            if cmds: self.logger.info(f'[{sid}] {type(svc).__name__} | commands={cmds}')
+        if Message._registry:
+            def _tag(c): return 'Event' if issubclass(c, BaseEvent) else 'Command'
+            reg = '\n  '.join(f'{_tag(c):7} {c.alias:20} dest={c.destination or "-"}' for c in Message._registry.values())
+            self.logger.info(f'registry({len(Message._registry)}):\n  {reg}')
 
     async def emit(self, event: Message, topic: str = None):
         await self.dispatch(event)
 
     def add_service(self, service: AppService):
         key = f'{service.domain}.{service.alias}'
-        assert key not in self.apps
+        if key in self.apps: return
         self.apps[key] = service
+        for child in getattr(service, '_children', []):
+            if isinstance(child, AppService):
+                self.add_service(child)
 
     def get_service(self, cls_or_key, *, required=True):
         if isinstance(cls_or_key, str):
@@ -136,11 +145,12 @@ class Hub(AppService):
         runner = self._run_gen if message.is_async_gen else self._run
         async with self._with_context(message):
             await runner(message)
-            await self._publish(message)
+            await self._publish(message)  # < move to exchange
 
     async def _publish(self, message):
         topic = type(message).destination
         if not topic: return
+        if message.state.done() and (message.state.cancelled() or message.state.exception()): return
         for handler in self.exchange.match(topic):
             cmd = handler()
             cmd.add_event(message)
@@ -150,7 +160,8 @@ class Hub(AppService):
         while True:
             try:
                 result = await asyncio.wait_for(message(), timeout=message.expire_time)
-                message.state.set_result(result); break
+                if not message.state.done(): message.state.set_result(result)
+                break
             except (TimeoutError, HandlerTimeOutError, HandlerMaxRetryError) as e:
                 if message.delivery_count:
                     self.logger.info(f'{message.alias} retrying {message.delivery_count}')

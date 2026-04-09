@@ -14,8 +14,22 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse, StreamingResponse
 from starlette.datastructures import UploadFile
 
-from bollydog.globals import hub
+from bollydog.globals import hub, _hub_ctx_stack
 from bollydog.models.base import BaseCommand
+
+
+class HubContextMiddleware:
+    """uvicorn 为每个请求创建 contextvars.Context() 空上下文，
+    导致 _hub_ctx_stack 丢失。此中间件为每个 ASGI scope 重新注入 hub。"""
+    def __init__(self, app, hub_instance):
+        self.app, self.hub_instance = app, hub_instance
+
+    async def __call__(self, scope, receive, send):
+        _hub_ctx_stack.push_without_automatic_cleanup(self.hub_instance)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _hub_ctx_stack.pop()
 from .middleware import base_auth_backend
 from .config import (
     SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST,
@@ -50,7 +64,9 @@ class HttpHandler:
                         _data[k] = v
                     data = _data
                 else:
-                    data = await request.json()
+                    body = await request.body()
+                    data = await request.json() if body.strip() else {}
+                data = {**dict(request.query_params), **data}
                 message: BaseCommand = self.message(**data, **request.path_params, created_by=username)
             else:
                 raise NotImplementedError
@@ -117,11 +133,20 @@ class HttpService(AppService):
     # async def on_first_start(self) -> None:
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
+    @staticmethod
+    def _collect_router_mappings(service, visited=None):
+        if visited is None: visited = set()
+        if id(service) in visited: return {}
+        visited.add(id(service))
+        rm = dict(getattr(service, 'router_mapping', None) or {})
+        for child in getattr(service, '_children', []):
+            rm.update(HttpService._collect_router_mappings(child, visited))
+        return rm
+
     async def on_start(self) -> None:
         merged = {}
         for app in hub.apps.values():
-            if hasattr(app, 'router_mapping') and app.router_mapping:
-                merged.update(app.router_mapping)
+            merged.update(self._collect_router_mappings(app))
         merged.update(self.router_mapping)
         for key, command_cls in BaseCommand._registry.items():
             alias = command_cls.alias
@@ -140,12 +165,19 @@ class HttpService(AppService):
             else:
                 handler = HttpHandler(command_cls)
             self.http_app.router.add_route(path, handler, methods=methods, name=alias, include_in_schema=True)
-        for r in self.http_app.routes:
-            self.logger.info(r)
         self.http_app.user_middleware = self.middlewares
         self.http_app.debug = SERVICE_DEBUG
+        self._asgi_app = HubContextMiddleware(self.http_app, hub._get_current_object())
         self.init_server()
         await super(HttpService, self).on_start()
+
+    async def on_started(self) -> None:
+        scheme = 'https' if SERVICE_PRIVATE_KEY_PATH else 'http'
+        base = f'{scheme}://{SERVICE_HOST}:{SERVICE_PORT}'
+        routes = [r for r in self.http_app.routes if hasattr(r, 'path')]
+        lines = '\n  '.join(f'{",".join(r.methods)} {base}{r.path} -> {r.name}' for r in routes)
+        self.logger.info(f'http({len(routes)} routes) {base}\n  {lines}')
+        await super(HttpService, self).on_started()
 
     @mode.task
     async def run_server(self):
@@ -154,7 +186,7 @@ class HttpService(AppService):
     def init_server(self):
         config = uvicorn.Config(
             host=SERVICE_HOST,
-            app=self.http_app,
+            app=self._asgi_app,
             port=int(SERVICE_PORT),
             log_level=SERVICE_LOG_LEVEL,
             ssl_keyfile=SERVICE_PRIVATE_KEY_PATH,
