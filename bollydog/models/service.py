@@ -55,6 +55,7 @@ class AppService(BaseService, abstract=True):
 
     async def on_start(self) -> None:
         await super(AppService, self).on_start()
+        self._load_commands(self.commands)
 
     async def on_started(self) -> None:
         await super(AppService, self).on_started()
