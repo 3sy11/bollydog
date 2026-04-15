@@ -23,12 +23,13 @@ Details in [README.md](../README.md).
 
 ### Execution methods
 
-- `_fire(msg)`: `async with _with_context(msg)` → `_run` or `_run_gen` → `_publish(msg)`. Shared by Event and Command qos=0.
+- `_fire(msg)`: `async with _with_context(msg)` → `_execute(msg, runner)` → `_publish(msg)`. Shared by Event and Command qos=0.
+- `_execute(msg, runner)`: runs before-hooks → runner → after-hooks. All three paths (`_fire`, `_process_queued`, `execute`) go through `_execute`.
 - `_run`: coroutine with retry loop. Pure execution, no context management.
-- `_run_gen`: async generator, no retry. Handles `yield Command` (dispatch + send result back) and `yield value` (stream to state). Pure execution, no context management.
-- `_process_queued(msg)`: `async with _with_context(msg)` → `_run`/`_run_gen` → `ack`/`nack` → `_publish(msg)`.
-- `execute(msg)`: CLI direct mode. `async with _with_context(msg)` → `_run`/`_run_gen`. No elevate, no queue.
-- `_with_context`: asynccontextmanager — session acquire/release + globals push/pop. Wraps execution at call sites, not inside `_run`/`_run_gen`.
+- `_run_gen`: async generator, no retry. Handles `yield Command` (dispatch + send result back), `yield [cmd, ...]` (parallel dispatch + gather), and `yield value` (stream to state).
+- `_process_queued(msg)`: `async with _with_context(msg)` → `_execute` → `ack`/`nack` → `_publish(msg)`.
+- `execute(msg)`: CLI direct mode. `async with _with_context(msg)` → `_execute`. No elevate, no queue.
+- `_with_context`: asynccontextmanager — push `app`, `protocol`, `message` globals for the request scope.
 
 ### _publish
 
@@ -73,16 +74,239 @@ Exchange handler Commands retrieve trigger event via `self.get_event()`.
 - `AppService.subscribe: ClassVar[dict]` — `topic_pattern: CommandClass` only.
 - YAML overridable. Registered in `Hub.on_started` to `exchange`.
 
-## Command / AppService boundary
+## Command / AppService boundary (strict)
 
-- **Command**: orchestration and flow; keep thin.
-- **AppService**: domain-bound instance methods; Command calls via **`globals.app`**.
-- **Data**: primitive / JSON-serializable types between them.
+### Principles
+
+- **Command** = thin orchestration only (scheduling and glue); no owned state; do not reach into internal service structure.
+- **AppService** = resource owner; expose **business methods** for Commands; inner sub-services (e.g. SwingService, FibService) must stay invisible to Commands.
+- **Protocol** = environment abstraction: production `SqlAlchemyProtocol` / `RedisProtocol`; tests `MemoryProtocol` / `NoneProtocol`.
+- Commands use `globals.app` (pushed by `_with_context` from `destination`) for the owning `AppService`. **Do not** use `app.child_service.xxx`.
+- Cross-domain: `hub.dispatch(sub_cmd)` or `yield sub_cmd` (async-gen orchestration); do not use `hub.get_service` to grab other domains’ services ad hoc.
+
+### Three Command patterns (follow strictly)
+
+**1. Pure compute Command — no `app`; unit-testable in isolation**
+
+```python
+class ComputeSwingFeatures(BaseCommand):
+    destination = "timing.AnalysisEngine.ComputeSwingFeatures"
+    klines: list; config: dict
+    async def __call__(self):
+        return compute_swing_features(self.klines, self.config)
+```
+
+Test: `cmd = ComputeSwingFeatures(klines=data, config={...}); result = await cmd()` — no Hub required.
+
+**2. Orchestration Command — `app` business methods + child Commands + `protocol` persistence**
+
+```python
+class OnCacheIngested(BaseCommand):
+    destination = "timing.AnalysisEngine.OnCacheIngested"
+    async def __call__(self):
+        klines = ...  # from upstream event or dispatch GetKlines
+        result = app.recompute_fib(sym, interval, klines)  # method on AppService
+        await protocol.set(f"{sym}:{interval}", result)    # persistence via protocol
+        await hub.emit(FibLinesUpdated(...))                # emit event
+```
+
+Encapsulate orchestration on `AppService`:
+
+```python
+class AnalysisEngine(AppService):
+    def recompute_fib(self, symbol, interval, klines):
+        ch, cl = self.swing.compute_features(klines, self.config)
+        self.swing.set_cache(symbol, interval, ch, cl)
+        result = self.fib.compute_and_store(symbol, interval, ch, cl, self.config)
+        self.detector.reset(symbol, interval)
+        return result
+```
+
+Test: mock `app.recompute_fib` return value + `MemoryProtocol`; no real sub-services or DB.
+
+**3. Async-gen orchestration — chain child Commands with `yield`; parallel with `yield [...]`**
+
+```python
+class FullPipeline(BaseCommand):
+    async def __call__(self):
+        # sequential
+        gk = GetKlines(symbol=self.symbol, interval=self.interval, qos=0)
+        yield gk
+        klines = gk.state.result()
+        # parallel fan-out/fan-in
+        results = yield [ComputeSwing(klines=klines), ComputeFib(klines=klines)]
+        await protocol.set(f"{self.symbol}:{self.interval}", results)
+```
+
+`yield Command` = sequential; `yield [cmd, cmd, ...]` = parallel dispatch + gather.
+Each yielded child Command is testable alone; the parent is glue only.
+
+### Testing strategy
+
+| Layer | Production | Tests |
+|-------|------------|-------|
+| Protocol | `SqlAlchemyProtocol`, `RedisProtocol` | `MemoryProtocol`, `NoneProtocol` |
+| AppService methods | real implementation | mock return values |
+| Pure compute Command | `await cmd()` directly | same — no Hub |
+| Orchestration Command | full Hub | mock `app.method` + `MemoryProtocol`, or assert orchestration order only |
+
+### Do not
+
+- In Commands: `app.swing.xxx` / `app.fib.xxx` — reaching into inner sub-services.
+- In Commands: hard-coded DB URLs or file paths — use `protocol`.
+- `hub.get_service("string")` for the owning domain’s service — use `globals.app` (`_with_context` binds from `destination`).
+- In `AppService`: proactively `dispatch` Commands — services expose capabilities; they do not own scheduling.
+
+## Hooks (before/after execution)
+
+Register callable hooks on `Hub` for cross-cutting concerns (auth, guardrail, token metering, audit):
+
+```python
+hub.before(fn)   # async fn(message) -> Optional[result]; non-None short-circuits
+hub.after(fn)    # async fn(message, result=None, exception=None)
+```
+
+Before-hooks run in order; after-hooks run in reverse. Can be used as decorators:
+
+```python
+@hub.before
+async def auth_guard(message):
+    if not message.created_by: return {'error': 'unauthorized'}
+
+@hub.after
+async def audit_log(message, result=None, exception=None):
+    logger.info(f'{message.alias} done')
+```
+
+## Parallel dispatch
+
+**yield list/tuple** in async-gen Commands for fan-out/fan-in:
+
+```python
+results = yield [TaskA(...), TaskB(...), TaskC(...)]
+# results = [resultA, resultB, resultC]
+```
+
+Hub detects `list`/`tuple`, dispatches all in parallel, gathers results via `asyncio.gather`, and sends them back.
+
+**hub.gather** for regular (non-generator) Commands:
+
+```python
+results = await hub.gather([TaskA(...), TaskB(...)])
+```
+
+## Session (global singleton, Protocol KV layer)
+
+`globals.session` = Session **Service** singleton (same pattern as `globals.hub`). Pushed once in `Hub.__init__`, not per-request.
+
+Session is a thin convenience layer over Protocol (default `MemoryProtocol`). Business logic decides what key to use (`trace_id` for conversations, `created_by` for user-scoped data, or any custom key).
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `get` | `(key) -> dict` | `protocol.get(key)` |
+| `set` | `(key, data: dict)` | `protocol.set(key, data)` |
+| `delete` | `(key)` | `protocol.remove(key)` |
+| `append` | `(key, field, value)` | `get → dict[field].append(value) → set` |
+| `history` | `(key, field, last_n)` | `get → dict[field][-last_n:]` |
+
+Multi-turn conversation (trace_id as key):
+
+```python
+class AgentReact(BaseCommand):
+    query: str
+    async def __call__(self):
+        data = await session.get(message.trace_id)
+        turns = data.get('turns', [])
+        turns.append({'role': 'user', 'content': self.query})
+        response = await llm_call(turns, self.query)
+        turns.append({'role': 'assistant', 'content': response})
+        await session.set(message.trace_id, {**data, 'turns': turns})
+        return response
+```
+
+User-scoped data (created_by as key):
+
+```python
+class CheckQuota(BaseCommand):
+    async def __call__(self):
+        user = await session.get(message.created_by)
+        remaining = user.get('token_quota', 1000)
+        if remaining <= 0: return {'error': 'quota exceeded'}
+        user['token_quota'] = remaining - used
+        await session.set(message.created_by, user)
+```
+
+## Introspection (`__str__`)
+
+Every `BaseCommand` / `BaseEvent` instance has a built-in `__str__` for runtime self-description:
+
+```python
+str(cmd)  # "Command(OnCacheIngested) dest=timing.AnalysisEngine.OnCacheIngested trace=a1b2c3d4"
+str(evt)  # "Event(FibLinesUpdated) dest=timing.AnalysisEngine.FibLinesUpdated trace=a1b2c3d4"
+```
+
+Useful in logging, debugging, and any place that needs a human-readable summary of a message instance. The class-level registry output in `Hub.on_started` remains unchanged (uses inline format).
+
+## Handoff (returning Command instance from `__call__`)
+
+When `BaseCommand.__call__` returns another `BaseCommand` instance, `Hub._run` treats it as a **handoff** signal:
+
+1. Inherits `trace_id` from the original message.
+2. Merges `data` (`{**original.data, **returned.data}`).
+3. Dispatches the returned Command via `hub.dispatch`.
+4. Awaits its `state` and forwards the result to the original caller.
+
+The caller sees the final result transparently — as if the original Command produced it.
+
+```python
+class RouterAgent(BaseCommand):
+    query: str
+    async def __call__(self):
+        intent = await classify(self.query)
+        if intent == 'refund':
+            return RefundAgent(query=self.query)      # handoff
+        if intent == 'technical':
+            return TechSupportAgent(query=self.query)  # handoff
+        return await general_reply(self.query)         # normal result
+```
+
+Combined with Session for multi-turn handoff:
+
+```python
+class AgentA(BaseCommand):
+    async def __call__(self):
+        await session.append(self.trace_id, 'turns', {'agent': 'A', 'action': 'done'})
+        return AgentB(conclusion='needs review')  # handoff, trace_id inherited
+
+class AgentB(BaseCommand):
+    conclusion: str
+    async def __call__(self):
+        history = await session.history(self.trace_id)
+        return await deeper_review(self.conclusion, history)
+```
+
+> **Note**: chain depth > 5 may degrade performance (stack frames retained). Keep handoff chains shallow.
+
+No new methods or flags needed — `Hub._run` detects `isinstance(result, Message)` (symmetric with `_run_gen`'s `isinstance` checks).
+
+## Trace ID & Future bidirectional link
+
+Every Command's `state` (Future / StreamState) carries `_trace_id`:
+
+```python
+cmd = SomeCommand(query='hello')
+cmd.state._trace_id == cmd.trace_id  # True
+```
+
+Set in `model_post_init` after StreamState replacement, ensuring the final state object always has the correct trace. Useful for correlating Futures back to their originating trace in debugging and distributed tracing.
 
 ## globals (important)
 
-- `hub`, `app`, `protocol`, `message`, `session`; **never** treat Service classes as singletons.
-- **`app`** resolved from `destination` first two segments; cross-domain use `await hub.dispatch(cmd)`.
+- `hub` — Hub Service singleton, pushed once at `__init__`.
+- `session` — Session Service singleton, pushed once at `Hub.__init__`. All session ops go through Protocol.
+- `app` — resolved from `destination` per-request; cross-domain use `await hub.dispatch(cmd)`.
+- `protocol` — from current `app`, per-request.
+- `message` — current BaseCommand, per-request.
 
 ## Layout & Config
 

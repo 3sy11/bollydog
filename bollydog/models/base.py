@@ -8,7 +8,7 @@ from typing import Dict, List, Type, Any, ClassVar
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 
 from bollydog.service.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, DEFAULT_SIGN, DELIVERY_COUNT, DEFAULT_QOS
-from bollydog.globals import message, session
+from bollydog.globals import message
 
 
 class StreamState(asyncio.Queue):
@@ -63,7 +63,7 @@ class _ModelMixin(BaseModel):
 
     def model_post_init(self, __context: Any) -> None:
         if self.created_by is None:
-            self.created_by = getattr(session, 'username', None) or HOSTNAME
+            self.created_by = HOSTNAME
 
 
 class BaseDomain(_ModelMixin):
@@ -119,12 +119,15 @@ class BaseCommand(_ModelMixin):
 
     def model_post_init(self, __context: Any) -> None:
         super().model_post_init(__context)
+        if self.is_async_gen:
+            self.state = StreamState()
         self.span_id = self.span_id if self.span_id != '--' else self.iid
         if message:
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
-        if self.is_async_gen:
-            self.state = StreamState()
+        self.state._trace_id = self.trace_id
+        # Alternative: root command trace_id = hex(id(state)), intrinsic link
+        # if not message: self.trace_id = format(id(self.state), 'x')
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -159,6 +162,10 @@ class BaseCommand(_ModelMixin):
         if len(matches) > 1:
             raise KeyError(f"Ambiguous alias '{name}', candidates: {list(matches.keys())}")
         raise KeyError(f"Command '{name}' not found")
+
+    def __str__(self):
+        _t = 'Event' if isinstance(self, BaseEvent) else 'Command'
+        return f'{_t}({self.alias}) dest={self.destination or "-"} trace={self.trace_id[:8]}'
 
     @abstractmethod
     async def __call__(self, *args, **kwargs) -> Any:

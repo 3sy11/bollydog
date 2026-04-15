@@ -1,14 +1,6 @@
-from pydantic import BaseModel, Field
-
 from bollydog.models.service import BaseService
 from bollydog.adapters.local import MemoryProtocol
-from bollydog.service.config import DOMAIN, HOSTNAME
-
-
-class SessionContext(BaseModel):
-    trace_id: str
-    username: str = HOSTNAME
-    collection: dict = Field(default_factory=dict)
+from bollydog.service.config import DOMAIN
 
 
 class Session(BaseService):
@@ -18,17 +10,21 @@ class Session(BaseService):
         super().__init__(**kwargs)
         self.protocol = protocol or MemoryProtocol()
 
-    async def acquire(self, message, **kwargs) -> SessionContext:
-        key = message.trace_id
-        data = await self.protocol.get(key)
-        if data:
-            return SessionContext.model_validate(data)
-        ctx = SessionContext(trace_id=message.trace_id, username=message.created_by or HOSTNAME, **kwargs)
-        await self.protocol.set(key, ctx.model_dump())
-        return ctx
+    async def get(self, key) -> dict:
+        return await self.protocol.get(key) or {}
 
-    async def release(self, message):
-        await self.protocol.remove(message.trace_id)
+    async def set(self, key, data: dict):
+        await self.protocol.set(key, data)
 
-    async def save(self, message, ctx: SessionContext):
-        await self.protocol.set(message.trace_id, ctx.model_dump())
+    async def delete(self, key):
+        await self.protocol.remove(key)
+
+    async def append(self, key, field, value):
+        data = await self.get(key)
+        data.setdefault(field, []).append(value)
+        await self.set(key, data)
+
+    async def history(self, key, field='turns', last_n=None) -> list:
+        data = await self.get(key)
+        items = data.get(field, [])
+        return items[-last_n:] if last_n else items
