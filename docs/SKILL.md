@@ -334,3 +334,139 @@ Set in `model_post_init` after StreamState replacement, ensuring the final state
 | wrong `app` | always use `globals.app` |
 
 When in doubt, source code + YAML config takes precedence.
+
+## Protocol Taxonomy
+
+Protocols are classified by **data access pattern**, each ABC defines the standard contract:
+
+| ABC | Methods | Use Case | Implementations |
+|-----|---------|----------|-----------------|
+| `KVProtocol` | `get/set/remove/exists/keys` | Session, cache, state | `MemoryProtocol`, `RedisProtocol`, `SQLiteProtocol`, `CacheLayer` |
+| `CRUDProtocol` | `add/add_all/get/list/update/delete/count` | Entity persistence | `SqlAlchemyProtocol`, `PostgreSQLProtocol`, `MySQLProtocol`, `ElasticProtocol`, `DuckDBProtocol` |
+| `GraphProtocol` | `execute(query, **params)` | Graph queries | `Neo4jProtocol`, `NeuGProtocol` |
+| `FileProtocol` | `read(path)/write(path, data)` | File I/O | `LocalFileProtocol` |
+
+Optional **mixins** (in `_base.py`):
+
+| Mixin | Adds | Applied to |
+|-------|------|-----------|
+| `BatchMixin` | `update_all/delete_all` | `ElasticProtocol` |
+| `StreamMixin` | `stream(**query) -> AsyncIterator` | `ElasticProtocol`, `SqlAlchemyProtocol` |
+| `TransactionMixin` | `transaction() -> AsyncContextManager` | `SqlAlchemyProtocol`, `Neo4jProtocol` |
+| `DialectMixin` | `compile(stmt) -> (sql, params)` | `SqlAlchemyProtocol`, `DuckDBProtocol` |
+
+### DialectMixin — stmt compilation without engine
+
+Separates SQLAlchemy Layer 2 (dialect compile) from Layer 3 (execution engine). Any Protocol mixing in `DialectMixin` gains `compile(stmt)` which returns `(sql_string, params_dict)` without requiring an engine or connection.
+
+**Two usage modes:**
+
+| Mode | Engine | Dialect source | Example |
+|------|--------|----------------|---------|
+| Full engine | `create_async_engine(url)` | `engine.dialect` | `SqlAlchemyProtocol`, `PostgreSQLProtocol`, `MySQLProtocol` |
+| Native engine | `duckdb.connect()` / custom | `_resolve_dialect(name)` | `DuckDBProtocol` |
+
+```python
+# Mode A — SqlAlchemyProtocol: dialect from engine, compile() for logging/debugging
+proto = SqlAlchemyProtocol(url='postgresql+asyncpg://...')
+sql, params = proto.compile(select(User).where(User.id == 1))
+
+# Mode B — DuckDBProtocol: native engine, compile() for stmt→SQL translation
+proto = DuckDBProtocol(url='data/analytics.duckdb')
+sql, params = proto.compile(insert(table).values(name='test'), literal_binds=True)
+await proto.execute_raw(sql)
+```
+
+### Dialect subclasses (all in `sqlalchemy.py`)
+
+```
+sqlalchemy.py
+  ├─ SQLModelDomain                — ORM base class
+  ├─ SqlAlchemyProtocol            — CRUDProtocol + DialectMixin + TransactionMixin + StreamMixin
+  │   (Universal SQL: AsyncEngine + Session, URL switches dialect)
+  ├─ PostgreSQLProtocol            — SqlAlchemyProtocol subclass
+  │   (PG-specific: upsert/ON CONFLICT, pgvector similarity)
+  ├─ MySQLProtocol                 — SqlAlchemyProtocol subclass
+  │   (MySQL-specific: ON DUPLICATE KEY, INSERT IGNORE, utf8mb4)
+  └─ DuckDBProtocol                — CRUDProtocol + DialectMixin
+      (Native engine: duckdb.connect + stmt compile + to_thread)
+```
+
+Import from `bollydog.adapters`:
+
+```python
+from bollydog.adapters import MemoryProtocol, CacheLayer, SQLiteProtocol
+from bollydog.adapters import PostgreSQLProtocol, MySQLProtocol, DuckDBProtocol, DialectMixin
+from bollydog.adapters import KVProtocol  # for type hints / isinstance checks
+```
+
+### Protocol-holds-Protocol (composite pattern)
+
+`Protocol` base class supports `protocol=` parameter — any Protocol can hold an inner Protocol. The inner Protocol's lifecycle is auto-managed via `add_dependency`. This enables composable multi-layer architectures (same pattern as `AppService.protocol`).
+
+```python
+Protocol.__init__(self, protocol=None)  # inner protocol, auto add_dependency
+```
+
+## CacheLayer — Composite Cache + Persistence
+
+`CacheLayer(KVProtocol)` wraps any `KVProtocol` as its inner `self.protocol`. Memory-first reads, dirty-tracking writes, flush to inner protocol, cold-start recovery.
+
+**Data flow:**
+
+```
+Write: set(k,v) → _cache + _dirty → flush() → self.protocol.set()
+Read:  get(k)   → _cache hit → return | miss → self.protocol.get() → populate
+Lifecycle:
+  on_start  → load() from self.protocol → _cache
+  on_stop   → flush() remaining dirty keys
+  periodic  → compact() delegates to inner protocol
+```
+
+**Usage with AppService:**
+
+```python
+from bollydog.adapters.composite import CacheLayer
+from bollydog.adapters.memory import SQLiteProtocol
+
+class DataEngine(AppService):
+    domain = "timing"
+    alias = "DataEngine"
+
+    def __init__(self, **kwargs):
+        inner = SQLiteProtocol(path='data/klines.db')
+        proto = CacheLayer(protocol=inner, flush_threshold=500)
+        super().__init__(protocol=proto, **kwargs)
+        # inner lifecycle auto-managed — no manual add_dependency needed
+
+    @mode.Service.timer(interval=30.0)
+    async def _periodic_flush(self):
+        await self.protocol.flush()
+
+    def get_klines(self, symbol, interval):
+        return self.protocol._cache.get(f"{symbol}:{interval}", [])
+
+    async def append_bars(self, symbol, interval, bars):
+        key = f"{symbol}:{interval}"
+        existing = self.protocol._cache.get(key, [])
+        existing.extend(bars)
+        await self.protocol.set(key, sorted(existing, key=lambda x: x["ts"]))
+```
+
+**Multi-layer composition** (Protocol-holds-Protocol nesting):
+
+```python
+# L1 memory → L2 Redis → L3 SQLite
+l3 = SQLiteProtocol(path='data/persistent.db')
+l2 = CacheLayer(protocol=l3, flush_threshold=1000)
+l1 = CacheLayer(protocol=l2, flush_threshold=50)
+AppService(protocol=l1)  # all three layers lifecycle auto-managed
+```
+
+**Backend variants:**
+
+```python
+CacheLayer(protocol=SQLiteProtocol(path='data/cache.db'))   # embedded SQL KV
+CacheLayer(protocol=RedisProtocol(url='redis://localhost'))  # distributed
+CacheLayer(protocol=MemoryProtocol())                        # test / volatile
+```

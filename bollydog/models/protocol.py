@@ -7,10 +7,13 @@ from bollydog.models.service import BaseService
 
 class Protocol(BaseService, abstract=True):
     adapter: Any
-    # queue: list[BaseEvent]
+    protocol: 'Protocol' = None
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, protocol=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.protocol = protocol
+        if protocol is not None:
+            self.add_dependency(protocol)
         self.adapter = self.create()
         assert self.adapter is not None
 

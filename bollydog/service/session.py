@@ -1,5 +1,5 @@
 from bollydog.models.service import BaseService
-from bollydog.adapters.local import MemoryProtocol
+from bollydog.adapters.memory import MemoryProtocol
 from bollydog.service.config import DOMAIN
 
 
