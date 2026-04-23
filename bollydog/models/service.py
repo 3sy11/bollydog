@@ -54,6 +54,9 @@ class AppService(BaseService, abstract=True):
         await super(AppService, self).on_first_start()
 
     async def on_start(self) -> None:
+        # mode calls on_start BEFORE starting children; ensure protocol chain is ready
+        if self.protocol is not None:
+            await self.protocol.maybe_start()
         await super(AppService, self).on_start()
         self._load_commands(self.commands)
 
@@ -63,6 +66,8 @@ class AppService(BaseService, abstract=True):
     def __init__(self, protocol=None, router_mapping=None, subscribe=None, **kwargs):
         super().__init__(**kwargs)
         self.protocol = protocol
+        if protocol is not None:
+            self.add_dependency(protocol)
         self.router_mapping = router_mapping if router_mapping is not None else self.__class__.router_mapping
         self.subscriber = subscribe if subscribe is not None else self.__class__.subscriber
 
@@ -90,6 +95,4 @@ class AppService(BaseService, abstract=True):
         if protocol:
             protocol = protocol['module'](**protocol)
         app_service = cls(protocol=protocol, router_mapping=router_mapping, subscribe=subscribe, **kwargs)
-        if protocol:
-            app_service.add_dependency(protocol)
         return app_service

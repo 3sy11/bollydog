@@ -39,7 +39,7 @@ class Exchange(AppService):
                 self.subscribe(topic, handler)
         subs = {**self._exact, **self._patterns}
         if subs:
-            lines = '\n  '.join(f'{t} -> [{", ".join(h.__name__ for h in hs)}]' for t, hs in subs.items())
+            lines = '\n  '.join(f'{t} -> [{", ".join(getattr(h, "destination", None) or h.__name__ for h in hs)}]' for t, hs in subs.items())
             self.logger.info(f'subscriptions({sum(len(v) for v in subs.values())}):\n  {lines}')
         await super().on_started()
 

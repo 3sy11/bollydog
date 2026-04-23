@@ -470,3 +470,63 @@ CacheLayer(protocol=SQLiteProtocol(path='data/cache.db'))   # embedded SQL KV
 CacheLayer(protocol=RedisProtocol(url='redis://localhost'))  # distributed
 CacheLayer(protocol=MemoryProtocol())                        # test / volatile
 ```
+
+## TableCacheLayer — Columnar Cache + Structured Persistence
+
+`TableCacheLayer(KVProtocol)` wraps a columnar/SQL backend (DuckDB, SQLite, SA) for high-volume structured data. No JSON serialization — uses batch INSERT/SELECT with native types. **10-50x faster cold-start** than CacheLayer for large datasets.
+
+**vs CacheLayer:**
+
+| | CacheLayer | TableCacheLayer |
+|--|------------|-----------------|
+| Inner protocol | `KVProtocol` (JSON blob) | Any protocol with `adapter.execute(sql)` |
+| Serialization | `json.dumps/loads` | None — native SQL types |
+| Cold-start 1M rows | 5-15s | 0.3-1s |
+| Best for | Small data, any shape | Large structured rows (time-series, logs) |
+
+**Data flow:**
+
+```
+Write: set(key, rows) → _cache + _dirty → flush() → DELETE old + batch INSERT
+Read:  get(key)        → _cache hit | miss → SELECT WHERE key_columns → populate
+Cold:  on_start → SELECT * → group by key_columns → _cache (vectorized, no JSON)
+Stop:  flush() remaining dirty keys
+```
+
+**Usage:**
+
+```python
+from bollydog.adapters.composite import TableCacheLayer
+from bollydog.adapters.sqlalchemy import DuckDBProtocol
+
+class DataEngine(AppService):
+    domain = "timing"
+    alias = "DataEngine"
+
+    _DDL = ('CREATE TABLE IF NOT EXISTS klines ('
+            'symbol VARCHAR, "interval" VARCHAR, ts BIGINT, '
+            '"open" DOUBLE, high DOUBLE, low DOUBLE, "close" DOUBLE, volume DOUBLE)')
+
+    def __init__(self, db_path="tmp/data.duckdb", **kwargs):
+        inner = DuckDBProtocol(url=db_path)
+        proto = TableCacheLayer(
+            protocol=inner, table='klines', ddl=self._DDL,
+            key_columns=['symbol', 'interval'],
+            value_columns=['ts', 'open', 'high', 'low', 'close', 'volume'],
+            sort_by='ts', flush_threshold=50)
+        super().__init__(protocol=proto, **kwargs)
+
+    def get_klines(self, symbol, interval, start_ts=None, end_ts=None):
+        rows = self.protocol._cache.get(f"{symbol}:{interval}", [])
+        if start_ts: rows = [x for x in rows if x["ts"] >= start_ts]
+        if end_ts: rows = [x for x in rows if x["ts"] <= end_ts]
+        return rows
+
+    async def append_bars(self, symbol, interval, bars):
+        key = f"{symbol}:{interval}"
+        existing = self.protocol._cache.get(key, [])
+        existing.extend(bars)
+        await self.protocol.set(key, sorted(existing, key=lambda x: x["ts"]))
+```
+
+**compound_key format**: `"val1:val2"` matching `key_columns` order (e.g. `"BTCUSDT:1h"` for `['symbol', 'interval']`).
