@@ -12,9 +12,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-requires-python = "==3.12.13"
+requires-python = "==3.12"
 dependencies = [
     "aiohttp==3.13.2",
+    "msgspec==0.21.1",
     "authlib==1.6.6",
     "databases==0.9.0",
     "pydantic==2.12.5",
