@@ -1,0 +1,7 @@
+["example.app.ExampleService"]
+commands = ["commands"]
+
+["example.app.ExampleService".router_mapping]
+Ping      = ["GET",  "/api/ping"]
+Echo      = ["POST", "/api/echo"]
+Countdown = ["SSE",  "/api/countdown"]

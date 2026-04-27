@@ -10,19 +10,19 @@ cd example
 
 ```shell
 # list all registered commands
-bollydog ls --config ./config.yaml
+bollydog ls --config ./config.toml
 
 # execute a command directly
-bollydog execute ping --config ./config.yaml
-bollydog execute echo --config ./config.yaml --text="hello"
-bollydog execute pipeline --config ./config.yaml
+bollydog execute ping --config ./config.toml
+bollydog execute echo --config ./config.toml --text="hello"
+bollydog execute pipeline --config ./config.toml
 ```
 
 ## HTTP Service
 
 ```shell
 # start service
-bollydog service --config ./config.yaml
+bollydog service --config ./config.toml
 
 # health check
 curl http://0.0.0.0:8000/api/ping
@@ -39,7 +39,7 @@ curl http://0.0.0.0:8000/api/countdown?n=3
 ## Shell
 
 ```shell
-bollydog shell --config ./config.yaml
+bollydog shell --config ./config.toml
 ```
 
 ```python

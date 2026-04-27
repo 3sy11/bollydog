@@ -42,6 +42,3 @@ class Bootstrap(mode.Worker):
         set stack level 3 to log right stack frame
         """
         self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)
-
-
-# < 注册到数据中心

@@ -11,8 +11,12 @@ class ElasticProtocol(CRUDProtocol, BatchMixin, StreamMixin):
         self.url = url
         super().__init__(*args, **kwargs)
 
-    def create(self) -> AsyncElasticsearch:
-        return AsyncElasticsearch(hosts=[self.url], api_key=self.api_key)
+    async def on_start(self) -> None:
+        self.adapter = AsyncElasticsearch(hosts=[self.url], api_key=self.api_key)
+
+    async def on_stop(self) -> None:
+        if self.adapter: await self.adapter.close()
+        await super().on_stop()
 
     async def create_index(self, index: str):
         return await self.adapter.indices.create(index=index)

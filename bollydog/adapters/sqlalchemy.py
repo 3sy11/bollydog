@@ -1,6 +1,7 @@
 import time
 import uuid
 import asyncio
+import contextvars
 import sqlmodel
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, AsyncIterator, Type, List
@@ -40,7 +41,6 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
         self.metadata = metadata
         self.url = url
         super().__init__(*args, **kwargs)
-        self._dialect = self.adapter.dialect
 
     def __repr__(self):
         return f'<SqlAlchemyProtocol {self.url}>'
@@ -49,19 +49,27 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
     def dialect_name(self) -> str:
         return self.adapter.dialect.name
 
-    def create(self) -> AsyncEngine:
+    async def on_start(self) -> None:
         self.adapter = create_async_engine(self.url, echo=False, echo_pool=False, hide_parameters=True, pool_pre_ping=True, pool_recycle=3600)
         self.async_session = async_sessionmaker(self.adapter, expire_on_commit=True)
-        return self.adapter
+        self._dialect = self.adapter.dialect
 
-    @asynccontextmanager
-    async def connect(self) -> AsyncGenerator[AsyncSession, None]:
-        try:
-            async with self.async_session.begin() as session:
-                yield session
-        except BaseException as e:
-            self.logger.exception(e)
-            raise e
+    async def on_stop(self) -> None:
+        if self.adapter:
+            await self.adapter.dispose()
+        await super().on_stop()
+
+    _session_ctx: contextvars.ContextVar = contextvars.ContextVar('sa_session_ctx')
+
+    async def __aenter__(self):
+        ctx = self.async_session.begin()
+        session = await ctx.__aenter__()
+        self._session_ctx.set(ctx)
+        return session
+
+    async def __aexit__(self, *exc_info):
+        ctx = self._session_ctx.get()
+        return await ctx.__aexit__(*exc_info)
 
     async def create_all(self, metadata=None):
         async with self.adapter.begin() as conn:
@@ -69,13 +77,13 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
 
     async def execute_raw(self, sql: str, **params):
         """Execute raw SQL text — dialect-specific features (pgvector, DuckDB funcs, etc.)."""
-        async with self.connect() as session:
+        async with self.async_session.begin() as session:
             result = await session.execute(text(sql), params or None)
         return result.fetchall()
 
     async def add(self, item, **ctx):
         cls = inspect(item).mapper.local_table
-        async with self.connect() as session:
+        async with self.async_session.begin() as session:
             stmt = insert(cls).values(**item.model_dump()).returning(cls.c.id)
             res = await session.execute(stmt)
             await session.commit()
@@ -83,24 +91,21 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
         return item
 
     async def add_all(self, items: list, **ctx):
-        if not items:
-            return items
+        if not items: return items
         table = inspect(items[0]).mapper.local_table
-        async with self.connect() as session:
+        async with self.async_session.begin() as session:
             stmt = insert(table).values([item.model_dump() for item in items]).returning(table.c.id)
             res = await session.execute(stmt)
             res = res.fetchall()
             await session.commit()
-        for i, r in zip(items, res):
-            i.id = r.id
+        for i, r in zip(items, res): i.id = r.id
         return items
 
     async def get(self, **query):
         cls = query.pop('cls')
         stmt = select(cls)
-        for column, value in query.items():
-            stmt = stmt.where(getattr(cls, column).is_(value))
-        async with self.connect() as session:
+        for column, value in query.items(): stmt = stmt.where(getattr(cls, column).is_(value))
+        async with self.async_session.begin() as session:
             result = await session.execute(stmt)
             res = result.scalars().first()
             return res.model_dump() if res else None
@@ -108,9 +113,8 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
     async def list(self, **query) -> list:
         cls = query.pop('cls')
         stmt = select(cls)
-        for column, value in query.items():
-            stmt = stmt.where(getattr(cls, column).is_(value))
-        async with self.connect() as session:
+        for column, value in query.items(): stmt = stmt.where(getattr(cls, column).is_(value))
+        async with self.async_session.begin() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
@@ -119,7 +123,7 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
         item_id = query.pop('id')
         data.setdefault('update_time', time.time() * 1000)
         stmt = update(cls).where(cls.id == item_id).values(**data).returning(cls)
-        async with self.connect() as session:
+        async with self.async_session.begin() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
@@ -127,10 +131,9 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
         cls = query.pop('cls')
         item_id = query.pop('id')
         stmt = delete(cls).where(cls.id == item_id)
-        for column, value in query.items():
-            stmt = stmt.where(getattr(cls, column).is_(value))
+        for column, value in query.items(): stmt = stmt.where(getattr(cls, column).is_(value))
         stmt = stmt.returning(cls)
-        async with self.connect() as session:
+        async with self.async_session.begin() as session:
             result = await session.execute(stmt)
         return result.scalars().all()
 
@@ -173,7 +176,7 @@ class PostgreSQLProtocol(SqlAlchemyProtocol):
         else:
             stmt = stmt.on_conflict_do_nothing()
         stmt = stmt.returning(table.c.id)
-        async with self.connect() as session:
+        async with self.async_session.begin() as session:
             res = await session.execute(stmt)
             await session.commit()
             item.id = res.scalars().first()
@@ -183,9 +186,8 @@ class PostgreSQLProtocol(SqlAlchemyProtocol):
         """pgvector cosine distance: ORDER BY embedding <=> query LIMIT k."""
         dist = text(f"{vector_key} <=> '{embedding}' AS distance")
         stmt = select(cls, dist).order_by(text('distance')).limit(top_k)
-        if 'where' in kwargs:
-            stmt = stmt.where(kwargs['where'])
-        async with self.connect() as session:
+        if 'where' in kwargs: stmt = stmt.where(kwargs['where'])
+        async with self.async_session.begin() as session:
             return (await session.execute(stmt)).fetchall()
 
 
@@ -197,10 +199,10 @@ class MySQLProtocol(SqlAlchemyProtocol):
     Adds: ON DUPLICATE KEY UPDATE upsert, INSERT IGNORE, utf8mb4 charset.
     """
 
-    def create(self) -> AsyncEngine:
+    async def on_start(self) -> None:
         self.adapter = create_async_engine(self.url, echo=False, pool_pre_ping=True, pool_recycle=3600, connect_args={"charset": "utf8mb4"})
         self.async_session = async_sessionmaker(self.adapter, expire_on_commit=True)
-        return self.adapter
+        self._dialect = self.adapter.dialect
 
     async def upsert(self, item, unique_keys: list = None, **ctx):
         """INSERT ... ON DUPLICATE KEY UPDATE."""
@@ -210,7 +212,7 @@ class MySQLProtocol(SqlAlchemyProtocol):
         stmt = mysql_insert(table).values(**data)
         update_cols = {k: v for k, v in data.items() if k not in (unique_keys or [])}
         stmt = stmt.on_duplicate_key_update(**update_cols)
-        async with self.connect() as session:
+        async with self.async_session.begin() as session:
             await session.execute(stmt)
             await session.commit()
         return item
@@ -220,7 +222,7 @@ class MySQLProtocol(SqlAlchemyProtocol):
         from sqlalchemy.dialects.mysql import insert as mysql_insert
         table = inspect(item).mapper.local_table
         stmt = mysql_insert(table).values(**item.model_dump()).prefix_with('IGNORE')
-        async with self.connect() as session:
+        async with self.async_session.begin() as session:
             await session.execute(stmt)
             await session.commit()
         return item
@@ -239,22 +241,17 @@ class DuckDBProtocol(CRUDProtocol, DialectMixin):
         self.url = url or ':memory:'
         self.metadata = metadata
         super().__init__(*args, **kwargs)
-        try:
-            self._dialect = self._resolve_dialect('duckdb')
-        except Exception:
-            self._dialect = None
-            self.logger.warning('duckdb dialect not available, compile() disabled (pip install duckdb-engine)')
 
     def __repr__(self):
         return f'<DuckDBProtocol {self.url}>'
 
-    def create(self):
+    async def on_start(self) -> None:
         import duckdb
-        return duckdb.connect(self.url)
-
-    @asynccontextmanager
-    async def connect(self) -> AsyncGenerator:
-        yield self.adapter
+        self.adapter = duckdb.connect(self.url)
+        try: self._dialect = self._resolve_dialect('duckdb')
+        except Exception:
+            self._dialect = None
+            self.logger.warning('duckdb dialect not available, compile() disabled (pip install duckdb-engine)')
 
     async def _run(self, fn, *args, **kwargs):
         return await asyncio.to_thread(fn, *args, **kwargs)

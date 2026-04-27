@@ -14,22 +14,14 @@ class LocalFileProtocol(FileProtocol):
         self.path = pathlib.Path(path) if isinstance(path, str) else path
         super().__init__(**kwargs)
 
-    def create(self):
+    async def on_start(self) -> None:
         self.path.mkdir(parents=True, exist_ok=True)
-        return True
-
-    @asynccontextmanager
-    async def connect(self, filename=None) -> AsyncGenerator:
-        file = self.path / filename
-        with open(file.as_posix(), 'a+', encoding='utf-8') as f:
-            yield f
+        self.adapter = self.path
 
     async def read(self, path: str):
         file = self.path / path
-        if not file.exists():
-            raise FileNotFoundError(file.as_posix())
-        async with self.connect(path) as f:
-            f.seek(0)
+        if not file.exists(): raise FileNotFoundError(file.as_posix())
+        with open(file.as_posix(), 'r', encoding='utf-8') as f:
             return f.read()
 
     async def write(self, path: str, data):
@@ -47,12 +39,12 @@ class TOMLFileProtocol(FileProtocol):
         self._data: dict = {}
         super().__init__(**kwargs)
 
-    def create(self):
+    async def on_start(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists():
             self._data = msgspec.toml.decode(self.path.read_bytes())
-        logger.debug(f"TOML create: {self.path.as_posix()}, loaded {len(self._data)} keys")
-        return True
+        self.adapter = True
+        logger.debug(f"TOML on_start: {self.path.as_posix()}, loaded {len(self._data)} keys")
 
     async def read(self, path: str = None) -> dict:
         return self._data

@@ -148,7 +148,8 @@ class HttpService(AppService):
         for app in hub.apps.values():
             merged.update(self._collect_router_mappings(app))
         merged.update(self.router_mapping)
-        for key, command_cls in BaseCommand._registry.items():
+        from bollydog.models.service import BaseService
+        for key, command_cls in BaseService.registry.items():
             alias = command_cls.alias
             route = merged.get(command_cls.__name__, merged.get(alias, merged.get(key)))
             if route is None:

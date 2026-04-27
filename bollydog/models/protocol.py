@@ -1,37 +1,24 @@
-import abc
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Any
-
+from typing import Any
 from bollydog.models.service import BaseService
 
 
 class Protocol(BaseService, abstract=True):
-    adapter: Any
+    adapter: Any = None
     protocol: 'Protocol' = None
 
-    def __init__(self, protocol=None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.protocol = protocol
-        if protocol is not None:
-            self.add_dependency(protocol)
-        self.adapter = self.create()
-        assert self.adapter is not None
 
-    @abc.abstractmethod
-    def create(self) -> Any:
-        """创建底层适配器/连接，子类必须实现"""
-        ...
+    def add_dependency(self, service: 'BaseService') -> 'BaseService':
+        if isinstance(service, Protocol) and self.protocol is None:
+            self.protocol = service
+        return super().add_dependency(service)
 
-    def delete(self):
-        ...
+    async def __aenter__(self):
+        return self.adapter
 
-    async def on_stop(self) -> None:
-        self.delete()
-        await super().on_stop()
-
-    @asynccontextmanager
-    async def connect(self) -> AsyncGenerator:
-        yield self.adapter
+    async def __aexit__(self, *exc_info):
+        pass
 
     def __repr__(self):
         return f'<Protocol {self.__class__.__name__}>'

@@ -73,14 +73,12 @@ class BaseDomain(_ModelMixin):
 
 class BaseCommand(_ModelMixin):
     model_config = ConfigDict(extra='allow')
-    _registry: ClassVar[Dict[str, Type['BaseCommand']]] = {}
     host: ClassVar[str] = HOSTNAME
     version: ClassVar[str] = REPOSITORY_VERSION
     module: ClassVar[str]
     alias: ClassVar[str]
     destination: ClassVar[str] = None
 
-    # instance
     expire_time: float = Field(default=COMMAND_EXPIRE_TIME)
     qos: int = Field(default=DEFAULT_QOS)
     delivery_count: int = Field(default=DELIVERY_COUNT)
@@ -91,19 +89,14 @@ class BaseCommand(_ModelMixin):
         _result = None
         if state.done():
             if not state.cancelled():
-                if state.exception():
-                    _result = str(state.exception())
-                else:
-                    _result = state.result()
+                _result = str(state.exception()) if state.exception() else state.result()
             else:
                 _result = state._cancel_message  # noqa
         return [state._state, _result]  # noqa
 
-    # trace
     trace_id: str = Field(default_factory=lambda: getattr(message, 'trace_id', uuid.uuid4().hex))
     span_id: str = Field(default='--')
     parent_span_id: str = Field(default=getattr(message, 'span_id', '--'))
-
     data: dict = Field(default_factory=dict)
 
     def add_event(self, event) -> None:
@@ -119,8 +112,7 @@ class BaseCommand(_ModelMixin):
 
     def model_post_init(self, __context: Any) -> None:
         super().model_post_init(__context)
-        if self.is_async_gen:
-            self.state = StreamState()
+        if self.is_async_gen: self.state = StreamState()
         self.span_id = self.span_id if self.span_id != '--' else self.iid
         if message:
             self.trace_id = message.trace_id
@@ -131,37 +123,13 @@ class BaseCommand(_ModelMixin):
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
-        if 'module' not in cls.__dict__:
-            cls.module = cls.__module__
-        if 'alias' not in cls.__dict__:
-            cls.alias = cls.__name__
+        if 'module' not in cls.__dict__: cls.module = cls.__module__
+        if 'alias' not in cls.__dict__: cls.alias = cls.__name__
         if not abstract and '__call__' in cls.__dict__:
             if 'destination' not in cls.__dict__ or cls.__dict__.get('destination') is None:
                 cls.destination = f'_._.{cls.alias}'
             elif len(str(cls.destination).split('.')) <= 2:
                 cls.destination = f'{cls.destination}.{cls.alias}'
-            cls._registry[f'{cls.module}.{cls.alias}'] = cls
-
-    @classmethod
-    def topics(cls) -> Dict[str, Type['BaseCommand']]:
-        return {cmd.destination: cmd for cmd in cls._registry.values()}
-
-    @classmethod
-    def resolve(cls, name: str) -> Type['BaseCommand']:
-        if name in cls._registry:
-            return cls._registry[name]
-        matches = {k: v for k, v in cls._registry.items() if k.endswith(f'.{name}')}
-        if len(matches) == 1:
-            return next(iter(matches.values()))
-        if len(matches) > 1:
-            raise KeyError(f"Ambiguous alias '{name}', candidates: {list(matches.keys())}")
-        nl = name.lower()
-        matches = {k: v for k, v in cls._registry.items() if v.alias.lower() == nl}
-        if len(matches) == 1:
-            return next(iter(matches.values()))
-        if len(matches) > 1:
-            raise KeyError(f"Ambiguous alias '{name}', candidates: {list(matches.keys())}")
-        raise KeyError(f"Command '{name}' not found")
 
     def __str__(self):
         _t = 'Event' if isinstance(self, BaseEvent) else 'Command'

@@ -4,7 +4,7 @@ from typing import Iterable
 
 import mode
 
-from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError, DestinationNotFoundError, ServiceNotFoundError
+from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError, ServiceNotFoundError
 from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack, _app_ctx_stack, _session_ctx_stack
 from bollydog.models.base import BaseCommand as Message, BaseEvent
 from bollydog.models.service import AppService
@@ -67,21 +67,28 @@ class Hub(AppService):
 
     def __init__(self, apps: Iterable[AppService] = None, **kwargs):
         super().__init__(**kwargs)
-        self._load_commands(self.commands)
         self._before, self._after = [], []
+        self._external_apps = list(apps or [])
+
+    def on_init_dependencies(self):
         self.exchange = Exchange()
         self.exchange._hub = self
         self.session = Session()
         self.queue = Queue()
-        self.add_dependency(self.exchange)
-        self.add_dependency(self.session)
-        self.add_dependency(self.queue)
-        _id = lambda s: f'{s.domain}.{s.alias}'
-        self.apps = {_id(self): self, _id(self.exchange): self.exchange, _id(self.session): self.session, _id(self.queue): self.queue}
-        for app in apps or []:
-            self.add_service(app)
+        return [self.exchange, self.session, self.queue]
+
+    async def on_first_start(self) -> None:
         self.exit_stack.enter_context(_hub_ctx_stack.push(self))
         self.exit_stack.enter_context(_session_ctx_stack.push(self.session))
+        _id = lambda s: f'{s.domain}.{s.alias}'
+        self.apps = {_id(self): self, _id(self.exchange): self.exchange, _id(self.session): self.session, _id(self.queue): self.queue}
+        for svc in self._external_apps:
+            self.add_service(svc)
+        del self._external_apps
+
+    async def on_start(self) -> None:
+        self._load_commands(self.commands)
+        await super().on_start()
 
     async def on_started(self) -> None:
         for service in self.apps.values():
@@ -90,10 +97,10 @@ class Hub(AppService):
         for sid, svc in self.apps.items():
             cmds = getattr(svc, 'commands', None)
             if cmds: self.logger.info(f'[{sid}] {type(svc).__name__} | commands={cmds}')
-        if Message._registry:
+        if self.registry:
             def _tag(c): return 'Event' if issubclass(c, BaseEvent) else 'Command'
-            reg = '\n  '.join(f'{_tag(c):7} {c.alias:20} dest={c.destination or "-"}' for c in Message._registry.values())
-            self.logger.info(f'registry({len(Message._registry)}):\n  {reg}')
+            reg = '\n  '.join(f'{_tag(c):7} {c.alias:20} dest={c.destination or "-"}' for c in self.registry.values())
+            self.logger.info(f'registry({len(self.registry)}):\n  {reg}')
 
     async def emit(self, event: Message, topic: str = None):
         await self.dispatch(event)
@@ -157,7 +164,7 @@ class Hub(AppService):
 
     @asynccontextmanager
     async def _with_context(self, message):
-        app = self._resolve_app(message)
+        app = self.registry.resolve_app(message, self.apps)
         with (_protocol_ctx_stack.push(app.protocol if app else None), _message_ctx_stack.push(message), _app_ctx_stack.push(app)):
             yield
 
@@ -247,13 +254,3 @@ class Hub(AppService):
                 self.queue.nack(message.iid, message.state.exception())
             await self._publish(message)
 
-    def _resolve_app(self, message: Message):
-        dest = type(message).destination
-        if not dest: return None
-        parts = dest.split('.')
-        service_key = '.'.join(parts[:2])
-        if service_key == '_._': return None
-        svc = self.apps.get(service_key)
-        if svc is None:
-            raise DestinationNotFoundError(f"Service '{service_key}' not found for {type(message).__name__}")
-        return svc
