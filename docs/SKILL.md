@@ -344,7 +344,7 @@ Protocols are classified by **data access pattern**, each ABC defines the standa
 | `KVProtocol` | `get/set/remove/exists/keys` | Session, cache, state | `MemoryProtocol`, `RedisProtocol`, `SQLiteProtocol`, `CacheLayer` |
 | `CRUDProtocol` | `add/add_all/get/list/update/delete/count` | Entity persistence | `SqlAlchemyProtocol`, `PostgreSQLProtocol`, `MySQLProtocol`, `ElasticProtocol`, `DuckDBProtocol` |
 | `GraphProtocol` | `execute(query, **params)` | Graph queries | `Neo4jProtocol`, `NeuGProtocol` |
-| `FileProtocol` | `read(path)/write(path, data)` | File I/O | `LocalFileProtocol` |
+| `FileProtocol` | `read(path)/write(path, data)` | File I/O | `LocalFileProtocol`, `TOMLFileProtocol` |
 
 Optional **mixins** (in `_base.py`):
 
@@ -530,3 +530,240 @@ class DataEngine(AppService):
 ```
 
 **compound_key format**: `"val1:val2"` matching `key_columns` order (e.g. `"BTCUSDT:1h"` for `['symbol', 'interval']`).
+
+## TOML Configuration
+
+Bollydog uses TOML as its **primary configuration format**. There are two distinct layers:
+
+1. **Bootstrap config** — a TOML file loaded by CLI (`tomllib`) to register services, commands, routes, protocols, and subscribers at startup.
+2. **Runtime config adapter** — `TOMLFileProtocol`, a `FileProtocol` implementation backed by `msgspec.toml`, for services that need to read/write TOML files at runtime.
+
+### Bootstrap Config (CLI `--config`)
+
+Every CLI entry (`service`, `execute`, `ls`, `shell`, `send`) accepts `--config path/to/config.toml`. The CLI calls `get_apps(config)` which:
+
+1. `tomllib.load(config)` → dict of `{import_path: node_conf}`
+2. For each entry: `smart_import(import_path)` → `cls.create_from(**node_conf)`
+
+**Top-level table key** = fully qualified `AppService` class path. Everything under that table becomes `**kwargs` to `create_from`.
+
+#### Config structure
+
+```toml
+["myproject.app.MyService"]
+commands = ["commands", "extra_commands"]
+
+["myproject.app.MyService".router_mapping]
+Ping      = ["GET",  "/api/ping"]
+Echo      = ["POST", "/api/echo"]
+Countdown = ["SSE",  "/api/countdown"]
+
+["myproject.app.MyService".subscriber]
+"analytics.*.DataReady" = "myproject.commands.OnDataReady"
+
+["myproject.app.MyService".protocol]
+module = "bollydog.adapters.composite.CacheLayer"
+flush_threshold = 500
+
+["myproject.app.MyService".protocol.protocol]
+module = "bollydog.adapters.memory.SQLiteProtocol"
+path = "data/state.db"
+```
+
+#### Supported config keys
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `commands` | `list[str]` | Module paths to scan for `BaseCommand` subclasses. Relative to service package or fully qualified. Merged with class-level `commands`. |
+| `router_mapping` | `dict` | `{CommandAlias: [METHOD, path]}`. HTTP/SSE route bindings. `METHOD` = `GET`, `POST`, `SSE`. Merged with class-level `router_mapping`. |
+| `subscriber` | `dict` | `{topic_pattern: CommandClass_or_import_path}`. Exchange subscriptions. AMQP-style wildcards (`*` one segment, `#` zero+). |
+| `protocol` | `dict` | Nested protocol chain. Must contain `module` key. See below. |
+
+Any other keys are passed as `**kwargs` to `AppService.__init__`.
+
+#### Protocol chain in TOML
+
+`_build_protocol(conf)` recursively builds protocols. Each level requires `module` (import path); remaining keys become constructor args. Nest `protocol` sub-tables for layered architectures:
+
+```toml
+# Single protocol
+["myapp.MyService".protocol]
+module = "bollydog.adapters.memory.RedisProtocol"
+url = "redis://localhost:6379/0"
+
+# Two-layer: CacheLayer → SQLite
+["myapp.MyService".protocol]
+module = "bollydog.adapters.composite.CacheLayer"
+flush_threshold = 200
+
+["myapp.MyService".protocol.protocol]
+module = "bollydog.adapters.memory.SQLiteProtocol"
+path = "data/cache.db"
+
+# Three-layer: L1 CacheLayer → L2 CacheLayer → L3 SQLite
+["myapp.MyService".protocol]
+module = "bollydog.adapters.composite.CacheLayer"
+flush_threshold = 50
+
+["myapp.MyService".protocol.protocol]
+module = "bollydog.adapters.composite.CacheLayer"
+flush_threshold = 1000
+
+["myapp.MyService".protocol.protocol.protocol]
+module = "bollydog.adapters.memory.SQLiteProtocol"
+path = "data/persistent.db"
+```
+
+#### Minimal example
+
+```toml
+# config.toml
+["example.app.ExampleService"]
+commands = ["commands"]
+
+["example.app.ExampleService".router_mapping]
+Ping = ["GET", "/api/ping"]
+```
+
+```bash
+bollydog service --config config.toml
+bollydog ls --config config.toml
+bollydog execute Ping --config config.toml
+bollydog shell --config config.toml
+```
+
+#### Full-featured example
+
+```toml
+# config.toml — multi-service with protocols, routes, and subscribers
+
+["trading.app.DataEngine"]
+commands = ["commands", "trading.commands.kline"]
+
+["trading.app.DataEngine".protocol]
+module = "bollydog.adapters.composite.TableCacheLayer"
+table = "klines"
+key_columns = ["symbol", "interval"]
+value_columns = ["ts", "open", "high", "low", "close", "volume"]
+sort_by = "ts"
+flush_threshold = 50
+
+["trading.app.DataEngine".protocol.protocol]
+module = "bollydog.adapters.sqlalchemy.DuckDBProtocol"
+url = "data/analytics.duckdb"
+
+["trading.app.DataEngine".router_mapping]
+GetKlines = ["GET", "/api/klines"]
+IngestBars = ["POST", "/api/bars"]
+
+["trading.app.DataEngine".subscriber]
+"trading.*.BarsReady" = "trading.commands.kline.OnBarsReady"
+
+
+["infra.app.ConfigEngine"]
+commands = ["commands"]
+
+["infra.app.ConfigEngine".protocol]
+module = "bollydog.adapters.file.TOMLFileProtocol"
+path = "config/runtime.toml"
+
+["infra.app.ConfigEngine".router_mapping]
+GetConfig = ["GET", "/api/config"]
+SetConfig = ["POST", "/api/config"]
+```
+
+#### Environment variables
+
+Global constants in `service/config.py`, overridable via env:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BOLLYDOG_COMMAND_EXPIRE_TIME` | `3600` | Command state TTL (seconds) |
+| `BOLLYDOG_EVENT_EXPIRE_TIME` | `120` | Event state TTL (seconds) |
+| `BOLLYDOG_QUEUE_MAX_SIZE` | `1000` | qos=1 queue capacity |
+| `BOLLYDOG_HISTORY_MAX_SIZE` | `1000` | Queue history buffer |
+| `BOLLYDOG_DEFAULT_SIGN` | `1` | Default command sign |
+| `BOLLYDOG_DELIVERY_COUNT` | `0` | Max redelivery attempts |
+| `BOLLYDOG_DEFAULT_QOS` | `1` | Default QoS level |
+| `BOLLYDOG_HTTP_ENABLED` | `0` | Enable HTTP entrypoint |
+| `BOLLYDOG_WS_ENABLED` | `0` | Enable WebSocket entrypoint |
+| `BOLLYDOG_UDS_ENABLED` | `0` | Enable Unix Domain Socket entrypoint |
+
+### TOMLFileProtocol — Runtime TOML Adapter
+
+`TOMLFileProtocol(FileProtocol)` wraps a single TOML file. Loads into memory on `on_start`, all reads from memory, flushes to disk on write. Backed by `msgspec.toml`.
+
+**API:**
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `read` | `(path=None) -> dict` | Return full in-memory config dict |
+| `write` | `(path=None, data=None) -> bool` | Flush `_data` (or provided `data`) to disk |
+| `get` | `(key, default=None) -> Any` | Dot-separated nested key lookup |
+| `set` | `(key, value, flush=True) -> bool` | Dot-separated nested key write, auto-creates intermediate dicts |
+| `delete` | `(key, flush=True) -> bool` | Remove a key by dot-path |
+| `merge` | `(updates, deep=True, flush=True) -> bool` | Merge dict into config; `deep=True` for recursive merge |
+| `keys` | `(prefix='') -> list[str]` | Flattened dot-separated key list |
+
+Dot-key example: `'database.host'` resolves to `data['database']['host']`.
+
+**Standalone usage:**
+
+```python
+from bollydog.adapters.file import TOMLFileProtocol
+
+config = TOMLFileProtocol('config/app.toml')
+await config.start()  # on_start loads file into memory
+
+host = await config.get('database.host', default='127.0.0.1')
+await config.set('database.port', 3306)
+
+# Batch writes — defer flush
+await config.set('logging.level', 'DEBUG', flush=False)
+await config.set('logging.format', 'json', flush=False)
+await config.write()  # manual flush
+
+await config.merge({'server': {'host': '0.0.0.0', 'port': 8080}})
+await config.delete('server.port')
+
+all_keys = await config.keys()           # ['database.host', 'database.port', ...]
+db_keys = await config.keys('database')  # ['database.host', 'database.port']
+```
+
+**As AppService protocol (code-level):**
+
+```python
+from bollydog.adapters.file import TOMLFileProtocol
+from bollydog.models.service import AppService
+
+class ConfigEngine(AppService):
+    domain = "infra"
+    alias = "ConfigEngine"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        proto = TOMLFileProtocol('config/runtime.toml')
+        self.add_dependency(proto)
+
+    async def get_db_config(self) -> dict:
+        return {
+            'host': await self.protocol.get('database.host', '127.0.0.1'),
+            'port': await self.protocol.get('database.port', 5432),
+        }
+
+    async def update_feature_flags(self, flags: dict):
+        await self.protocol.merge({'features': flags})
+```
+
+**As AppService protocol (TOML config):**
+
+```toml
+["infra.app.ConfigEngine"]
+commands = ["commands"]
+
+["infra.app.ConfigEngine".protocol]
+module = "bollydog.adapters.file.TOMLFileProtocol"
+path = "config/runtime.toml"
+```
+
+Both approaches are equivalent — `create_from` calls `_build_protocol` → `TOMLFileProtocol(path='config/runtime.toml')` → `svc.add_dependency(proto)`. The protocol's `on_start` loads the file automatically when the service starts.
