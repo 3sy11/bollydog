@@ -24,12 +24,10 @@ class Bootstrap(mode.Worker):
 
     def on_worker_shutdown(self) -> None:
         """Called when the worker is shutting down."""
-        # # execute_from_commandline()中的finally中调用
         pass
 
     def stop_and_shutdown(self) -> None:
         """Stop the worker and shutdown the event loop."""
-        # # execute_from_commandline()中的finally中调用
         super(Bootstrap, self).stop_and_shutdown()
 
     def _on_sigint(self) -> None:

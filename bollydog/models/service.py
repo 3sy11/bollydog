@@ -1,89 +1,15 @@
-import inspect
 import logging
-import pathlib
-from typing import Any, ClassVar, Dict, List, Type
+from typing import ClassVar, Dict, List, Optional
 
-import mode
 from mode.utils.imports import smart_import
 
-from bollydog.models.base import BaseCommand
+from bollydog.models.base import BaseCommand, BaseEvent, BaseService, MessageRegistry
+from bollydog.models.protocol import Protocol
 
 logger = logging.getLogger(__name__)
 
-
-class MessageRegistry:
-    """Centralized command/event registry, owned by BaseService."""
-    def __init__(self):
-        self._commands: Dict[str, Type[BaseCommand]] = {}
-
-    def register(self, cmd_cls: Type[BaseCommand]):
-        self._commands[f'{cmd_cls.module}.{cmd_cls.alias}'] = cmd_cls
-
-    def resolve(self, name: str) -> Type[BaseCommand]:
-        if name in self._commands:
-            return self._commands[name]
-        matches = {k: v for k, v in self._commands.items() if k.endswith(f'.{name}')}
-        if len(matches) == 1: return next(iter(matches.values()))
-        if len(matches) > 1: raise KeyError(f"Ambiguous '{name}': {list(matches.keys())}")
-        nl = name.lower()
-        matches = {k: v for k, v in self._commands.items() if v.alias.lower() == nl}
-        if len(matches) == 1: return next(iter(matches.values()))
-        if len(matches) > 1: raise KeyError(f"Ambiguous '{name}': {list(matches.keys())}")
-        raise KeyError(f"Command '{name}' not found")
-
-    def topics(self) -> Dict[str, Type[BaseCommand]]:
-        return {cmd.destination: cmd for cmd in self._commands.values()}
-
-    def resolve_app(self, message, apps: dict):
-        """Resolve message destination -> service from apps dict."""
-        dest = (message if isinstance(message, type) else type(message)).destination
-        if not dest: return None
-        key = '.'.join(dest.split('.')[:2])
-        return None if key == '_._' else apps.get(key)
-
-    def __len__(self): return len(self._commands)
-    def __iter__(self): return iter(self._commands)
-    def __bool__(self): return bool(self._commands)
-    def items(self): return self._commands.items()
-    def values(self): return self._commands.values()
-    def keys(self): return self._commands.keys()
-
-
-class BaseService(mode.Service):
-    abstract = True
-    domain: ClassVar[str]
-    alias: ClassVar[str]
-    registry: ClassVar[MessageRegistry] = MessageRegistry()
-
-    def __init__(self, **kwargs):
-        super().__init__()
-
-    def add_dependency(self, service: 'BaseService') -> 'BaseService':
-        super().add_dependency(service)
-        return service
-
-    async def on_first_start(self) -> None:
-        if False:  # < TODO
-            supervisor = mode.OneForOneSupervisor()
-            supervisor.add(self)
-            await supervisor.start()
-
-    async def crash(self, reason: BaseException) -> None:
-        self.logger.error(reason)
-        await super(BaseService, self).crash(reason)
-
-    def __init_subclass__(cls, abstract=False, **kwargs):
-        super(BaseService, cls).__init_subclass__()
-        if 'domain' not in cls.__dict__:
-            cls.domain = pathlib.Path(inspect.getmodule(cls).__file__).parent.name
-        if 'alias' not in cls.__dict__:
-            cls.alias = cls.__name__
-
-    def __repr__(self) -> str:
-        return f"<{self._repr_name()}: {self.state}: {id(self)}>"
-
-    def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)  # < 3
+# re-export for from bollydog.models.service import BaseService, AppService, MessageRegistry
+__all__ = ['MessageRegistry', 'BaseService', 'AppService', '_build_protocol']
 
 
 def _build_protocol(conf: dict):
@@ -100,21 +26,25 @@ def _build_protocol(conf: dict):
 
 
 class AppService(BaseService, abstract=True):
-    router_mapping: ClassVar[dict] = {}
-    commands: ClassVar[List[str]] = []
-    subscriber: ClassVar[dict] = {}
+    _apps: ClassVar[Dict[str, 'AppService']] = {}
     protocol = None
 
-    def __init__(self, router_mapping=None, subscribe=None, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.router_mapping = {**self.__class__.router_mapping, **(router_mapping or {})} if router_mapping is not None else self.__class__.router_mapping
-        self.subscriber = {**self.__class__.subscriber, **(subscribe or {})} if subscribe is not None else self.__class__.subscriber
+        self._depends: list = []
+        AppService._apps[f'{self.domain}.{self.alias}'] = self
 
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
-        from bollydog.models.protocol import Protocol
         if isinstance(service, Protocol) and self.protocol is None:
             self.protocol = service
         return super().add_dependency(service)
+
+    @classmethod
+    def resolve_app(cls, message) -> Optional['AppService']:
+        dest = (message if isinstance(message, type) else type(message)).destination
+        if not dest: return None
+        key = '.'.join(dest.split('.')[:2])
+        return None if key == '_._' else cls._apps.get(key)
 
     async def on_start(self) -> None:
         await super(AppService, self).on_start()
@@ -124,7 +54,6 @@ class AppService(BaseService, abstract=True):
 
     @classmethod
     def _load_commands(cls, modules: List[str]):
-        from bollydog.models.base import BaseEvent
         pkg = cls.__module__.rsplit('.', 1)[0]
         dest_prefix = f'{cls.domain}.{cls.alias}'
         for name in modules:
@@ -143,20 +72,13 @@ class AppService(BaseService, abstract=True):
 
     @classmethod
     def create_from(cls, **conf):
-        commands = conf.pop('commands', None)
-        router_mapping = conf.pop('router_mapping', None)
-        subscriber = conf.pop('subscriber', None)
-        protocol_conf = conf.pop('protocol', None)
-        merged_commands = list({*(cls.commands or []), *(commands or [])})
-        merged_sub = {**cls.subscriber, **(subscriber or {})} if subscriber else None
-        if merged_sub:
-            for topic, handler in list(merged_sub.items()):
-                if isinstance(handler, str):
-                    merged_sub[topic] = smart_import(handler)
-        cls._load_commands(merged_commands)
+        commands, router_mapping, subscriber, depends, protocol_conf = (
+            conf.pop(k, None) for k in ('commands', 'router_mapping', 'subscriber', 'depends', 'protocol'))
+        if commands: cls.commands = [*{*(cls.commands or []), *commands}]
+        if router_mapping: cls.router_mapping = {**(cls.router_mapping or {}), **router_mapping}
+        if subscriber: cls.subscriber = {**(cls.subscriber or {}), **{t: smart_import(h) if isinstance(h, str) else h for t, h in subscriber.items()}}
         logger.debug(f'create_from {cls.__name__}')
-        svc = cls(router_mapping=router_mapping, subscribe=merged_sub, **conf)
-        if protocol_conf:
-            proto = _build_protocol(protocol_conf)
-            svc.add_dependency(proto)
+        svc = cls(**conf)
+        if protocol_conf: svc.add_dependency(_build_protocol(protocol_conf))
+        svc._depends = list(depends) if depends else []
         return svc

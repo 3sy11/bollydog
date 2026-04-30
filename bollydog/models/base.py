@@ -1,10 +1,12 @@
 import asyncio
 import inspect
+import pathlib
 import time
 import uuid
 from abc import abstractmethod
 from typing import Dict, List, Type, Any, ClassVar
 
+import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 
 from bollydog.service.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, DEFAULT_SIGN, DELIVERY_COUNT, DEFAULT_QOS
@@ -143,3 +145,73 @@ class BaseEvent(BaseCommand, abstract=True):
 
     async def __call__(self, *args, **kwargs) -> Any:
         self.state.set_result(True)
+
+
+class MessageRegistry:
+    """Centralized command/event registry, owned by BaseService."""
+    def __init__(self):
+        self._commands: Dict[str, Type[BaseCommand]] = {}
+
+    def register(self, cmd_cls: Type[BaseCommand]):
+        self._commands[f'{cmd_cls.module}.{cmd_cls.alias}'] = cmd_cls
+
+    def resolve(self, name: str) -> Type[BaseCommand]:
+        if name in self._commands: return self._commands[name]
+        matches = {k: v for k, v in self._commands.items() if k.endswith(f'.{name}')}
+        if len(matches) == 1: return next(iter(matches.values()))
+        if len(matches) > 1: raise KeyError(f"Ambiguous '{name}': {list(matches.keys())}")
+        nl = name.lower()
+        matches = {k: v for k, v in self._commands.items() if v.alias.lower() == nl}
+        if len(matches) == 1: return next(iter(matches.values()))
+        if len(matches) > 1: raise KeyError(f"Ambiguous '{name}': {list(matches.keys())}")
+        raise KeyError(f"Command '{name}' not found")
+
+    def topics(self) -> Dict[str, Type[BaseCommand]]:
+        return {cmd.destination: cmd for cmd in self._commands.values()}
+
+    def __len__(self): return len(self._commands)
+    def __iter__(self): return iter(self._commands)
+    def __bool__(self): return bool(self._commands)
+    def items(self): return self._commands.items()
+    def values(self): return self._commands.values()
+    def keys(self): return self._commands.keys()
+
+
+class BaseService(mode.Service):
+    abstract = True
+    domain: ClassVar[str]
+    alias: ClassVar[str]
+    registry: ClassVar[MessageRegistry] = MessageRegistry()
+    router_mapping: ClassVar[dict] = {}
+    subscriber: ClassVar[dict] = {}
+    commands: ClassVar[List[str]] = []
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    def add_dependency(self, service: 'BaseService') -> 'BaseService':
+        super().add_dependency(service)
+        return service
+
+    async def on_first_start(self) -> None:
+        if False:  # < TODO
+            supervisor = mode.OneForOneSupervisor()
+            supervisor.add(self)
+            await supervisor.start()
+
+    async def crash(self, reason: BaseException) -> None:
+        self.logger.error(reason)
+        await super(BaseService, self).crash(reason)
+
+    def __init_subclass__(cls, abstract=False, **kwargs):
+        super(BaseService, cls).__init_subclass__()
+        if 'domain' not in cls.__dict__:
+            cls.domain = pathlib.Path(inspect.getmodule(cls).__file__).parent.name
+        if 'alias' not in cls.__dict__:
+            cls.alias = cls.__name__
+
+    def __repr__(self) -> str:
+        return f"<{self._repr_name()}: {self.state}: {id(self)}>"
+
+    def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
+        self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)  # < 3

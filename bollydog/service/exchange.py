@@ -31,11 +31,10 @@ class Exchange(AppService):
         super().__init__(**kwargs)
         self._exact = defaultdict(set)
         self._patterns = defaultdict(set)
-        self._hub = None
 
     async def on_started(self) -> None:
-        for svc in self._hub.apps.values():
-            for topic, handler in getattr(svc, 'subscriber', {}).items():
+        for svc in AppService._apps.values():
+            for topic, handler in svc.subscriber.items():
                 self.subscribe(topic, handler)
         subs = {**self._exact, **self._patterns}
         if subs:

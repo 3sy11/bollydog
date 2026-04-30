@@ -166,3 +166,6 @@ cython_debug/
 .DS_Store
 .ptpython.tmp
 dist/
+.claude
+.kilo
+.vscode

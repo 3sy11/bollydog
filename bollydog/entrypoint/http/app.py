@@ -1,36 +1,23 @@
 import asyncio
 import json
-from typing import Type
 import logging
+from typing import Type
+
 import mode
 import uvicorn
-from bollydog.models.service import AppService
 from starlette.applications import Starlette
+from starlette.datastructures import UploadFile
 from starlette.middleware import Middleware
-from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse, StreamingResponse
-from starlette.datastructures import UploadFile
 
 from bollydog.globals import hub, _hub_ctx_stack
 from bollydog.models.base import BaseCommand
+from bollydog.models.service import AppService, BaseService
 
-
-class HubContextMiddleware:
-    """uvicorn 为每个请求创建 contextvars.Context() 空上下文，
-    导致 _hub_ctx_stack 丢失。此中间件为每个 ASGI scope 重新注入 hub。"""
-    def __init__(self, app, hub_instance):
-        self.app, self.hub_instance = app, hub_instance
-
-    async def __call__(self, scope, receive, send):
-        _hub_ctx_stack.push_without_automatic_cleanup(self.hub_instance)
-        try:
-            await self.app(scope, receive, send)
-        finally:
-            _hub_ctx_stack.pop()
-from .middleware import base_auth_backend
 from .config import (
     SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST,
     SERVICE_PRIVATE_KEY_PATH, SERVICE_PUBLIC_KEY_PATH,
@@ -40,6 +27,21 @@ from .config import (
     MIDDLEWARE_SESSION_ENABLED, MIDDLEWARE_AUTH_ENABLED, MIDDLEWARE_CORS_ENABLED,
     MIDDLEWARE_SESSION_SECRET_KEY,
 )
+from .middleware import base_auth_backend
+
+
+class HubContextMiddleware:
+    """Uvicorn creates a fresh contextvars.Context per request, losing _hub_ctx_stack.
+    This middleware re-injects hub into each ASGI scope."""
+    def __init__(self, app, hub_instance):
+        self.app, self.hub_instance = app, hub_instance
+
+    async def __call__(self, scope, receive, send):
+        _hub_ctx_stack.push_without_automatic_cleanup(self.hub_instance)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _hub_ctx_stack.pop()
 
 class HttpHandler:
 
@@ -111,12 +113,11 @@ class SseHandler:
 
 class HttpService(AppService):
 
-    def __init__(self, web_app=None, router_mapping=None, **kwargs):
+    def __init__(self, web_app=None, **kwargs):
         super().__init__(**kwargs)
         self.app = self
         self.http_app = web_app or Starlette()
         self.uvicorn = None
-        self.router_mapping = router_mapping or {}
         self.middlewares = self._build_middlewares()
 
     @staticmethod
@@ -138,17 +139,15 @@ class HttpService(AppService):
         if visited is None: visited = set()
         if id(service) in visited: return {}
         visited.add(id(service))
-        rm = dict(getattr(service, 'router_mapping', None) or {})
+        rm = dict(service.router_mapping)
         for child in getattr(service, '_children', []):
             rm.update(HttpService._collect_router_mappings(child, visited))
         return rm
 
     async def on_start(self) -> None:
         merged = {}
-        for app in hub.apps.values():
+        for app in AppService._apps.values():
             merged.update(self._collect_router_mappings(app))
-        merged.update(self.router_mapping)
-        from bollydog.models.service import BaseService
         for key, command_cls in BaseService.registry.items():
             alias = command_cls.alias
             route = merged.get(command_cls.__name__, merged.get(alias, merged.get(key)))

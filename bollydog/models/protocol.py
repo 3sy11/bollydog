@@ -1,5 +1,6 @@
 from typing import Any
-from bollydog.models.service import BaseService
+
+from bollydog.models.base import BaseService
 
 
 class Protocol(BaseService, abstract=True):

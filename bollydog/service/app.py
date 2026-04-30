@@ -1,10 +1,9 @@
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Iterable
 
 import mode
 
-from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError, ServiceNotFoundError
+from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
 from bollydog.globals import _hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack, _app_ctx_stack, _session_ctx_stack
 from bollydog.models.base import BaseCommand as Message, BaseEvent
 from bollydog.models.service import AppService
@@ -60,19 +59,17 @@ class Hub(AppService):
     domain = DOMAIN
     router_mapping = HUB_ROUTER_MAPPING
     commands = ['commands']
-    apps: dict
     exchange: Exchange
     session: Session
     queue: Queue
 
-    def __init__(self, apps: Iterable[AppService] = None, **kwargs):
+    def __init__(self, domains=None, **kwargs):
         super().__init__(**kwargs)
         self._before, self._after = [], []
-        self._external_apps = list(apps or [])
+        self._domains = set(domains) if domains else None
 
     def on_init_dependencies(self):
         self.exchange = Exchange()
-        self.exchange._hub = self
         self.session = Session()
         self.queue = Queue()
         return [self.exchange, self.session, self.queue]
@@ -80,23 +77,18 @@ class Hub(AppService):
     async def on_first_start(self) -> None:
         self.exit_stack.enter_context(_hub_ctx_stack.push(self))
         self.exit_stack.enter_context(_session_ctx_stack.push(self.session))
-        _id = lambda s: f'{s.domain}.{s.alias}'
-        self.apps = {_id(self): self, _id(self.exchange): self.exchange, _id(self.session): self.session, _id(self.queue): self.queue}
-        for svc in self._external_apps:
-            self.add_service(svc)
-        del self._external_apps
 
     async def on_start(self) -> None:
         self._load_commands(self.commands)
         await super().on_start()
 
     async def on_started(self) -> None:
-        for service in self.apps.values():
-            if service == self: continue
-            await service.maybe_start()
-        for sid, svc in self.apps.items():
-            cmds = getattr(svc, 'commands', None)
-            if cmds: self.logger.info(f'[{sid}] {type(svc).__name__} | commands={cmds}')
+        for key, svc in AppService._apps.items():
+            if svc is self: continue
+            if self._domains and key.split('.')[0] not in self._domains: continue
+            await svc.maybe_start()
+        for sid, svc in AppService._apps.items():
+            if svc.commands: self.logger.info(f'[{sid}] {type(svc).__name__} | commands={svc.commands}')
         if self.registry:
             def _tag(c): return 'Event' if issubclass(c, BaseEvent) else 'Command'
             reg = '\n  '.join(f'{_tag(c):7} {c.alias:20} dest={c.destination or "-"}' for c in self.registry.values())
@@ -104,26 +96,6 @@ class Hub(AppService):
 
     async def emit(self, event: Message, topic: str = None):
         await self.dispatch(event)
-
-    def add_service(self, service: AppService):
-        key = f'{service.domain}.{service.alias}'
-        if key in self.apps: return
-        self.apps[key] = service
-        for child in getattr(service, '_children', []):
-            if isinstance(child, AppService):
-                self.add_service(child)
-
-    def get_service(self, cls_or_key, *, required=True):
-        if isinstance(cls_or_key, str):
-            key = cls_or_key
-        elif isinstance(cls_or_key, type):
-            key = f'{cls_or_key.domain}.{cls_or_key.alias}'
-        else:
-            key = f'{type(cls_or_key).domain}.{type(cls_or_key).alias}'
-        svc = self.apps.get(key)
-        if svc is None and required:
-            raise ServiceNotFoundError(f"Service '{key}' not registered")
-        return svc
 
     def before(self, fn):
         self._before.append(fn); return fn
@@ -164,7 +136,7 @@ class Hub(AppService):
 
     @asynccontextmanager
     async def _with_context(self, message):
-        app = self.registry.resolve_app(message, self.apps)
+        app = AppService.resolve_app(message)
         with (_protocol_ctx_stack.push(app.protocol if app else None), _message_ctx_stack.push(message), _app_ctx_stack.push(app)):
             yield
 
