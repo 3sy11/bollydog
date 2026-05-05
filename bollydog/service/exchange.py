@@ -1,5 +1,4 @@
 from collections import defaultdict
-from typing import ClassVar
 
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService
@@ -24,6 +23,13 @@ def match_topic(pattern: str, topic: str) -> bool:
     return _match(pattern.split('.'), topic.split('.'), 0, 0)
 
 
+def _make_callback(svc, method_name, bound_method):
+    """Generate a Command class wrapping a bound service method."""
+    dest = f'{svc.domain}.{svc.alias}.{method_name}'
+    async def _call(self): return await bound_method(self)
+    return type(method_name, (BaseCommand,), {'destination': dest, 'alias': method_name, 'module': type(svc).__module__, 'qos': 0, '__call__': _call})
+
+
 class Exchange(AppService):
     domain = DOMAIN
 
@@ -34,17 +40,22 @@ class Exchange(AppService):
 
     async def on_started(self) -> None:
         for svc in AppService._apps.values():
-            for topic, handler in svc.subscriber.items():
-                self.subscribe(topic, handler)
+            for topic, methods in svc.subscriber.items():
+                methods = [methods] if isinstance(methods, str) else methods
+                for method_name in methods:
+                    bound = getattr(svc, method_name, None)
+                    if bound is None:
+                        raise AttributeError(f"{type(svc).__name__} has no method '{method_name}'")
+                    cmd_cls = _make_callback(svc, method_name, bound)
+                    self.subscribe(topic, cmd_cls)
+                    self.logger.debug(f'subscribe {topic} -> {svc.domain}.{svc.alias}.{method_name}')
         subs = {**self._exact, **self._patterns}
         if subs:
-            lines = '\n  '.join(f'{t} -> [{", ".join(getattr(h, "destination", None) or h.__name__ for h in hs)}]' for t, hs in subs.items())
+            lines = '\n  '.join(f'{t} -> [{", ".join(h.destination or h.__name__ for h in hs)}]' for t, hs in subs.items())
             self.logger.info(f'subscriptions({sum(len(v) for v in subs.values())}):\n  {lines}')
         await super().on_started()
 
     def subscribe(self, topic: str, handler):
-        if not (isinstance(handler, type) and issubclass(handler, BaseCommand)):
-            raise TypeError(f'Exchange.subscribe only accepts Command classes, got {handler!r}')
         store = self._patterns if ('#' in topic or '*' in topic) else self._exact
         store[topic].add(handler)
 

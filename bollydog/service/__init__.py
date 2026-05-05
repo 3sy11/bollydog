@@ -1,4 +1,12 @@
 """Deferred imports inside load_from_config to avoid circular import with models.base -> service.config."""
+import os
+
+
+def _cast_env(env_str: str, original):
+    if isinstance(original, bool): return env_str.lower() in ('1', 'true', 'yes')
+    if isinstance(original, int): return int(env_str)
+    if isinstance(original, float): return float(env_str)
+    return env_str
 
 
 def load_from_config(config: str = None) -> None:
@@ -20,12 +28,19 @@ def load_from_config(config: str = None) -> None:
     if BOLLYDOG_HTTP_ENABLED: HttpService.create_from()
     if BOLLYDOG_WS_ENABLED: SocketService.create_from()
     if BOLLYDOG_UDS_ENABLED: UdsService.create_from()
+    for svc in AppService._apps.values():
+        for key, val in svc.config.items():
+            env = os.environ.get(key.upper())
+            if env is None: continue
+            svc.config[key] = _cast_env(env, val)
     for svc in list(AppService._apps.values()):
-        for dep_key in svc._depends:
+        resolved = []
+        for dep_key in svc.depends:
             dep = AppService._apps.get(dep_key)
-            if dep is None: raise ValueError(f"depends '{dep_key}' not found")
+            if dep is None: raise ValueError(f"depends '{dep_key}' not found for {svc.domain}.{svc.alias}")
             svc.add_dependency(dep)
-        svc._depends = []
+            resolved.append(dep)
+        svc.depends = resolved
     seen = set()
     for svc in AppService._apps.values():
         if type(svc) in seen: continue

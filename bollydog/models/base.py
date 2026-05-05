@@ -185,6 +185,7 @@ class BaseService(mode.Service):
     router_mapping: ClassVar[dict] = {}
     subscriber: ClassVar[dict] = {}
     commands: ClassVar[List[str]] = []
+    depends: ClassVar[list] = []
 
     def __init__(self, **kwargs):
         super().__init__()

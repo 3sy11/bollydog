@@ -31,7 +31,6 @@ class AppService(BaseService, abstract=True):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._depends: list = []
         AppService._apps[f'{self.domain}.{self.alias}'] = self
 
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
@@ -76,9 +75,10 @@ class AppService(BaseService, abstract=True):
             conf.pop(k, None) for k in ('commands', 'router_mapping', 'subscriber', 'depends', 'protocol'))
         if commands: cls.commands = [*{*(cls.commands or []), *commands}]
         if router_mapping: cls.router_mapping = {**(cls.router_mapping or {}), **router_mapping}
-        if subscriber: cls.subscriber = {**(cls.subscriber or {}), **{t: smart_import(h) if isinstance(h, str) else h for t, h in subscriber.items()}}
+        if subscriber: cls.subscriber = {**(cls.subscriber or {}), **subscriber}
+        if depends: cls.depends = [*{*(cls.depends or []), *depends}]
         logger.debug(f'create_from {cls.__name__}')
         svc = cls(**conf)
+        svc.config = conf
         if protocol_conf: svc.add_dependency(_build_protocol(protocol_conf))
-        svc._depends = list(depends) if depends else []
         return svc

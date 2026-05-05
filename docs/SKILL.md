@@ -148,13 +148,34 @@ Format: `domain.ServiceAlias.CommandAlias` (3-part topic).
 
 ## Exchange (pub/sub)
 
+Subscriber values are **method names** (str or list) pointing to methods on the AppService. Exchange wraps each into a lightweight Command at startup.
+
 ```python
-# In AppService class or TOML subscriber config
-subscriber = {'analytics.*.DataReady': OnDataReady}
+class DataEngine(AppService):
+    subscriber = {
+        'analytics.*.DataReady': 'on_data_ready',                   # single method
+        'trading.DataEngine.BarsReady': ['on_bars', 'update_cache'], # fan-out: both run in parallel
+    }
+
+    async def on_data_ready(self, message):
+        event = message.get_event()  # original triggering command data
+        ...
+
+    async def on_bars(self, message): ...
+    async def update_cache(self, message): ...
 ```
 
+TOML:
+
+```toml
+["trading.app.DataEngine".subscriber]
+"analytics.*.DataReady" = "on_data_ready"
+"trading.DataEngine.BarsReady" = ["on_bars", "update_cache"]
+```
+
+- Callback signature: `async def method(self, message)` — self = AppService instance, message = Command instance.
 - AMQP-style wildcards: `*` = one segment, `#` = zero or more.
-- Handlers must be **Command classes** (not instances).
+- Multiple instances subscribing to the same topic → each instance's handlers dispatch independently in parallel.
 - `_publish` fires matched handlers with `add_event(original_msg)`.
 
 ## Hooks (before/after)
@@ -190,7 +211,12 @@ Business logic chooses the key: `trace_id` for conversations, `created_by` for u
 class DataEngine(AppService):
     domain = 'trading'
     commands = ['commands']
-    subscriber = {'trading.*.BarsReady': OnBarsReady}
+    depends = ['infra.ConfigEngine']                            # resolved to instances at startup
+    subscriber = {'trading.*.BarsReady': 'on_bars_ready'}       # method name, not Command class
+
+    async def on_bars_ready(self, message):
+        event = message.get_event()
+        self.transform(event['data'])
 
     def transform(self, data):
         return processed_data  # business method called by Commands
@@ -305,7 +331,8 @@ Echo = ["POST", "/api/echo"]
 Stream = ["SSE", "/api/stream"]
 
 ["myapp.app.MyService".subscriber]
-"analytics.*.DataReady" = "myapp.commands.OnDataReady"
+"analytics.*.DataReady" = "on_data_ready"
+"trading.DataEngine.BarsReady" = ["on_bars", "update_cache"]
 
 ["myapp.app.MyService".protocol]
 module = "bollydog.adapters.composite.CacheLayer"
@@ -322,9 +349,9 @@ Top-level key = fully-qualified AppService class. `module` key in protocol secti
 |------------|------|-------------|
 | `commands` | `list[str]` | `cls.commands` ClassVar |
 | `router_mapping` | `dict` | `cls.router_mapping` ClassVar |
-| `subscriber` | `dict` | `cls.subscriber` ClassVar |
+| `subscriber` | `dict` | `{topic: method_name \| [method_names]}` merged into `cls.subscriber` |
+| `depends` | `list[str]` | Resolved to `[AppService, ...]` after all services created |
 | `protocol` | `dict` | Instance `protocol` via `add_dependency` |
-| `depends` | `list[str]` | Resolved after all services created |
 | other keys | any | Passed as `**kwargs` to `__init__` |
 
 ### Service lifecycle
@@ -333,7 +360,7 @@ Top-level key = fully-qualified AppService class. `module` key in protocol secti
 load_from_config(config)
   1. Parse TOML -> cls.create_from(**conf) per section
   2. Create entrypoint services (HTTP/WS/UDS if enabled)
-  3. Resolve depends -> add_dependency
+  3. Resolve depends: string refs -> [AppService instances], add_dependency for lifecycle ordering
   4. _load_commands per service class (deferred, once)
 
 Hub()
