@@ -4,7 +4,7 @@ import pathlib
 import time
 import uuid
 from abc import abstractmethod
-from typing import Dict, List, Type, Any, ClassVar
+from typing import Dict, List, Optional, Type, Any, ClassVar
 
 import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
@@ -61,7 +61,7 @@ class _ModelMixin(BaseModel):
     update_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     iid: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
     sign: int = Field(default=DEFAULT_SIGN, description='1:normal, -1:deleted')
-    created_by: str = Field(default=None, max_length=50)
+    created_by: Optional[str] = Field(default=None, max_length=50)
 
     def model_post_init(self, __context: Any) -> None:
         if self.created_by is None:
@@ -98,7 +98,7 @@ class BaseCommand(_ModelMixin):
 
     trace_id: str = Field(default_factory=lambda: getattr(message, 'trace_id', uuid.uuid4().hex))
     span_id: str = Field(default='--')
-    parent_span_id: str = Field(default=getattr(message, 'span_id', '--'))
+    parent_span_id: str = Field(default='--')
     data: dict = Field(default_factory=dict)
 
     def add_event(self, event) -> None:
@@ -119,9 +119,6 @@ class BaseCommand(_ModelMixin):
         if message:
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
-        self.state._trace_id = self.trace_id
-        # Alternative: root command trace_id = hex(id(state)), intrinsic link
-        # if not message: self.trace_id = format(id(self.state), 'x')
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -129,9 +126,12 @@ class BaseCommand(_ModelMixin):
         if 'alias' not in cls.__dict__: cls.alias = cls.__name__
         if not abstract and '__call__' in cls.__dict__:
             if 'destination' not in cls.__dict__ or cls.__dict__.get('destination') is None:
-                cls.destination = f'_._.{cls.alias}'
-            elif len(str(cls.destination).split('.')) <= 2:
-                cls.destination = f'{cls.destination}.{cls.alias}'
+                cls.destination = f'_._.{cls.alias}'  # placeholder, rebound by _derive in _load_commands
+
+    @classmethod
+    def _derive(cls, dest_prefix: str):
+        """Create derived subclass with isolated destination. Original class unchanged."""
+        return type(cls.__name__, (cls,), {'destination': f'{dest_prefix}.{cls.alias}', 'module': cls.module, 'alias': cls.alias})
 
     def __str__(self):
         _t = 'Event' if isinstance(self, BaseEvent) else 'Command'
@@ -147,41 +147,11 @@ class BaseEvent(BaseCommand, abstract=True):
         self.state.set_result(True)
 
 
-class MessageRegistry:
-    """Centralized command/event registry, owned by BaseService."""
-    def __init__(self):
-        self._commands: Dict[str, Type[BaseCommand]] = {}
-
-    def register(self, cmd_cls: Type[BaseCommand]):
-        self._commands[f'{cmd_cls.module}.{cmd_cls.alias}'] = cmd_cls
-
-    def resolve(self, name: str) -> Type[BaseCommand]:
-        if name in self._commands: return self._commands[name]
-        matches = {k: v for k, v in self._commands.items() if k.endswith(f'.{name}')}
-        if len(matches) == 1: return next(iter(matches.values()))
-        if len(matches) > 1: raise KeyError(f"Ambiguous '{name}': {list(matches.keys())}")
-        nl = name.lower()
-        matches = {k: v for k, v in self._commands.items() if v.alias.lower() == nl}
-        if len(matches) == 1: return next(iter(matches.values()))
-        if len(matches) > 1: raise KeyError(f"Ambiguous '{name}': {list(matches.keys())}")
-        raise KeyError(f"Command '{name}' not found")
-
-    def topics(self) -> Dict[str, Type[BaseCommand]]:
-        return {cmd.destination: cmd for cmd in self._commands.values()}
-
-    def __len__(self): return len(self._commands)
-    def __iter__(self): return iter(self._commands)
-    def __bool__(self): return bool(self._commands)
-    def items(self): return self._commands.items()
-    def values(self): return self._commands.values()
-    def keys(self): return self._commands.keys()
-
-
 class BaseService(mode.Service):
     abstract = True
     domain: ClassVar[str]
     alias: ClassVar[str]
-    registry: ClassVar[MessageRegistry] = MessageRegistry()
+    registry: ClassVar[Dict[str, Type[BaseCommand]]] = {}
     router_mapping: ClassVar[dict] = {}
     subscriber: ClassVar[dict] = {}
     commands: ClassVar[List[str]] = []
@@ -193,12 +163,6 @@ class BaseService(mode.Service):
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
         super().add_dependency(service)
         return service
-
-    async def on_first_start(self) -> None:
-        if False:  # < TODO
-            supervisor = mode.OneForOneSupervisor()
-            supervisor.add(self)
-            await supervisor.start()
 
     async def crash(self, reason: BaseException) -> None:
         self.logger.error(reason)
@@ -213,6 +177,3 @@ class BaseService(mode.Service):
 
     def __repr__(self) -> str:
         return f"<{self._repr_name()}: {self.state}: {id(self)}>"
-
-    def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)  # < 3

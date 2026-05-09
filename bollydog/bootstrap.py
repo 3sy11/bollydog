@@ -1,5 +1,5 @@
 import signal
-from typing import Iterable, Any
+from typing import Iterable
 
 import mode
 
@@ -31,12 +31,5 @@ class Bootstrap(mode.Worker):
         super(Bootstrap, self).stop_and_shutdown()
 
     def _on_sigint(self) -> None:
-        # self.carp("-INT- -INT- -INT- -INT- -INT- -INT-")
         self.logger.info('-EXIT- -EXIT- -EXIT- -EXIT- -EXIT- -EXIT-')
         self._schedule_shutdown(signal.SIGINT)
-
-    def _log_mundane(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """
-        set stack level 3 to log right stack frame
-        """
-        self.log.log(self._mundane_level, msg, stacklevel=3, *args, **kwargs)

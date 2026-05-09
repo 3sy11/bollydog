@@ -5,16 +5,6 @@ from bollydog.models.protocol import Protocol
 from bollydog.adapters._base import KVProtocol
 
 
-class NoneProtocol(Protocol):
-    async def on_start(self) -> None:
-        self.adapter = True
-
-
-class LogProtocol(Protocol):
-    async def on_start(self) -> None:
-        self.adapter = True
-
-
 class MemoryProtocol(KVProtocol):
     """In-memory dict KV with optional lazy TTL."""
 
@@ -75,7 +65,7 @@ class RedisProtocol(KVProtocol):
         data = await self.adapter.get(key)
         return json.loads(data) if data else None
 
-    async def set(self, key: str, value, ttl: int = 3600):
+    async def set(self, key: str, value, ttl: int = None):
         await self.adapter.set(key, json.dumps(value, ensure_ascii=False), ex=ttl)
 
     async def remove(self, key: str):

@@ -55,11 +55,11 @@ class FileProtocol(Protocol, abstract=True):
 # ─── Mixin ─────────────────────────────────────────────────────
 
 class BatchMixin:
-    """Bulk update/delete for CRUDProtocol implementations."""
+    """Bulk update/delete for CRUDProtocol implementations. Subclasses should override for batch optimization."""
     async def update_all(self, items: list, **ctx) -> list:
-        return [await self.update(item, **ctx) for item in items]
+        return [await self.update(query=ctx, data=item) for item in items]
     async def delete_all(self, items: list, **ctx) -> list:
-        return [await self.delete(item, **ctx) for item in items]
+        return [await self.delete(**{**ctx, 'id': getattr(item, 'id', item)}) for item in items]
 
 
 class StreamMixin:

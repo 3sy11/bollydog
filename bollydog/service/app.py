@@ -79,7 +79,7 @@ class Hub(AppService):
         self.exit_stack.enter_context(_session_ctx_stack.push(self.session))
 
     async def on_start(self) -> None:
-        self._load_commands(self.commands)
+        if type(self).commands: type(self)._load_commands(type(self).commands)
         await super().on_start()
 
     async def on_started(self) -> None:
@@ -94,7 +94,7 @@ class Hub(AppService):
             reg = '\n  '.join(f'{_tag(c):7} {c.alias:20} dest={c.destination or "-"}' for c in self.registry.values())
             self.logger.info(f'registry({len(self.registry)}):\n  {reg}')
 
-    async def emit(self, event: Message, topic: str = None):
+    async def emit(self, event: Message):
         await self.dispatch(event)
 
     def before(self, fn):
@@ -196,7 +196,7 @@ class Hub(AppService):
                             pending.append(await asyncio.wait_for(gen.athrow(exc), timeout=message.expire_time))
                             feedback = None
                         except StopAsyncIteration:
-                            return
+                            break
                 else:
                     feedback = None
                     await message.state.put(value)
@@ -205,8 +205,7 @@ class Hub(AppService):
         except Exception as e:
             self.logger.exception(e)
             if not message.state.done(): message.state.set_exception(e)
-            return
-        await message.state.put(None)
+        if not message.state.done(): await message.state.put(None)
 
     @mode.Service.task
     async def run(self):
@@ -223,6 +222,6 @@ class Hub(AppService):
             if message.state.done() and not message.state.exception():
                 self.queue.ack(message.iid, message.state.result())
             else:
-                self.queue.nack(message.iid, message.state.exception())
+                self.queue.nack(message.iid, message.state.exception() or RuntimeError('command did not complete'))
             await self._publish(message)
 

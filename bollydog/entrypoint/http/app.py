@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 from typing import Type
@@ -161,7 +162,11 @@ class HttpService(AppService):
                 path = f'/api/{domain}/{alias}' if domain else f'/api/{alias}'
             if 'SSE' in methods:
                 methods = ['GET']
-                handler = SseHandler(command_cls)
+                if inspect.isasyncgenfunction(command_cls.__call__):
+                    handler = SseHandler(command_cls)
+                else:
+                    logging.warning(f'{alias} mapped as SSE but is not async generator, falling back to HTTP')
+                    handler = HttpHandler(command_cls)
             else:
                 handler = HttpHandler(command_cls)
             self.http_app.router.add_route(path, handler, methods=methods, name=alias, include_in_schema=True)

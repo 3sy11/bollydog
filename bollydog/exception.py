@@ -1,16 +1,4 @@
-class ServiceRejectException(Exception):
-    pass
-
-
 class ServiceMaxSizeOfQueueError(Exception):
-    pass
-
-
-class MessageValidationError(Exception):
-    pass
-
-
-class MessageEmptyHandlerError(Exception):
     pass
 
 
@@ -19,16 +7,4 @@ class HandlerTimeOutError(Exception):
 
 
 class HandlerMaxRetryError(Exception):
-    pass
-
-
-class HandlerNoneError(Exception):
-    pass
-
-
-class DestinationNotFoundError(Exception):
-    pass
-
-
-class ServiceNotFoundError(Exception):
     pass

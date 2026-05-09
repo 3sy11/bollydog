@@ -404,7 +404,7 @@ bollydog send <Command> <socket_path> [--config ...]
 
 | Layer | Production | Test |
 |-------|------------|------|
-| Protocol | `SqlAlchemy`, `Redis` | `MemoryProtocol`, `NoneProtocol` |
+| Protocol | `SqlAlchemy`, `Redis` | `MemoryProtocol` |
 | AppService methods | real impl | mock return values |
 | Pure compute Command | `await cmd()` | same, no Hub needed |
 | Orchestration Command | full Hub | mock `app.method` + `MemoryProtocol` |

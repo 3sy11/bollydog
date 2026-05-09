@@ -20,6 +20,20 @@ logging.info(f'load .env from {os.getcwd()}')
 environs.Env().read_env(os.getcwd() + '/.env', recurse=False, verbose=True)
 
 
+def _resolve_command(name: str):
+    """CLI-level fuzzy resolve: exact -> suffix -> case-insensitive, with hints on ambiguity."""
+    registry = BaseService.registry
+    if name in registry: return registry[name]
+    matches = {k: v for k, v in registry.items() if k.endswith(f'.{name}')}
+    if len(matches) == 1: return next(iter(matches.values()))
+    if len(matches) > 1: raise KeyError(f"Ambiguous '{name}', candidates: {list(matches.keys())}")
+    nl = name.lower()
+    matches = {k: v for k, v in registry.items() if v.alias.lower() == nl}
+    if len(matches) == 1: return next(iter(matches.values()))
+    if len(matches) > 1: raise KeyError(f"Ambiguous '{name}', candidates: {list(matches.keys())}")
+    raise KeyError(f"Command '{name}' not found. Use `bollydog ls` to see available commands.")
+
+
 class CLI:
 
     @staticmethod
@@ -59,7 +73,7 @@ class CLI:
         config = kwargs.pop('config', None)
         load_from_config(config)
         hub = Hub()
-        cmd = BaseService.registry.resolve(command)
+        cmd = _resolve_command(command)
         msg = cmd(**kwargs)
         logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
         async def _run():
@@ -72,10 +86,9 @@ class CLI:
     def send(command: str, socket: str, **kwargs):
         config = kwargs.pop('config', SEND_DEFAULT_CONFIG)
         load_from_config(config)
-        cmd_cls = BaseService.registry.resolve(command)
-        cmd_cls(**kwargs)
+        cmd_cls = _resolve_command(command)
         uds = UdsService(sock_path=socket)
-        resp = asyncio.run(uds.send(command, kwargs))
+        resp = asyncio.run(uds.send(cmd_cls.destination, kwargs))
         logging.info(json.dumps(resp, ensure_ascii=False))
 
     @staticmethod

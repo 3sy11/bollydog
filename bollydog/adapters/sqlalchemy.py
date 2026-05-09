@@ -40,6 +40,7 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
     def __init__(self, url: str, metadata: MetaData = None, *args, **kwargs):
         self.metadata = metadata
         self.url = url
+        self._session_ctx = contextvars.ContextVar(f'sa_session_{id(self)}')
         super().__init__(*args, **kwargs)
 
     def __repr__(self):
@@ -49,8 +50,11 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
     def dialect_name(self) -> str:
         return self.adapter.dialect.name
 
+    engine_kwargs: dict = {}
+
     async def on_start(self) -> None:
-        self.adapter = create_async_engine(self.url, echo=False, echo_pool=False, hide_parameters=True, pool_pre_ping=True, pool_recycle=3600)
+        defaults = dict(echo=False, echo_pool=False, hide_parameters=True, pool_pre_ping=True, pool_recycle=3600)
+        self.adapter = create_async_engine(self.url, **{**defaults, **self.engine_kwargs})
         self.async_session = async_sessionmaker(self.adapter, expire_on_commit=True)
         self._dialect = self.adapter.dialect
 
@@ -58,8 +62,6 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
         if self.adapter:
             await self.adapter.dispose()
         await super().on_stop()
-
-    _session_ctx: contextvars.ContextVar = contextvars.ContextVar('sa_session_ctx')
 
     async def __aenter__(self):
         ctx = self.async_session.begin()
@@ -86,7 +88,6 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
         async with self.async_session.begin() as session:
             stmt = insert(cls).values(**item.model_dump()).returning(cls.c.id)
             res = await session.execute(stmt)
-            await session.commit()
             item.id = res.scalars().first()
         return item
 
@@ -97,7 +98,6 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
             stmt = insert(table).values([item.model_dump() for item in items]).returning(table.c.id)
             res = await session.execute(stmt)
             res = res.fetchall()
-            await session.commit()
         for i, r in zip(items, res): i.id = r.id
         return items
 
@@ -178,14 +178,13 @@ class PostgreSQLProtocol(SqlAlchemyProtocol):
         stmt = stmt.returning(table.c.id)
         async with self.async_session.begin() as session:
             res = await session.execute(stmt)
-            await session.commit()
             item.id = res.scalars().first()
         return item
 
     async def similarity(self, cls, vector_key: str, embedding: list[float], top_k=10, **kwargs):
         """pgvector cosine distance: ORDER BY embedding <=> query LIMIT k."""
-        dist = text(f"{vector_key} <=> '{embedding}' AS distance")
-        stmt = select(cls, dist).order_by(text('distance')).limit(top_k)
+        sql = text(f"{vector_key} <=> :embedding AS distance").bindparams(embedding=str(embedding))
+        stmt = select(cls, sql).order_by(text('distance')).limit(top_k)
         if 'where' in kwargs: stmt = stmt.where(kwargs['where'])
         async with self.async_session.begin() as session:
             return (await session.execute(stmt)).fetchall()
@@ -198,11 +197,7 @@ class MySQLProtocol(SqlAlchemyProtocol):
 
     Adds: ON DUPLICATE KEY UPDATE upsert, INSERT IGNORE, utf8mb4 charset.
     """
-
-    async def on_start(self) -> None:
-        self.adapter = create_async_engine(self.url, echo=False, pool_pre_ping=True, pool_recycle=3600, connect_args={"charset": "utf8mb4"})
-        self.async_session = async_sessionmaker(self.adapter, expire_on_commit=True)
-        self._dialect = self.adapter.dialect
+    engine_kwargs = {'connect_args': {'charset': 'utf8mb4'}}
 
     async def upsert(self, item, unique_keys: list = None, **ctx):
         """INSERT ... ON DUPLICATE KEY UPDATE."""

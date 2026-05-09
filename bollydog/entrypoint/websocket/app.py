@@ -7,8 +7,8 @@ from starlette.applications import Starlette
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from bollydog.entrypoint.websocket.config import SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST
-from bollydog.globals import hub
-from bollydog.models.base import BaseCommand
+from bollydog.globals import hub, _hub_ctx_stack
+from bollydog.models.base import BaseCommand, BaseService
 from bollydog.models.service import AppService
 
 
@@ -44,6 +44,7 @@ class SocketService(AppService):
             await websocket.send_json({'trace_id': message.trace_id, 'data': result})
 
     async def websocket_endpoint(self, websocket: WebSocket):
+        _hub_ctx_stack.push_without_automatic_cleanup(hub._get_current_object())
         await self.subscribe(websocket)
         try:
             while True:
@@ -51,7 +52,7 @@ class SocketService(AppService):
                 self.logger.debug(f"received: {raw}")
                 name = raw.pop('name', None) or raw.pop('alias', None)
                 try:
-                    cmd_cls = BaseCommand.resolve(name) if name else None
+                    cmd_cls = BaseService.registry[name] if name else None
                 except KeyError:
                     await websocket.send_json({'error': f"command '{name}' not found"})
                     continue
@@ -67,10 +68,12 @@ class SocketService(AppService):
                     self.logger.error(e)
                     await websocket.send_json({'trace_id': message.trace_id, 'error': str(e)})
         except WebSocketDisconnect:
-            self.logger.debug(f'ws disconnected: {websocket.client.host}:{websocket.client.port}')
+            client = websocket.client
+            self.logger.debug(f'ws disconnected: {client.host}:{client.port}' if client else 'ws disconnected')
         except Exception as e:
             self.logger.exception(e)
         finally:
+            _hub_ctx_stack.pop()
             await self.unsubscribe(websocket)
 
     async def on_start(self) -> None:
