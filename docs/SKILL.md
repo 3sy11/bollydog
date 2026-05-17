@@ -1,419 +1,134 @@
+# Bollydog Framework Development Skill
+
+This skill guides AI in building systems with the bollydog framework. Two core documents: **spec.md** (normative — what the framework does and how) and **sop.md** (procedural — step-by-step development workflow). All operations must comply with spec.md constraints.
+
+## Usage
+
+1. **New system**: Follow `sop.md` Phase 0-8 sequentially; consult `spec.md` sections for framework details at each Phase
+2. **Modify existing**: Identify current Phase, resume from there
+3. **Troubleshoot**: See `spec.md` Troubleshooting section
+4. **Audit design**: Use `sop.md` design audit checklist
+
+## Document Relationship
+
+| Document | Nature | Purpose |
+|----------|--------|---------|
+| `spec.md` | Normative | Architecture, API, configuration, constraints — "what and how" |
+| `sop.md` | Procedural | Development workflow, Phase steps, deliverables — "in what order" |
+
+**Principle**: Every step in `sop.md` must comply with `spec.md` constraints. When conflicts arise, `spec.md` takes precedence.
+
 ---
-name: bollydog-framework
-description: bollydog framework quick-ref — architecture, patterns, configuration, protocols, and best practices.
+
+## spec.md Table of Contents
+
+Normative document defining framework architecture, components, configuration, and constraints.
+
+| Section | Content | SOP Link |
+|---------|---------|----------|
+| [Architecture Overview](#architecture-overview) | Hub/Command/Protocol three-layer architecture | Phase 1 Domain Boundary, Phase 3 Service Responsibility |
+| [Quick Start](#quick-start) | Minimal runnable example | Phase 7 Walking Skeleton |
+| [Dispatch Pipeline](#dispatch-pipeline) | dispatch → _fire → _run → _publish chain | Phase 4 End-to-End Tracing |
+| [Command Patterns](#command-patterns) | Four Command patterns | Phase 2 Behavior Design, Phase 5 Interface Contract |
+| — 1. Pure compute | No globals, pure computation | Phase 6 Low-gear TDD |
+| — 2. Orchestration | app + protocol orchestration | Phase 6 High-gear TDD |
+| — 3. Async generator | yield sub-commands, parallel fan-out | Phase 4 Sequence branching |
+| — 4. Handoff | return delegation | Phase 4 Chain tracing |
+| [Globals (request-scoped)](#globals-request-scoped) | hub/app/protocol/session/message proxies | Phase 3 Design Principles |
+| [Destination & Topic](#destination--topic) | Three-segment naming and AMQP-style matching | Phase 2 destination naming |
+| [Exchange (pub/sub)](#exchange-pubsub) | Event broadcasting and subscription | Phase 2 Behavior Design (Event/Subscriber) |
+| [Hooks (before/after)](#hooks-beforeafter) | Before/after hooks | Phase 3 Lifecycle |
+| [Session](#session) | Session state management | Phase 3 Service Responsibility |
+| [AppService Design](#appservice-design) | Service design specification | Phase 3 full reference |
+| [Protocol System](#protocol-system) | Protocol hierarchy and all implementations | Phase 3 Protocol Composition |
+| — Base class | Protocol base class | |
+| — ABC hierarchy | KV/CRUD/Graph/File four ports | Phase 3 Base Protocol types |
+| — Implementations | All concrete implementations | Phase 3 Selection |
+| — Mixins | Transaction/Dialect mixins | Phase 5 Serialization |
+| — Composite Protocol | CacheLayer decorator pattern | Phase 3 Composite Protocol |
+| — DialectMixin | SQL compilation | |
+| [TOML Configuration](#toml-configuration) | Config file structure and loading | Phase 7 TOML config template |
+| — Structure | Node structure | |
+| — Service lifecycle | Loading lifecycle | Phase 3 Lifecycle hooks |
+| [CLI](#cli) | Command-line tools | Phase 7 System execution |
+| [Environment Variables](#environment-variables) | Env var overrides | Phase 7 Configuration |
+| [Design Rules](#design-rules) | Framework design constraints | Design Audit |
+| [Testing Strategy](#testing-strategy) | Testing strategy | Phase 6 full reference |
+| [Troubleshooting](#troubleshooting) | Common issues | Diagnostics |
+
 ---
 
-# Bollydog Framework Guide
+## sop.md Table of Contents
 
-Async microservice framework built on `mode`. Commands as executable units, Hub as central dispatcher, Protocols as pluggable data layers.
+Procedural document defining development workflow steps, deliverables, and checkpoints.
 
-## Architecture Overview
+| Section | Content | Deliverable |
+|---------|---------|-------------|
+| [Overview](#overview) | 8 Phase overview and deliverable map | — |
+| [Phase 0: Scenario Narrative](#phase-0-scenario-narrative) | Natural language scenario collection | `00-scenarios.md` |
+| [Phase 1: Domain Boundary](#phase-1-domain-boundary) | DDD bounded context partitioning | `00-scenarios.md` |
+| [Phase 2: Behavior Design](#phase-2-behavior-design) | Inter-subject Command/Event/Subscriber mapping | `00-scenarios.md` |
+| — Command vs Event | Cosmic Python Ch.10 distinction | |
+| — destination naming | Three-segment naming convention | |
+| [Phase 3: Service Responsibility](#phase-3-service-responsibility) | Intra-subject capabilities, Protocol, dependencies | `00-scenarios.md` |
+| — Protocol Composition | Composite Protocol design decision flow | |
+| — Lifecycle hooks | mode.Service five hooks | |
+| — Design principles | AppService/Command/Protocol roles | |
+| [Phase 4: End-to-End Tracing](#phase-4-end-to-end-tracing) | Sequence diagrams, expose design gaps | `01-sequence.md` |
+| [Phase 5: Interface Contract & Data Modeling](#phase-5-interface-contract--data-modeling) | Signatures + data models + serialization | `02-interfaces.md` |
+| — 5a. Interface signatures | Command / Service / Subscriber signatures | |
+| — 5b. Data modeling | BaseDomain structure definitions | |
+| — 5c. Serialization | Storage location + method + timing | |
+| [Phase 6: Behavior Verification (TDD)](#phase-6-behavior-verification-tdd) | Command test-driven development | `tests/test_*.py` |
+| — TDD high/low gear | Low=domain model, High=Command | |
+| — Test build order | Unit → Behavior → Cross-service | |
+| — Test template | MemoryProtocol-driven template | |
+| [Phase 7: Walking Skeleton](#phase-7-walking-skeleton) | Bottom-up construction of runnable system | `04-skeleton.md` |
+| — Stub strategy & `_stub_` tracking | Stub naming rules and progress tracking | |
+| — System execution | CLI launch and verification commands | |
+| [Phase 8: Iterative Delivery](#phase-8-iterative-delivery) | Story-driven iteration workflow | — |
+| — Iteration workflow | Derive from story narrative, assess reuse | |
+| — Reuse assessment table | Phase 1-5 reusability check | |
+| [Design Audit](#design-audit) | Per-Phase audit checklist | |
+| [Test Pyramid](#test-pyramid) | Three-layer testing strategy | |
+| [Quick Reference](#quick-reference) | Per-Phase deliverable/question/cost summary | |
 
-```
-CLI / HTTP / WS / UDS
-        │
-   load_from_config(toml)
-        │
-   ┌────▼────┐
-   │   Hub   │── Exchange (pub/sub router)
-   │         │── Session  (KV via Protocol)
-   │         │── Queue    (qos=1 buffer)
-   └────┬────┘
-        │  dispatch / execute
-   ┌────▼──────────┐
-   │  AppService   │── protocol (data layer)
-   │  (domain)     │── commands (ClassVar)
-   │               │── router_mapping / subscriber
-   └───────────────┘
-```
+---
 
-**Key types**: `BaseCommand` (callable action), `BaseEvent` (fire-and-forget), `AppService` (resource owner), `Protocol` (data access), `Hub` (dispatcher + lifecycle).
+## SOP Execution Guide
 
-## Quick Start
-
-```python
-# myapp/app.py
-from bollydog.models.service import AppService
-
-class MyService(AppService):
-    domain = 'myapp'
-    commands = ['commands']
-```
-
-```python
-# myapp/commands.py
-from bollydog.models.base import BaseCommand
-
-class Hello(BaseCommand):
-    name: str = 'world'
-    async def __call__(self):
-        return {'hello': self.name}
-```
-
-```toml
-# config.toml
-["myapp.app.MyService"]
-commands = ["commands"]
-```
-
-```bash
-bollydog ls --config config.toml
-bollydog execute Hello --config config.toml --name bollydog
-```
-
-## Dispatch Pipeline
-
-`Hub.dispatch(message)` routes by type and qos:
-
-| Path | Condition | Routing | Publish |
-|------|-----------|---------|---------|
-| Event | `BaseEvent` | `create_task(_fire)` | Yes |
-| Command qos=0 | default | `create_task(_fire)` | Yes |
-| Command qos=1 | `qos=1` | `queue.put` -> consumer | Yes |
-
-All paths go through `_execute(msg, runner)` which runs before-hooks -> runner -> after-hooks.
-
-- **`_run`**: coroutine runner with retry. Detects handoff (return Command instance).
-- **`_run_gen`**: async generator runner. Detects `yield Command` (sequential), `yield [cmd, ...]` (parallel fan-out/fan-in), `yield value` (stream).
-- **`_with_context`**: pushes `app`, `protocol`, `message` globals per request scope.
-- **`_publish`**: matches `destination` topic via Exchange, dispatches handler Commands.
-- **`execute`**: CLI direct mode. No queue, no publish.
-
-## Command Patterns
-
-### 1. Pure compute — no globals needed, unit-testable in isolation
-
-```python
-class Compute(BaseCommand):
-    data: list
-    async def __call__(self):
-        return sum(self.data)
-```
-
-### 2. Orchestration — uses `app` methods + `protocol` persistence
-
-```python
-class ProcessData(BaseCommand):
-    async def __call__(self):
-        result = app.transform(self.data)       # business method on AppService
-        await protocol.set('result', result)     # persistence via protocol
-        await hub.emit(DataReady(key='result'))  # emit event
-        return result
-```
-
-### 3. Async generator — yield sub-commands, parallel fan-out
-
-```python
-class Pipeline(BaseCommand):
-    async def __call__(self):
-        a = yield StepA()                              # sequential
-        results = yield [TaskB(), TaskC(), TaskD()]     # parallel
-        yield {'a': a, 'parallel': results}             # stream value
-```
-
-### 4. Handoff — return Command instance to delegate
-
-```python
-class Router(BaseCommand):
-    query: str
-    async def __call__(self):
-        intent = classify(self.query)
-        if intent == 'refund': return RefundAgent(query=self.query)  # handoff
-        return await general_reply(self.query)                        # normal
-```
-
-Handoff inherits `trace_id`, merges `data`, dispatches transparently. Keep chains shallow (depth > 5 may degrade perf).
-
-## Globals (request-scoped)
-
-| Name | Type | Scope | Description |
-|------|------|-------|-------------|
-| `hub` | Hub | singleton | Central dispatcher |
-| `session` | Session | singleton | KV session via Protocol |
-| `app` | AppService | per-request | Resolved from `destination` |
-| `protocol` | Protocol | per-request | From current `app.protocol` |
-| `message` | BaseCommand | per-request | Current executing command |
-
-```python
-from bollydog.globals import hub, app, protocol, session, message
-```
-
-## Destination & Topic
-
-Format: `domain.ServiceAlias.CommandAlias` (3-part topic).
-
-- Unbound commands default to `_._.CommandAlias`; `_load_commands` rewrites to `{domain}.{alias}.{CommandAlias}`.
-- `AppService.resolve_app(msg)` takes first two segments to find the owning service.
-- Exchange uses full destination as topic for pattern matching.
-
-## Exchange (pub/sub)
-
-Subscriber values are **method names** (str or list) pointing to methods on the AppService. Exchange wraps each into a lightweight Command at startup.
-
-```python
-class DataEngine(AppService):
-    subscriber = {
-        'analytics.*.DataReady': 'on_data_ready',                   # single method
-        'trading.DataEngine.BarsReady': ['on_bars', 'update_cache'], # fan-out: both run in parallel
-    }
-
-    async def on_data_ready(self, message):
-        event = message.get_event()  # original triggering command data
-        ...
-
-    async def on_bars(self, message): ...
-    async def update_cache(self, message): ...
-```
-
-TOML:
-
-```toml
-["trading.app.DataEngine".subscriber]
-"analytics.*.DataReady" = "on_data_ready"
-"trading.DataEngine.BarsReady" = ["on_bars", "update_cache"]
-```
-
-- Callback signature: `async def method(self, message)` — self = AppService instance, message = Command instance.
-- AMQP-style wildcards: `*` = one segment, `#` = zero or more.
-- Multiple instances subscribing to the same topic → each instance's handlers dispatch independently in parallel.
-- `_publish` fires matched handlers with `add_event(original_msg)`.
-
-## Hooks (before/after)
-
-```python
-@hub.before
-async def auth_guard(message):
-    if not message.created_by: return {'error': 'unauthorized'}  # short-circuit
-
-@hub.after
-async def audit(message, result=None, exception=None):
-    logger.info(f'{message.alias} done')
-```
-
-Before-hooks run in order; after-hooks in reverse. Non-None return from before short-circuits execution.
-
-## Session
-
-Global singleton (`globals.session`). Thin KV layer over Protocol (default `MemoryProtocol`).
-
-```python
-await session.get(key)                   # -> dict
-await session.set(key, data)
-await session.append(key, 'turns', msg)  # list append
-turns = await session.history(key)       # -> list
-```
-
-Business logic chooses the key: `trace_id` for conversations, `created_by` for user scope, etc.
-
-## AppService Design
-
-```python
-class DataEngine(AppService):
-    domain = 'trading'
-    commands = ['commands']
-    depends = ['infra.ConfigEngine']                            # resolved to instances at startup
-    subscriber = {'trading.*.BarsReady': 'on_bars_ready'}       # method name, not Command class
-
-    async def on_bars_ready(self, message):
-        event = message.get_event()
-        self.transform(event['data'])
-
-    def transform(self, data):
-        return processed_data  # business method called by Commands
-```
-
-Key rules:
-- `protocol` is auto-assigned when `add_dependency` receives a `Protocol` instance.
-- `_apps` ClassVar is the global service registry; `__init__` auto-registers.
-- `create_from(**conf)` merges TOML config into ClassVar (`commands`, `router_mapping`, `subscriber`).
-- Commands access the owning service via `globals.app`; never reach into sub-services.
-
-## Protocol System
-
-### Base class
-
-`Protocol(BaseService)` — lifecycle managed by `mode.Service`. Subclasses implement `on_start` (init adapter), `on_stop` (cleanup), `__aenter__`/`__aexit__` (connection scope).
-
-### ABC hierarchy
-
-| ABC | Methods | Use Case |
-|-----|---------|----------|
-| `KVProtocol` | `get/set/remove/exists/keys` | Session, cache, state |
-| `CRUDProtocol` | `add/add_all/get/list/update/delete/count` | SQL, Elasticsearch |
-| `GraphProtocol` | `execute(query, **params)` | Neo4j, GraphScope |
-| `FileProtocol` | `read/write` | File I/O, TOML config |
-
-### Implementations
+### New System Development
 
 ```
-memory.py     MemoryProtocol, RedisProtocol, SQLiteProtocol
-sqlalchemy.py SqlAlchemyProtocol, PostgreSQLProtocol, MySQLProtocol, DuckDBProtocol
-graph.py      Neo4jProtocol, NeuGProtocol
-file.py       LocalFileProtocol, TOMLFileProtocol
-elastic.py    ElasticProtocol
-composite.py  CacheLayer, TableCacheLayer
+Phase 0 → Write scenario stories (min 5 core + 3 exception)
+Phase 1 → Extract subjects and domains     ← see spec.md "AppService Design"
+Phase 2 → Design Command/Event/Subscriber  ← see spec.md "Command Patterns" + "Exchange"
+Phase 3 → Define service responsibility    ← see spec.md "Protocol System"
+Phase 4 → Draw sequence diagrams           ← see spec.md "Dispatch Pipeline"
+Phase 5 → Export signatures and models     ← see spec.md "Globals" + "Destination & Topic"
+Phase 6 → Write tests                      ← see spec.md "Testing Strategy"
+Phase 7 → Build skeleton                   ← see spec.md "TOML Configuration" + "CLI"
+Phase 8 → Iteratively replace stubs
 ```
 
-Import specific modules to avoid pulling optional dependencies:
+### Key Constraints per Phase
 
-```python
-from bollydog.adapters.memory import SQLiteProtocol
-from bollydog.adapters.composite import CacheLayer
-```
+| Phase | Required spec.md Compliance |
+|-------|---------------------------|
+| 2 | Command imperative naming, Event past-tense naming (Design Rules) |
+| 2 | destination three-segment `domain.ServiceAlias.CommandAlias` (Destination & Topic) |
+| 3 | Protocol must be replaceable with MemoryProtocol for testing (Protocol System) |
+| 3 | AppService must not dispatch proactively (Design Rules) |
+| 5 | Command parameters use primitive types (Command Patterns) |
+| 6 | Behavior tests must not depend on Hub (Testing Strategy) |
+| 7 | `module` is a framework-reserved key in TOML (TOML Configuration) |
 
-### Mixins
-
-| Mixin | Adds | Used by |
-|-------|------|---------|
-| `BatchMixin` | `update_all/delete_all` | ElasticProtocol |
-| `StreamMixin` | `stream() -> AsyncIterator` | SqlAlchemy, Elastic |
-| `TransactionMixin` | `transaction() -> ctx` | SqlAlchemy, Neo4j |
-| `DialectMixin` | `compile(stmt) -> (sql, params)` | SqlAlchemy, DuckDB |
-
-### Composite Protocol (decorator pattern)
-
-Protocol-holds-Protocol via `add_dependency`. Inner protocol lifecycle is auto-managed.
-
-**CacheLayer** — memory cache + KV persistence backend:
-
-```python
-inner = SQLiteProtocol(path='data/state.db')
-proto = CacheLayer(flush_threshold=200)
-proto.add_dependency(inner)  # or via TOML nesting
-# Flow: set -> cache + dirty -> flush -> inner.set
-# Cold start: on_started -> load all from inner
-```
-
-**TableCacheLayer** — memory cache + columnar table backend (DuckDB/SQLite). No JSON serialization, native SQL types, 10-50x faster cold-start for large datasets.
-
-```python
-inner = DuckDBProtocol(url='data/analytics.duckdb')
-proto = TableCacheLayer(table='klines', key_columns=['symbol', 'interval'],
-    value_columns=['ts', 'open', 'high', 'low', 'close', 'volume'],
-    sort_by='ts', flush_threshold=50)
-proto.add_dependency(inner)
-```
-
-**Multi-layer nesting**:
-
-```python
-# L1 memory -> L2 Redis -> L3 SQLite (all lifecycle auto-managed)
-l3 = SQLiteProtocol(path='data/persistent.db')
-l2 = CacheLayer(flush_threshold=1000); l2.add_dependency(l3)
-l1 = CacheLayer(flush_threshold=50);   l1.add_dependency(l2)
-svc.add_dependency(l1)
-```
-
-### DialectMixin — compile without engine
-
-Separates SQLAlchemy dialect compilation from execution engine:
-
-```python
-# SqlAlchemyProtocol: dialect from engine
-sql, params = proto.compile(select(User).where(User.id == 1))
-
-# DuckDBProtocol: native engine, compile for stmt->SQL translation
-sql, params = proto.compile(insert(table).values(name='test'), literal_binds=True)
-await proto.execute_raw(sql)
-```
-
-## TOML Configuration
-
-### Structure
-
-```toml
-["myapp.app.MyService"]
-commands = ["commands", "extra_commands"]
-
-["myapp.app.MyService".router_mapping]
-Ping = ["GET",  "/api/ping"]
-Echo = ["POST", "/api/echo"]
-Stream = ["SSE", "/api/stream"]
-
-["myapp.app.MyService".subscriber]
-"analytics.*.DataReady" = "on_data_ready"
-"trading.DataEngine.BarsReady" = ["on_bars", "update_cache"]
-
-["myapp.app.MyService".protocol]
-module = "bollydog.adapters.composite.CacheLayer"
-flush_threshold = 500
-
-["myapp.app.MyService".protocol.protocol]
-module = "bollydog.adapters.memory.SQLiteProtocol"
-path = "data/state.db"
-```
-
-Top-level key = fully-qualified AppService class. `module` key in protocol sections = import path. Nested `protocol` sub-tables build the protocol chain recursively.
-
-| Config Key | Type | Merged Into |
-|------------|------|-------------|
-| `commands` | `list[str]` | `cls.commands` ClassVar |
-| `router_mapping` | `dict` | `cls.router_mapping` ClassVar |
-| `subscriber` | `dict` | `{topic: method_name \| [method_names]}` merged into `cls.subscriber` |
-| `depends` | `list[str]` | Resolved to `[AppService, ...]` after all services created |
-| `protocol` | `dict` | Instance `protocol` via `add_dependency` |
-| other keys | any | Passed as `**kwargs` to `__init__` |
-
-### Service lifecycle
+### Deliverable-to-Phase Mapping
 
 ```
-load_from_config(config)
-  1. Parse TOML -> cls.create_from(**conf) per section
-  2. Create entrypoint services (HTTP/WS/UDS if enabled)
-  3. Resolve depends: string refs -> [AppService instances], add_dependency for lifecycle ordering
-  4. _load_commands per service class (deferred, once)
-
-Hub()
-  on_init_dependencies -> Exchange, Session, Queue
-  on_first_start       -> push globals (hub, session)
-  on_start             -> _load_commands for Hub
-  on_started           -> maybe_start all AppService._apps
+docs/00-scenarios.md   ← P0 Scenarios + P1 Domain + P2 Behavior + P3 Service
+docs/01-sequence.md    ← P4 End-to-end sequence diagrams
+docs/02-interfaces.md  ← P5 Interface signatures + data models + serialization
+tests/test_*.py        ← P6 Behavior verification test cases
+docs/04-skeleton.md    ← P7 Skeleton notes + TOML config + run commands + stub list
 ```
-
-## CLI
-
-```bash
-bollydog service --config config.toml [--domains myapp,infra]
-bollydog ls --config config.toml
-bollydog execute <Command> --config config.toml [--param value]
-bollydog shell --config config.toml
-bollydog send <Command> <socket_path> [--config ...]
-```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BOLLYDOG_COMMAND_EXPIRE_TIME` | `3600` | Command timeout (s) |
-| `BOLLYDOG_DEFAULT_QOS` | `1` | Default QoS level |
-| `BOLLYDOG_QUEUE_MAX_SIZE` | `1000` | qos=1 queue capacity |
-| `BOLLYDOG_HTTP_ENABLED` | `0` | Enable HTTP entrypoint |
-| `BOLLYDOG_WS_ENABLED` | `0` | Enable WebSocket entrypoint |
-| `BOLLYDOG_UDS_ENABLED` | `0` | Enable UDS entrypoint |
-
-## Design Rules
-
-1. **Command** = thin orchestration/glue. No owned state. Access `app` methods, `protocol` for persistence.
-2. **AppService** = resource owner. Expose business methods. Inner sub-services stay invisible to Commands.
-3. **Protocol** = environment abstraction. Swap `SqlAlchemyProtocol` -> `MemoryProtocol` for tests.
-4. Use `globals.app` (bound by `_with_context` from `destination`). Never `app.child_service.xxx`.
-5. Cross-domain: `hub.dispatch(cmd)` or `yield cmd`. Never grab foreign services directly.
-6. AppService does not proactively dispatch Commands — it exposes capabilities, Commands schedule.
-
-## Testing Strategy
-
-| Layer | Production | Test |
-|-------|------------|------|
-| Protocol | `SqlAlchemy`, `Redis` | `MemoryProtocol` |
-| AppService methods | real impl | mock return values |
-| Pure compute Command | `await cmd()` | same, no Hub needed |
-| Orchestration Command | full Hub | mock `app.method` + `MemoryProtocol` |
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---------|-----|
-| `ls` shows no commands | Check `--config`; verify `commands` list |
-| `resolve` fails | Alias is case-sensitive; use FQN on conflict |
-| Wrong `app` in Command | Ensure `destination` matches service key |
-| Protocol not started | Must be added via `add_dependency`, not just assigned |

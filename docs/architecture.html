@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bollydog Architecture</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d1117;color:#c9d1d9;line-height:1.6}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+h1{font-size:28px;font-weight:600;margin-bottom:8px;color:#e6edf3}
+.subtitle{color:#8b949e;margin-bottom:32px;font-size:14px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px}
+.card h2{font-size:16px;font-weight:600;color:#e6edf3;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:12px;font-weight:500}
+.tag-blue{background:#1f6feb33;color:#58a6ff;border:1px solid #1f6feb55}
+.tag-green{background:#23863633;color:#3fb950;border:1px solid #23863655}
+.tag-purple{background:#6e40c933;color:#bc8cff;border:1px solid #6e40c955}
+.tag-orange{background:#9e6a0333;color:#d29922;border:1px solid #9e6a0355}
+.tag-red{background:#da363333;color:#f85149;border:1px solid #da363355}
+.full{grid-column:1/-1}
+svg{width:100%;height:auto}
+svg text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.layer{margin-bottom:16px}
+.layer-title{font-size:13px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.items{display:flex;flex-wrap:wrap;gap:6px}
+.item{font-size:12px;padding:4px 10px;border-radius:4px;background:#21262d;border:1px solid #30363d;color:#c9d1d9}
+.item-hl{background:#1f6feb22;border-color:#1f6feb55;color:#58a6ff}
+.sep{border:none;border-top:1px solid #21262d;margin:16px 0}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+th{text-align:left;padding:6px 8px;border-bottom:1px solid #30363d;color:#8b949e;font-weight:500}
+td{padding:6px 8px;border-bottom:1px solid #21262d}
+code{background:#21262d;padding:1px 5px;border-radius:3px;font-size:12px;color:#e6edf3}
+.flow{display:flex;align-items:center;gap:12px;margin:8px 0;flex-wrap:wrap}
+.flow-box{background:#21262d;border:1px solid #30363d;border-radius:6px;padding:8px 14px;font-size:13px;text-align:center;min-width:100px}
+.flow-box.hl{border-color:#1f6feb;background:#1f6feb15}
+.flow-arrow{color:#484f58;font-size:18px;flex-shrink:0}
+.note{font-size:12px;color:#8b949e;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Bollydog Framework Architecture</h1>
+<p class="subtitle">Async microservice framework built on mode — Commands as executable units, Hub as central dispatcher, Protocols as pluggable data layers.</p>
+
+<div class="grid">
+
+<!-- Hub Core -->
+<div class="card full">
+<h2>Hub — Central Dispatcher <span class="tag tag-blue">Singleton</span></h2>
+<svg viewBox="0 0 1100 320" xmlns="http://www.w3.org/2000/svg">
+  <!-- Entrypoints -->
+  <rect x="20" y="20" width="140" height="40" rx="6" fill="#21262d" stroke="#30363d"/>
+  <text x="90" y="45" text-anchor="middle" fill="#c9d1d9" font-size="13">CLI / HTTP / WS / UDS</text>
+
+  <line x1="90" y1="60" x2="90" y2="90" stroke="#484f58" stroke-dasharray="4"/>
+  <text x="100" y="80" fill="#8b949e" font-size="10">load_from_config</text>
+
+  <!-- Hub box -->
+  <rect x="20" y="90" width="340" height="210" rx="8" fill="#161b22" stroke="#1f6feb" stroke-width="1.5"/>
+  <text x="40" y="115" fill="#58a6ff" font-size="14" font-weight="600">Hub</text>
+
+  <!-- Internal services -->
+  <rect x="40" y="130" width="130" height="34" rx="4" fill="#1f6feb15" stroke="#1f6feb55"/>
+  <text x="105" y="152" text-anchor="middle" fill="#58a6ff" font-size="12">Exchange</text>
+  <text x="105" y="164" text-anchor="middle" fill="#8b949e" font-size="9">pub/sub router</text>
+
+  <rect x="40" y="175" width="130" height="34" rx="4" fill="#1f6feb15" stroke="#1f6feb55"/>
+  <text x="105" y="197" text-anchor="middle" fill="#58a6ff" font-size="12">Session</text>
+  <text x="105" y="209" text-anchor="middle" fill="#8b949e" font-size="9">KV via Protocol</text>
+
+  <rect x="40" y="220" width="130" height="34" rx="4" fill="#1f6feb15" stroke="#1f6feb55"/>
+  <text x="105" y="242" text-anchor="middle" fill="#58a6ff" font-size="12">Queue</text>
+  <text x="105" y="254" text-anchor="middle" fill="#8b949e" font-size="9">qos=1 buffer</text>
+
+  <!-- Dispatch pipeline -->
+  <rect x="190" y="130" width="150" height="124" rx="4" fill="#21262d" stroke="#30363d"/>
+  <text x="265" y="150" text-anchor="middle" fill="#d29922" font-size="11" font-weight="600">Dispatch Pipeline</text>
+  <text x="200" y="168" fill="#8b949e" font-size="10">before hooks</text>
+  <text x="200" y="184" fill="#c9d1d9" font-size="10">→ _run / _run_gen</text>
+  <text x="200" y="200" fill="#8b949e" font-size="10">after hooks</text>
+  <text x="200" y="220" fill="#c9d1d9" font-size="10">→ _publish (Exchange)</text>
+  <text x="200" y="240" fill="#8b949e" font-size="10">→ _with_context</text>
+
+  <!-- Arrow to AppService -->
+  <line x1="360" y1="200" x2="420" y2="200" stroke="#484f58" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="390" y="192" fill="#8b949e" font-size="9" text-anchor="middle">dispatch</text>
+
+  <!-- AppService boxes -->
+  <rect x="420" y="90" width="300" height="210" rx="8" fill="#161b22" stroke="#23863655" stroke-width="1.5"/>
+  <text x="440" y="115" fill="#3fb950" font-size="14" font-weight="600">AppService</text>
+  <text x="570" y="115" fill="#8b949e" font-size="11">(per domain)</text>
+
+  <rect x="440" y="130" width="120" height="28" rx="4" fill="#23863615" stroke="#23863655"/>
+  <text x="500" y="149" text-anchor="middle" fill="#3fb950" font-size="11">commands</text>
+
+  <rect x="570" y="130" width="130" height="28" rx="4" fill="#23863615" stroke="#23863655"/>
+  <text x="635" y="149" text-anchor="middle" fill="#3fb950" font-size="11">router_mapping</text>
+
+  <rect x="440" y="168" width="120" height="28" rx="4" fill="#23863615" stroke="#23863655"/>
+  <text x="500" y="187" text-anchor="middle" fill="#3fb950" font-size="11">subscriber</text>
+
+  <rect x="570" y="168" width="130" height="28" rx="4" fill="#23863615" stroke="#23863655"/>
+  <text x="635" y="187" text-anchor="middle" fill="#3fb950" font-size="11">depends</text>
+
+  <rect x="440" y="210" width="260" height="36" rx="4" fill="#6e40c915" stroke="#6e40c955"/>
+  <text x="570" y="232" text-anchor="middle" fill="#bc8cff" font-size="12">Protocol (data layer)</text>
+
+  <rect x="440" y="256" width="260" height="28" rx="4" fill="#21262d" stroke="#30363d"/>
+  <text x="570" y="274" text-anchor="middle" fill="#8b949e" font-size="11">business methods (called by Commands)</text>
+
+  <!-- Globals -->
+  <rect x="780" y="90" width="280" height="210" rx="8" fill="#161b22" stroke="#9e6a0355" stroke-width="1.5"/>
+  <text x="800" y="115" fill="#d29922" font-size="14" font-weight="600">Request-Scoped Globals</text>
+
+  <text x="800" y="142" fill="#8b949e" font-size="11">hub</text>
+  <text x="860" y="142" fill="#c9d1d9" font-size="11">Hub singleton</text>
+  <text x="800" y="164" fill="#8b949e" font-size="11">session</text>
+  <text x="860" y="164" fill="#c9d1d9" font-size="11">Session singleton</text>
+  <text x="800" y="186" fill="#8b949e" font-size="11">app</text>
+  <text x="860" y="186" fill="#c9d1d9" font-size="11">resolved from destination</text>
+  <text x="800" y="208" fill="#8b949e" font-size="11">protocol</text>
+  <text x="860" y="208" fill="#c9d1d9" font-size="11">from current app.protocol</text>
+  <text x="800" y="230" fill="#8b949e" font-size="11">message</text>
+  <text x="860" y="230" fill="#c9d1d9" font-size="11">current executing command</text>
+
+  <line x1="720" y1="200" x2="780" y2="200" stroke="#484f58" stroke-width="1" stroke-dasharray="4"/>
+  <text x="750" y="192" fill="#8b949e" font-size="9" text-anchor="middle">_with_context</text>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="none" stroke="#484f58" stroke-width="1"/>
+    </marker>
+  </defs>
+</svg>
+</div>
+
+<!-- Command Patterns -->
+<div class="card">
+<h2>Command Patterns <span class="tag tag-green">BaseCommand</span></h2>
+<table>
+<tr><th>Pattern</th><th>Mechanism</th></tr>
+<tr><td>Pure compute</td><td><code>return result</code></td></tr>
+<tr><td>Orchestration</td><td><code>app.method()</code> + <code>protocol.set()</code></td></tr>
+<tr><td>Sequential</td><td><code>yield SubCommand()</code></td></tr>
+<tr><td>Parallel fan-out</td><td><code>yield [CmdA(), CmdB()]</code></td></tr>
+<tr><td>Stream</td><td><code>yield value</code> (async gen)</td></tr>
+<tr><td>Handoff</td><td><code>return OtherCommand()</code></td></tr>
+</table>
+<hr class="sep">
+<div class="note">Command = thin orchestration. No owned state. Access <code>app</code>, <code>protocol</code>, <code>hub</code> globals.</div>
+</div>
+
+<!-- Dispatch Routing -->
+<div class="card">
+<h2>Dispatch Routing <span class="tag tag-orange">Hub.dispatch</span></h2>
+<table>
+<tr><th>Condition</th><th>Path</th></tr>
+<tr><td><code>BaseEvent</code></td><td><code>create_task(_fire)</code></td></tr>
+<tr><td><code>qos=0</code> (default)</td><td><code>create_task(_fire)</code></td></tr>
+<tr><td><code>qos=1</code></td><td><code>queue.put</code> → consumer</td></tr>
+</table>
+<hr class="sep">
+<div class="flow">
+  <div class="flow-box">dispatch</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">_with_context</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box hl">_run / _run_gen</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">_publish</div>
+</div>
+</div>
+
+<!-- Protocol System -->
+<div class="card">
+<h2>Protocol System <span class="tag tag-purple">Data Layer</span></h2>
+<div class="layer">
+  <div class="layer-title">ABC Hierarchy</div>
+  <div class="items">
+    <div class="item item-hl">KVProtocol</div>
+    <div class="item item-hl">CRUDProtocol</div>
+    <div class="item item-hl">GraphProtocol</div>
+    <div class="item item-hl">FileProtocol</div>
+  </div>
+</div>
+<div class="layer">
+  <div class="layer-title">Implementations</div>
+  <div class="items">
+    <div class="item">MemoryProtocol</div>
+    <div class="item">RedisProtocol</div>
+    <div class="item">SQLiteProtocol</div>
+    <div class="item">PostgreSQLProtocol</div>
+    <div class="item">DuckDBProtocol</div>
+    <div class="item">ElasticProtocol</div>
+    <div class="item">Neo4jProtocol</div>
+    <div class="item">TOMLFileProtocol</div>
+  </div>
+</div>
+<div class="layer">
+  <div class="layer-title">Composites</div>
+  <div class="items">
+    <div class="item">CacheLayer</div>
+    <div class="item">TableCacheLayer</div>
+  </div>
+</div>
+<div class="layer">
+  <div class="layer-title">Mixins</div>
+  <div class="items">
+    <div class="item">BatchMixin</div>
+    <div class="item">StreamMixin</div>
+    <div class="item">TransactionMixin</div>
+    <div class="item">DialectMixin</div>
+  </div>
+</div>
+</div>
+
+<!-- Service Lifecycle -->
+<div class="card">
+<h2>Service Lifecycle <span class="tag tag-blue">mode.Service</span></h2>
+<div class="flow">
+  <div class="flow-box">on_init_dependencies</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">on_first_start</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box hl">on_start</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box hl">on_started</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">on_stop</div>
+</div>
+<hr class="sep">
+<table>
+<tr><th>Hook</th><th>Typical Use</th></tr>
+<tr><td><code>on_init_dependencies</code></td><td>Create child services (Exchange, Queue)</td></tr>
+<tr><td><code>on_first_start</code></td><td>One-time init (push globals)</td></tr>
+<tr><td><code>on_start</code></td><td>Load commands, init adapters</td></tr>
+<tr><td><code>on_started</code></td><td>Start all AppServices, log registry</td></tr>
+<tr><td><code>on_stop</code></td><td>Cleanup, disconnect</td></tr>
+</table>
+</div>
+
+<!-- Exchange -->
+<div class="card">
+<h2>Exchange <span class="tag tag-blue">Pub/Sub</span></h2>
+<div class="flow">
+  <div class="flow-box">Command completes</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box hl">_publish(destination)</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">Exchange.match(topic)</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-box">fan-out handlers</div>
+</div>
+<hr class="sep">
+<table>
+<tr><th>Feature</th><th>Detail</th></tr>
+<tr><td>Subscriber</td><td>method names on AppService (auto-wrapped to Command)</td></tr>
+<tr><td>Wildcards</td><td><code>*</code> = one segment, <code>#</code> = zero or more</td></tr>
+<tr><td>Fan-out</td><td>Multiple handlers per topic, parallel dispatch</td></tr>
+</table>
+</div>
+
+<!-- TOML Config -->
+<div class="card">
+<h2>TOML Configuration <span class="tag tag-orange">Bootstrap</span></h2>
+<table>
+<tr><th>Key</th><th>Type</th><th>Target</th></tr>
+<tr><td><code>module</code></td><td>str</td><td>Python import path (reserved)</td></tr>
+<tr><td><code>alias</code></td><td>str</td><td>Service alias (reserved)</td></tr>
+<tr><td><code>commands</code></td><td>list</td><td>cls.commands ClassVar</td></tr>
+<tr><td><code>router_mapping</code></td><td>dict</td><td>cls.router_mapping ClassVar</td></tr>
+<tr><td><code>subscriber</code></td><td>dict</td><td>cls.subscriber ClassVar</td></tr>
+<tr><td><code>depends</code></td><td>list</td><td>Resolved to AppService instances</td></tr>
+<tr><td><code>protocol</code></td><td>dict</td><td>Protocol chain via add_dependency</td></tr>
+<tr><td>other keys</td><td>any</td><td>svc.config (env var override)</td></tr>
+</table>
+</div>
+
+<!-- Design Rules -->
+<div class="card">
+<h2>Design Rules <span class="tag tag-red">Constraints</span></h2>
+<table>
+<tr><th>#</th><th>Rule</th></tr>
+<tr><td>1</td><td>Command = thin orchestration, no owned state</td></tr>
+<tr><td>2</td><td>AppService = resource owner, expose business methods</td></tr>
+<tr><td>3</td><td>Protocol = environment abstraction (swap for tests)</td></tr>
+<tr><td>4</td><td>Use <code>globals.app</code> — never reach into sub-services</td></tr>
+<tr><td>5</td><td>Cross-domain: <code>hub.dispatch</code> or <code>yield cmd</code> only</td></tr>
+<tr><td>6</td><td>AppService exposes capabilities, Commands schedule</td></tr>
+</table>
+</div>
+
+<!-- Testing -->
+<div class="card">
+<h2>Testing Strategy <span class="tag tag-green">TDD</span></h2>
+<table>
+<tr><th>Layer</th><th>Production</th><th>Test</th></tr>
+<tr><td>Protocol</td><td>SQLAlchemy, Redis</td><td>MemoryProtocol</td></tr>
+<tr><td>AppService</td><td>real impl</td><td>mock return values</td></tr>
+<tr><td>Pure Command</td><td><code>await cmd()</code></td><td>same, no Hub</td></tr>
+<tr><td>Orchestration</td><td>full Hub</td><td>mock app + MemoryProtocol</td></tr>
+</table>
+</div>
+
+</div><!-- grid -->
+
+<p style="text-align:center;color:#484f58;font-size:12px;margin-top:24px">Bollydog Framework — async microservices with mode.Service lifecycle</p>
+
+</div>
+</body>
+</html>
