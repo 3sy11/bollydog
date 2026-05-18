@@ -53,7 +53,7 @@ class AppService(BaseService, abstract=True):
             '__module__': cls.__module__, 'domain': cls.domain,
             'alias': alias or cls.alias,
             'commands': list(cls.commands), 'router_mapping': dict(cls.router_mapping),
-            'subscriber': dict(cls.subscriber), 'depends': list(cls.depends),
+            'subscriber': dict(cls.subscriber), 'depends': dict(cls.depends),
         })
 
     async def on_start(self) -> None:
@@ -86,7 +86,9 @@ class AppService(BaseService, abstract=True):
         if commands: derived.commands = [*{*derived.commands, *commands}]
         if router_mapping: derived.router_mapping = {**derived.router_mapping, **router_mapping}
         if subscriber: derived.subscriber = {**derived.subscriber, **subscriber}
-        if depends: derived.depends = [*{*derived.depends, *depends}]
+        if depends:
+            new_deps = {k: None for k in depends} if isinstance(depends, list) else depends
+            derived.depends = {**derived.depends, **new_deps}
         logger.debug(f'create_from {derived.__name__} alias={derived.alias}')
         svc = derived(**conf)
         svc.config = conf

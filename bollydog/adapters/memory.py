@@ -96,7 +96,8 @@ class SQLiteProtocol(KVProtocol):
         super().__init__(**kwargs)
 
     async def on_start(self) -> None:
-        import aiosqlite
+        import os, aiosqlite
+        if self.path != ':memory:': os.makedirs(os.path.dirname(self.path) or '.', exist_ok=True)
         self.adapter = await aiosqlite.connect(self.path)
         await self.adapter.execute(f'CREATE TABLE IF NOT EXISTS {self.table} (key TEXT PRIMARY KEY, value TEXT, updated_at REAL)')
         await self.adapter.commit()

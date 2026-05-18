@@ -225,19 +225,23 @@ Expand step by step using bollydog dispatch semantics:
 
 ```
 User trigger
-  → Hub.dispatch(SomeCommand(param1: Type, param2: Type))
-    → SomeCommand.__call__()
-      → app.method(args) → ReturnType
+  → Hub.dispatch(PushBars(symbol: str, interval: str, bars: list[dict], replay: bool))
+    → PushBars.__call__() → dict
+      → app.append_bars(symbol, interval, bars) → None
       → protocol.set(key, data)
-      → yield SubCommand(args) → result
+      → yield SubCommand(field1: type, ...) → result
     → _publish(destination) → Exchange.match(topic)
       → SubscriberMethod(message) → ...
   ← User sees result
 ```
 
+**Command signature convention**: A Command's input parameters are its own field definitions (excluding `_ModelMixin` / `BaseCommand` base fields). Use `CommandName(field1: type, field2: type, ...) → ReturnType` format throughout all sequence diagrams and method call tables. Never write `__call__()` with empty parentheses — always expand the Command's fields as parameters.
+
 ### Rules
 
 - Every arrow must specify: **method name + parameter types + return type**
+- Command arrows use the Command signature format: `CommandName(fields...) → ReturnType`
+- All Command fields and return values must be primitive types (`str`, `int`, `float`, `bool`, `list`, `dict`, `None`)
 - Trace from user input to user-visible output, no skipping
 - Cross-domain communication only via `hub.dispatch` or Exchange
 - Descriptive text doesn't count ("then it processes" ← must be expanded)
@@ -265,14 +269,18 @@ User trigger
 
 For each subject in sequence diagrams, list all method signatures:
 
-**Command signatures** (parameters use primitive types or domain models):
+**Command signatures** — fields are the input parameters, `__call__` return type is the output. Both must be primitive types only (`str`, `int`, `float`, `bool`, `list`, `dict`, `None`):
 ```python
 class DoSomething(BaseCommand):
     target: str
     value: float
     options: dict = {}
-    async def __call__(self) -> ResultModel | None: ...
+    async def __call__(self) -> dict | None: ...
 ```
+
+Documented as: `DoSomething(target: str, value: float, options: dict) → dict | None`
+
+Never return domain model classes or complex references from `__call__`. If a domain model is needed downstream, convert it to `dict` (e.g. `model.model_dump()`) before returning.
 
 **Service method signatures**:
 ```python
@@ -437,7 +445,10 @@ The skeleton **provides a runtime environment for verified Command behavior chai
 
 ### TOML Configuration Template
 
+TOML should be **minimal** — only framework-level wiring keys and overrides of non-default service parameters. Service-level custom parameters are defined in `__init__` with defaults; TOML's role is override, not definition.
+
 ```toml
+# Framework-level keys: commands, subscriber, depends, protocol — always explicit
 ["myapp.services.SomeService"]
 commands = ["commands"]
 depends = ["infra.ConfigSvc"]
@@ -445,9 +456,9 @@ depends = ["infra.ConfigSvc"]
 ["myapp.services.SomeService".subscriber]
 "domain.*.TaskDone" = "on_task_done"
 
+# Protocol parameters: only include values that differ from class defaults
 ["myapp.services.SomeService".protocol]
 module = "bollydog.adapters.composite.CacheLayer"
-flush_threshold = 500
 
 ["myapp.services.SomeService".protocol.protocol]
 module = "bollydog.adapters.memory.SQLiteProtocol"

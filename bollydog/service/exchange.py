@@ -27,7 +27,8 @@ def _make_callback(svc, method_name, bound_method):
     """Generate a Command class wrapping a bound service method."""
     dest = f'{svc.domain}.{svc.alias}.{method_name}'
     async def _call(self): return await bound_method(self)
-    return type(method_name, (BaseCommand,), {'destination': dest, 'alias': method_name, 'module': type(svc).__module__, 'qos': 0, '__call__': _call})
+    ns = {'__annotations__': {'qos': int}, 'destination': dest, 'alias': method_name, 'module': type(svc).__module__, 'qos': 0, '__call__': _call}
+    return type(method_name, (BaseCommand,), ns)
 
 
 class Exchange(AppService):

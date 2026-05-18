@@ -119,7 +119,8 @@ Phase 8 → Iteratively replace stubs
 | 2 | destination three-segment `domain.ServiceAlias.CommandAlias` (Destination & Topic) |
 | 3 | Protocol must be replaceable with MemoryProtocol for testing (Protocol System) |
 | 3 | AppService must not dispatch proactively (Design Rules) |
-| 5 | Command parameters use primitive types (Command Patterns) |
+| 4 | Command signature = own fields as params + `__call__` return type. Never write `__call__()` with empty parens (End-to-End Tracing) |
+| 5 | Command fields and return values must be primitive types only: `str`, `int`, `float`, `bool`, `list`, `dict`, `None` (Command Patterns / Design Rules) |
 | 6 | Behavior tests must not depend on Hub (Testing Strategy) |
 | 7 | `module` is a framework-reserved key in TOML (TOML Configuration) |
 

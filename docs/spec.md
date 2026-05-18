@@ -81,12 +81,37 @@ All paths go through `_execute(msg, runner)` which runs before-hooks -> runner -
 
 ## Command Patterns
 
+### Command Signature Convention
+
+A Command is a Pydantic model — its **input parameters** are the fields defined on the subclass (excluding all `_ModelMixin` and `BaseCommand` base fields), and its **return type** is the `__call__` return annotation.
+
+**Signature format**: `CommandName(field1: type, field2: type, ...) → ReturnType`
+
+```python
+class PushBars(BaseCommand):
+    symbol: str = ""
+    interval: str = ""
+    bars: list[dict] = Field(default_factory=list)
+    replay: bool = False
+    async def __call__(self) -> dict: ...
+```
+
+Signature: `PushBars(symbol: str, interval: str, bars: list[dict], replay: bool) → dict`
+
+**Constraints**:
+
+- **Input fields** must be primitive types only: `str`, `int`, `float`, `bool`, `list`, `dict`. No class references or complex objects.
+- **Return type** must be primitive types only: `str`, `int`, `float`, `bool`, `list`, `dict`, `None`, or unions thereof (e.g. `dict | None`). Never return domain model classes, Protocol objects, or any non-serializable reference.
+- `__call__` must explicitly annotate its return type. `-> Any` is forbidden in final implementations.
+
+This convention applies to all documentation (sequence diagrams, interface contracts) and runtime introspection (`__str__` output).
+
 ### 1. Pure compute — no globals needed, unit-testable in isolation
 
 ```python
 class Compute(BaseCommand):
     data: list
-    async def __call__(self):
+    async def __call__(self) -> float:
         return sum(self.data)
 ```
 
@@ -94,7 +119,8 @@ class Compute(BaseCommand):
 
 ```python
 class ProcessData(BaseCommand):
-    async def __call__(self):
+    key: str
+    async def __call__(self) -> dict:
         result = app.transform(self.data)       # business method on AppService
         await protocol.set('result', result)     # persistence via protocol
         await hub.emit(DataReady(key='result'))  # emit event
@@ -116,7 +142,7 @@ class Pipeline(BaseCommand):
 ```python
 class Router(BaseCommand):
     query: str
-    async def __call__(self):
+    async def __call__(self) -> dict:
         intent = classify(self.query)
         if intent == 'refund': return RefundAgent(query=self.query)  # handoff
         return await general_reply(self.query)                        # normal
@@ -350,9 +376,35 @@ Top-level key = fully-qualified AppService class. `module` key in protocol secti
 | `commands` | `list[str]` | `cls.commands` ClassVar |
 | `router_mapping` | `dict` | `cls.router_mapping` ClassVar |
 | `subscriber` | `dict` | `{topic: method_name \| [method_names]}` merged into `cls.subscriber` |
-| `depends` | `list[str]` | Resolved to `[AppService, ...]` after all services created |
+| `depends` | `list[str]` | Resolved to `dict[str, AppService]` after all services created. Access via `self.dep("domain.alias")` |
 | `protocol` | `dict` | Instance `protocol` via `add_dependency` |
 | other keys | any | Passed as `**kwargs` to `__init__` |
+
+### Parameter Management
+
+TOML keys are split into two categories:
+
+1. **Framework-level keys** (`commands`, `router_mapping`, `subscriber`, `depends`, `protocol`) — always defined in TOML when needed. These control framework wiring.
+2. **Service-level custom parameters** — defined as `__init__` parameters with defaults in the service/protocol class itself. TOML only overrides values that differ from defaults.
+
+**Principle**: TOML should be minimal. If a service parameter equals its class default, omit it from TOML. Custom parameters belong in each service's `__init__` signature with sensible defaults; TOML's role is override, not definition.
+
+```toml
+# Good: only override non-default values
+["myapp.strategy.FibStrategy"]
+subscriber = {"analysis.Engine.SignalEmitted" = "on_signal"}
+# position_size and min_strength use class defaults, not listed
+
+# Good: protocol parameters that differ from defaults
+["myapp.app.MyService".protocol]
+module = "bollydog.adapters.memory.SQLiteProtocol"
+path = "data/custom.db"
+
+# Bad: repeating default values
+["myapp.strategy.FibStrategy"]
+position_size = 0.1      # ← this is already the class default, remove it
+min_strength = 0.6        # ← same, remove it
+```
 
 ### Service lifecycle
 
@@ -397,8 +449,9 @@ bollydog send <Command> <socket_path> [--config ...]
 2. **AppService** = resource owner. Expose business methods. Inner sub-services stay invisible to Commands.
 3. **Protocol** = environment abstraction. Swap `SqlAlchemyProtocol` -> `MemoryProtocol` for tests.
 4. Use `globals.app` (bound by `_with_context` from `destination`). Never `app.child_service.xxx`.
-5. Cross-domain: `hub.dispatch(cmd)` or `yield cmd`. Never grab foreign services directly.
+5. **Cross-domain access**: undeclared services must go through `hub.dispatch(cmd)` or `yield cmd`. **Declared dependencies** (via `depends` in TOML/class) can be accessed directly via `self.dep("domain.alias").method(...)` — the dependency is explicit, lifecycle-managed, and auditable.
 6. AppService does not proactively dispatch Commands — it exposes capabilities, Commands schedule.
+7. **Command fields and return values must be primitive types** (`str`, `int`, `float`, `bool`, `list`, `dict`, `None`). No class references, domain model instances, or complex objects as input fields or return values. This ensures Commands are naturally serializable, transportable across process boundaries, and self-describing for service discovery.
 
 ## Testing Strategy
 

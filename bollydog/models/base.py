@@ -155,7 +155,13 @@ class BaseService(mode.Service):
     router_mapping: ClassVar[dict] = {}
     subscriber: ClassVar[dict] = {}
     commands: ClassVar[List[str]] = []
-    depends: ClassVar[list] = []
+    depends: ClassVar[dict] = {}
+
+    def dep(self, key: str) -> 'BaseService':
+        """Get declared dependency by domain.alias key. Raises ValueError if not found."""
+        svc = self.depends.get(key)
+        if svc is None: raise ValueError(f'{self.domain}.{self.alias} has no dependency: {key}')
+        return svc
 
     def __init__(self, **kwargs):
         super().__init__()

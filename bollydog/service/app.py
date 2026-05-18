@@ -83,11 +83,11 @@ class Hub(AppService):
         await super().on_start()
 
     async def on_started(self) -> None:
-        for key, svc in AppService._apps.items():
+        for key, svc in list(AppService._apps.items()):
             if svc is self: continue
             if self._domains and key.split('.')[0] not in self._domains: continue
             await svc.maybe_start()
-        for sid, svc in AppService._apps.items():
+        for sid, svc in list(AppService._apps.items()):
             if svc.commands: self.logger.info(f'[{sid}] {type(svc).__name__} | commands={svc.commands}')
         if self.registry:
             def _tag(c): return 'Event' if issubclass(c, BaseEvent) else 'Command'

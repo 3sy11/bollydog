@@ -22,13 +22,15 @@ def load_from_config(config: str = None) -> None:
     if BOLLYDOG_WS_ENABLED: SocketService.create_from()
     if BOLLYDOG_UDS_ENABLED: UdsService.create_from()
     for svc in list(AppService._apps.values()):
-        resolved = []
-        for dep_key in (svc.depends if isinstance(svc.depends, (list, tuple)) and svc.depends and isinstance(svc.depends[0], str) else []):
+        if not isinstance(svc.depends, dict) or not svc.depends: continue
+        resolved = {}
+        for dep_key, dep_val in svc.depends.items():
+            if dep_val is not None: resolved[dep_key] = dep_val; continue
             dep = AppService._apps.get(dep_key)
             if dep is None: raise ValueError(f"depends '{dep_key}' not found for {svc.domain}.{svc.alias}")
             svc.add_dependency(dep)
-            resolved.append(dep)
-        if resolved: svc.depends = resolved
+            resolved[dep_key] = dep
+        svc.depends = resolved
     for svc in AppService._apps.values():
         if type(svc).commands: type(svc)._load_commands(type(svc).commands)
 
