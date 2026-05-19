@@ -7,5 +7,5 @@
 #   from bollydog.adapters.composite  import CacheLayer, TableCacheLayer
 #   from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol, DuckDBProtocol, ...
 #   from bollydog.adapters.file       import LocalFileProtocol
-#   from bollydog.adapters.elastic    import ElasticProtocol
+
 #   from bollydog.adapters.graph      import Neo4jProtocol, NeuGProtocol

@@ -60,7 +60,6 @@ setup(
         ],
         "data": [
             "duckdb==1.5.1",
-            "elasticsearch==8.14.0",
             "redis==7.4.0",
             "aioredis==2.0.1",
         ],

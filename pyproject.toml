@@ -45,7 +45,7 @@ test = [
 ]
 cli = ["mycli==1.67.1", "iredis==1.16.1", "pycli==2.0.3"]
 viz = ["pydot==4.0.1", "pydot-ng==2.0.0", "graphviz==0.21"]
-data = ["duckdb==1.5.1", "elasticsearch==8.14.0", "redis==7.4.0", "aioredis==2.0.1"]
+data = ["duckdb==1.5.1", "redis==7.4.0", "aioredis==2.0.1"]
 dev = ["bollydog[test,cli,viz]", "ruff==0.14.10"]
 
 [project.scripts]

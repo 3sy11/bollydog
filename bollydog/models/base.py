@@ -9,58 +9,26 @@ from typing import Dict, List, Optional, Type, Any, ClassVar
 import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 
-from bollydog.service.config import COMMAND_EXPIRE_TIME, HOSTNAME, REPOSITORY_VERSION, DEFAULT_SIGN, DELIVERY_COUNT, DEFAULT_QOS
+import os
+from bollydog.utils.base import get_hostname, get_repository_version
 from bollydog.globals import message
 
+HOSTNAME = get_hostname()
+REPOSITORY_VERSION = get_repository_version()
+COMMAND_EXPIRE_TIME = int(os.getenv('COMMAND_EXPIRE_TIME', 3600))
+COMMAND_DEFAULT_SIGN = int(os.getenv('COMMAND_DEFAULT_SIGN', 1))
+COMMAND_DELIVERY_COUNT = int(os.getenv('COMMAND_DELIVERY_COUNT', 0))
+COMMAND_DEFAULT_QOS = int(os.getenv('COMMAND_DEFAULT_QOS', 1))
 
-class StreamState(asyncio.Queue):
-    def __init__(self):
-        super().__init__()
-        self._results, self._done_event, self._exception = [], asyncio.Event(), None
 
-    async def put(self, value):
-        if value is None: self._done_event.set()
-        else: self._results.append(value)
-        await super().put(value)
-
-    def set_result(self, result):
-        self._results = [result] if not self._results else self._results
-        self._done_event.set()
-
-    def set_exception(self, exc):
-        self._exception = exc
-        self._done_event.set()
-        self.put_nowait(None)
-
-    def done(self): return self._done_event.is_set()
-    def cancelled(self): return False
-    def exception(self): return self._exception
-    def result(self):
-        if self._exception: raise self._exception
-        return self._results[0] if len(self._results) == 1 else self._results
-
-    @property
-    def _state(self): return 'FINISHED' if self.done() else 'PENDING'
-
-    def __await__(self):
-        async def _wait():
-            await self._done_event.wait()
-            if self._exception: raise self._exception
-            return self.result()
-        return _wait().__await__()
-
-    async def __aiter__(self):
-        while True:
-            value = await self.get()
-            if value is None: break
-            yield value
+from bollydog.models.state import StreamState  # noqa: E402
 
 
 class _ModelMixin(BaseModel):
     created_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     update_time: float = Field(default_factory=lambda: int(time.time() * 1000))
     iid: str = Field(default_factory=lambda: uuid.uuid4().hex, max_length=50)
-    sign: int = Field(default=DEFAULT_SIGN, description='1:normal, -1:deleted')
+    sign: int = Field(default=COMMAND_DEFAULT_SIGN, description='1:normal, -1:deleted')
     created_by: Optional[str] = Field(default=None, max_length=50)
 
     def model_post_init(self, __context: Any) -> None:
@@ -82,8 +50,8 @@ class BaseCommand(_ModelMixin):
     destination: ClassVar[str] = None
 
     expire_time: float = Field(default=COMMAND_EXPIRE_TIME)
-    qos: int = Field(default=DEFAULT_QOS)
-    delivery_count: int = Field(default=DELIVERY_COUNT)
+    qos: int = Field(default=COMMAND_DEFAULT_QOS)
+    delivery_count: int = Field(default=COMMAND_DELIVERY_COUNT)
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
 
     @field_serializer('state')

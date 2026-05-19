@@ -184,49 +184,68 @@ myapp:
 
 ## Environment Variables
 
-### Global (service/config.py)
+Each module owns its env vars with module-name prefix (no global `BOLLYDOG_` prefix).
+
+### Command (models/base.py)
 
 | Variable | Default | Description |
 |---|---|---|
-| `BOLLYDOG_COMMAND_EXPIRE_TIME` | `3600` | Command timeout (seconds) |
-| `BOLLYDOG_EVENT_EXPIRE_TIME` | `120` | Event timeout (seconds) |
-| `BOLLYDOG_QUEUE_MAX_SIZE` | `1000` | Queue max capacity |
-| `BOLLYDOG_HISTORY_MAX_SIZE` | `1000` | Queue history length |
-| `BOLLYDOG_DEFAULT_SIGN` | `1` | Default sign flag |
-| `BOLLYDOG_DELIVERY_COUNT` | `0` | Default retry count |
-| `BOLLYDOG_DEFAULT_QOS` | `1` | Default QoS (0=async queue, 1=sync execute) |
-| `BOLLYDOG_HTTP_ENABLED` | `0` | Enable HTTP service (0/1) |
-| `BOLLYDOG_WS_ENABLED` | `0` | Enable WebSocket service (0/1) |
+| `COMMAND_EXPIRE_TIME` | `3600` | Command timeout (seconds) |
+| `COMMAND_DEFAULT_SIGN` | `1` | Default sign flag (1=normal, -1=deleted) |
+| `COMMAND_DELIVERY_COUNT` | `0` | Default retry count |
+| `COMMAND_DEFAULT_QOS` | `1` | Default QoS (0=fire-and-forget, 1=queued) |
 
-### HTTP (entrypoint/http/config.py)
+### Service (service/config.py)
 
 | Variable | Default | Description |
 |---|---|---|
-| `BOLLYDOG_HTTP_SERVICE_HOST` | `0.0.0.0` | Listen address |
-| `BOLLYDOG_HTTP_SERVICE_PORT` | `8000` | Listen port |
-| `BOLLYDOG_HTTP_SERVICE_DEBUG` | `False` | Debug mode |
-| `BOLLYDOG_HTTP_SERVICE_LOG_LEVEL` | `info` | Log level |
-| `BOLLYDOG_HTTP_SERVICE_PRIVATE_KEY_PATH` | - | SSL private key path |
-| `BOLLYDOG_HTTP_SERVICE_PUBLIC_KEY_PATH` | - | SSL certificate path |
-| `BOLLYDOG_HTTP_SERVICE_LOOP` | `uvloop` | Event loop implementation |
-| `BOLLYDOG_HTTP_SERVICE_HTTP` | `httptools` | HTTP parser |
-| `BOLLYDOG_HTTP_SERVICE_LIMIT_CONCURRENCY` | `0` | Concurrency limit |
-| `BOLLYDOG_HTTP_SERVICE_LIMIT_MAX_REQUESTS` | `2000` | Max requests |
-| `BOLLYDOG_HTTP_SERVICE_TIMEOUT_KEEP_ALIVE` | `5` | Keep-Alive timeout |
-| `BOLLYDOG_HTTP_SERVICE_BACKLOG` | `128` | TCP backlog |
-| `BOLLYDOG_HTTP_MIDDLEWARE_SESSION` | `1` | Session middleware (0/1) |
-| `BOLLYDOG_HTTP_MIDDLEWARE_AUTH` | `1` | Auth middleware (0/1) |
-| `BOLLYDOG_HTTP_MIDDLEWARE_CORS` | `1` | CORS middleware (0/1) |
-| `HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY` | - | Session secret key |
+| `QUEUE_MAX_SIZE` | `1000` | Queue max capacity |
+| `QUEUE_HISTORY_MAX_SIZE` | `1000` | Queue history length |
 
-### WebSocket (entrypoint/websocket/config.py)
+### Entrypoint Toggle (service/__init__.py)
 
 | Variable | Default | Description |
 |---|---|---|
-| `BOLLYDOG_WS_SERVICE_HOST` | `0.0.0.0` | Listen address |
-| `BOLLYDOG_WS_SERVICE_PORT` | `8001` | Listen port |
-| `BOLLYDOG_WS_SERVICE_DEBUG` | `False` | Debug mode |
-| `BOLLYDOG_WS_SERVICE_LOG_LEVEL` | `info` | Log level |
+| `ENTRYPOINT_HTTP_ENABLED` | `0` | Enable HTTP service (0/1) |
+| `ENTRYPOINT_WS_ENABLED` | `0` | Enable WebSocket service (0/1) |
+| `ENTRYPOINT_UDS_ENABLED` | `0` | Enable UDS service (0/1) |
+
+### Entrypoint HTTP (entrypoint/http/config.py)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENTRYPOINT_HTTP_SERVICE_HOST` | `0.0.0.0` | Listen address |
+| `ENTRYPOINT_HTTP_SERVICE_PORT` | `8000` | Listen port |
+| `ENTRYPOINT_HTTP_SERVICE_DEBUG` | `False` | Debug mode |
+| `ENTRYPOINT_HTTP_SERVICE_LOG_LEVEL` | `info` | Log level |
+| `ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH` | - | SSL private key path |
+| `ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY_PATH` | - | SSL certificate path |
+| `ENTRYPOINT_HTTP_SERVICE_LOOP` | `uvloop` | Event loop implementation |
+| `ENTRYPOINT_HTTP_SERVICE_HTTP` | `httptools` | HTTP parser |
+| `ENTRYPOINT_HTTP_SERVICE_LIMIT_CONCURRENCY` | `0` | Concurrency limit |
+| `ENTRYPOINT_HTTP_SERVICE_LIMIT_MAX_REQUESTS` | `2000` | Max requests |
+| `ENTRYPOINT_HTTP_SERVICE_TIMEOUT_KEEP_ALIVE` | `5` | Keep-Alive timeout |
+| `ENTRYPOINT_HTTP_SERVICE_BACKLOG` | `128` | TCP backlog |
+| `ENTRYPOINT_HTTP_MIDDLEWARE_SESSION` | `1` | Session middleware (0/1) |
+| `ENTRYPOINT_HTTP_MIDDLEWARE_AUTH` | `1` | Auth middleware (0/1) |
+| `ENTRYPOINT_HTTP_MIDDLEWARE_CORS` | `1` | CORS middleware (0/1) |
+| `ENTRYPOINT_HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY` | - | Session secret key |
+
+### Entrypoint WebSocket (entrypoint/websocket/config.py)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENTRYPOINT_WS_SERVICE_HOST` | `0.0.0.0` | Listen address |
+| `ENTRYPOINT_WS_SERVICE_PORT` | `8001` | Listen port |
+| `ENTRYPOINT_WS_SERVICE_DEBUG` | `False` | Debug mode |
+| `ENTRYPOINT_WS_SERVICE_LOG_LEVEL` | `info` | Log level |
+
+### Entrypoint UDS (entrypoint/uds/config.py)
+
+| Variable | Default | Description |
+|---|---|---|
+| `ENTRYPOINT_UDS_SOCK_PATH` | `/tmp/bollydog.sock` | Unix domain socket path |
+| `ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG` | - | Default send config |
 
 ## Adapters
 
@@ -238,7 +257,6 @@ The framework uses the `Protocol` abstraction layer to interface with different 
 | `RedisProtocol` | `adapters.redis` | Redis KV, optional Session backend |
 | `FileProtocol` | `adapters.local` | File read/write |
 | `SqlAlchemyProtocol` | `adapters.rdb` | Relational database CRUD |
-| `ElasticProtocol` | `adapters.elastic` | Elasticsearch |
 | `Neo4jProtocol` | `adapters.neo4j` | Neo4j graph database |
 
 ## Global Context (globals)
@@ -281,17 +299,17 @@ bollydog/
 │   ├── session.py       # Session, SessionContext
 │   ├── exchange.py      # Exchange (internal pub/sub)
 │   ├── commands.py      # Built-in commands (TaskCount)
-│   └── config.py        # Global environment variable config
+│   └── config.py        # Service module environment variables (QUEUE_*)
 ├── entrypoint/
 │   ├── cli/             # CLI entrypoint (fire)
 │   ├── http/            # HTTP entrypoint (Starlette + uvicorn)
 │   │   ├── app.py       # HttpHandler, SseHandler, HttpService
-│   │   ├── config.py    # HTTP environment variables
+│   │   ├── config.py    # HTTP_* environment variables
 │   │   └── middleware.py # Auth / Session / CORS middleware
 │   └── websocket/       # WebSocket entrypoint (Starlette + uvicorn)
 │       ├── app.py       # SocketService
-│       └── config.py    # WS environment variables
-├── adapters/            # Protocol implementations (local, redis, rdb, elastic, neo4j)
+│       └── config.py    # WS_* environment variables
+├── adapters/            # Protocol implementations (local, redis, rdb, neo4j)
 ├── globals.py           # Global context proxies (hub, message, session, app, protocol)
 ├── bootstrap.py         # Worker bootstrap
 ├── exception.py         # Custom exceptions

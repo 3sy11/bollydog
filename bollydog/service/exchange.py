@@ -1,5 +1,8 @@
+import asyncio
 from collections import defaultdict
+from functools import partial
 
+from bollydog.globals import hub
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService
 from bollydog.service.config import DOMAIN
@@ -72,6 +75,21 @@ class Exchange(AppService):
             if match_topic(pattern, topic):
                 matched.update(handlers)
         return matched
+
+    def _on_subscriber_done(self, handler, source_message, state):
+        try:
+            if state.cancelled() or state.exception(): return
+            command = handler()
+            command.add_event(source_message)
+            asyncio.ensure_future(hub.dispatch(command))
+        except Exception as error:
+            self.logger.exception(f'subscriber callback error: {error}')
+
+    def bind_subscriber_callbacks(self, message):
+        topic = type(message).destination
+        if not topic: return
+        for handler in self.match(topic):
+            message.state.add_done_callback(partial(self._on_subscriber_done, handler, message))
 
     def list_topics(self):
         return {'exact': list(self._exact.keys()), 'patterns': list(self._patterns.keys())}

@@ -21,7 +21,7 @@ class KVProtocol(Protocol, abstract=True):
 
 
 class CRUDProtocol(Protocol, abstract=True):
-    """Structured data CRUD: SQL, Elasticsearch, DuckDB table queries."""
+    """Structured data CRUD: SQL, DuckDB table queries."""
     @abc.abstractmethod
     async def add(self, item, **ctx): ...
     @abc.abstractmethod

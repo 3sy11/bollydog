@@ -1,0 +1,10 @@
+["bollydog.service.exchange.Exchange"]
+
+["bollydog.service.session.Session"]
+protocol = { module = "bollydog.adapters.memory.MemoryProtocol" }
+
+["bollydog.service.queue.Queue"]
+
+["bollydog.service.app.Hub"]
+router_mapping = { TaskCount = ["GET", "/api/ping"] }
+depends = ["bollydog.Exchange", "bollydog.Session", "bollydog.Queue"]

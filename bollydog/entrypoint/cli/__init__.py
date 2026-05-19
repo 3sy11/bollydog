@@ -10,10 +10,9 @@ from ptpython.repl import embed
 
 from bollydog.bootstrap import Bootstrap
 from bollydog.entrypoint.uds.app import UdsService
-from bollydog.entrypoint.uds.config import SEND_DEFAULT_CONFIG
+from bollydog.entrypoint.uds.config import ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService, BaseService
-from bollydog.service.app import Hub
 from bollydog.service import load_from_config
 
 logging.info(f'load .env from {os.getcwd()}')
@@ -39,7 +38,8 @@ class CLI:
     @staticmethod
     def service(config: str = None, domains: list = None):
         load_from_config(config)
-        hub = Hub(domains=domains)
+        hub = AppService._apps['bollydog.Hub']
+        if domains: hub._domains = set(domains)
         raise Bootstrap(hub, override_logging=False).execute_from_commandline()
 
     @staticmethod
@@ -72,7 +72,7 @@ class CLI:
     def execute(command: str, **kwargs):
         config = kwargs.pop('config', None)
         load_from_config(config)
-        hub = Hub()
+        hub = AppService._apps['bollydog.Hub']
         cmd = _resolve_command(command)
         msg = cmd(**kwargs)
         logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
@@ -84,7 +84,7 @@ class CLI:
 
     @staticmethod
     def send(command: str, socket: str, **kwargs):
-        config = kwargs.pop('config', SEND_DEFAULT_CONFIG)
+        config = kwargs.pop('config', ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG)
         load_from_config(config)
         cmd_cls = _resolve_command(command)
         uds = UdsService(sock_path=socket)
@@ -94,7 +94,7 @@ class CLI:
     @staticmethod
     def shell(config: str = None):
         load_from_config(config)
-        hub = Hub()
+        hub = AppService._apps['bollydog.Hub']
         for key, cmd_cls in BaseService.registry.items():
             print(f'{key} -> {cmd_cls}')
         ns = {**globals(), 'apps': AppService._apps, 'hub': hub, 'BaseCommand': BaseCommand}

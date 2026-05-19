@@ -20,13 +20,13 @@ from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService, BaseService
 
 from .config import (
-    SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST,
-    SERVICE_PRIVATE_KEY_PATH, SERVICE_PUBLIC_KEY_PATH,
-    SERVICE_LOOP, SERVICE_HTTP,
-    SERVICE_LIMIT_CONCURRENCY, SERVICE_LIMIT_MAX_REQUESTS,
-    SERVICE_TIMEOUT_KEEP_ALIVE, SERVICE_BACKLOG,
-    MIDDLEWARE_SESSION_ENABLED, MIDDLEWARE_AUTH_ENABLED, MIDDLEWARE_CORS_ENABLED,
-    MIDDLEWARE_SESSION_SECRET_KEY,
+    ENTRYPOINT_HTTP_SERVICE_DEBUG, ENTRYPOINT_HTTP_SERVICE_PORT, ENTRYPOINT_HTTP_SERVICE_LOG_LEVEL, ENTRYPOINT_HTTP_SERVICE_HOST,
+    ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH, ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY_PATH,
+    ENTRYPOINT_HTTP_SERVICE_LOOP, ENTRYPOINT_HTTP_SERVICE_HTTP,
+    ENTRYPOINT_HTTP_SERVICE_LIMIT_CONCURRENCY, ENTRYPOINT_HTTP_SERVICE_LIMIT_MAX_REQUESTS,
+    ENTRYPOINT_HTTP_SERVICE_TIMEOUT_KEEP_ALIVE, ENTRYPOINT_HTTP_SERVICE_BACKLOG,
+    ENTRYPOINT_HTTP_MIDDLEWARE_SESSION, ENTRYPOINT_HTTP_MIDDLEWARE_AUTH, ENTRYPOINT_HTTP_MIDDLEWARE_CORS,
+    ENTRYPOINT_HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY,
 )
 from .middleware import base_auth_backend
 
@@ -124,11 +124,11 @@ class HttpService(AppService):
     @staticmethod
     def _build_middlewares():
         mws = []
-        if MIDDLEWARE_SESSION_ENABLED:
-            mws.append(Middleware(SessionMiddleware, secret_key=MIDDLEWARE_SESSION_SECRET_KEY))
-        if MIDDLEWARE_AUTH_ENABLED:
+        if ENTRYPOINT_HTTP_MIDDLEWARE_SESSION:
+            mws.append(Middleware(SessionMiddleware, secret_key=ENTRYPOINT_HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY))
+        if ENTRYPOINT_HTTP_MIDDLEWARE_AUTH:
             mws.append(Middleware(AuthenticationMiddleware, backend=base_auth_backend))
-        if MIDDLEWARE_CORS_ENABLED:
+        if ENTRYPOINT_HTTP_MIDDLEWARE_CORS:
             mws.append(Middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'], max_age=1728000))
         return mws
 
@@ -171,14 +171,14 @@ class HttpService(AppService):
                 handler = HttpHandler(command_cls)
             self.http_app.router.add_route(path, handler, methods=methods, name=alias, include_in_schema=True)
         self.http_app.user_middleware = self.middlewares
-        self.http_app.debug = SERVICE_DEBUG
+        self.http_app.debug = ENTRYPOINT_HTTP_SERVICE_DEBUG
         self._asgi_app = HubContextMiddleware(self.http_app, hub._get_current_object())
         self.init_server()
         await super(HttpService, self).on_start()
 
     async def on_started(self) -> None:
-        scheme = 'https' if SERVICE_PRIVATE_KEY_PATH else 'http'
-        base = f'{scheme}://{SERVICE_HOST}:{SERVICE_PORT}'
+        scheme = 'https' if ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH else 'http'
+        base = f'{scheme}://{ENTRYPOINT_HTTP_SERVICE_HOST}:{ENTRYPOINT_HTTP_SERVICE_PORT}'
         routes = [r for r in self.http_app.routes if hasattr(r, 'path')]
         lines = '\n  '.join(f'{",".join(r.methods)} {base}{r.path} -> {r.name}' for r in routes)
         self.logger.info(f'http({len(routes)} routes) {base}\n  {lines}')
@@ -190,18 +190,18 @@ class HttpService(AppService):
 
     def init_server(self):
         config = uvicorn.Config(
-            host=SERVICE_HOST,
+            host=ENTRYPOINT_HTTP_SERVICE_HOST,
             app=self._asgi_app,
-            port=int(SERVICE_PORT),
-            log_level=SERVICE_LOG_LEVEL,
-            ssl_keyfile=SERVICE_PRIVATE_KEY_PATH,
-            ssl_certfile=SERVICE_PUBLIC_KEY_PATH,
-            loop=SERVICE_LOOP,
-            http=SERVICE_HTTP,
-            limit_concurrency=SERVICE_LIMIT_CONCURRENCY,
-            limit_max_requests=SERVICE_LIMIT_MAX_REQUESTS,
-            timeout_keep_alive=SERVICE_TIMEOUT_KEEP_ALIVE,
-            backlog=SERVICE_BACKLOG
+            port=int(ENTRYPOINT_HTTP_SERVICE_PORT),
+            log_level=ENTRYPOINT_HTTP_SERVICE_LOG_LEVEL,
+            ssl_keyfile=ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH,
+            ssl_certfile=ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY_PATH,
+            loop=ENTRYPOINT_HTTP_SERVICE_LOOP,
+            http=ENTRYPOINT_HTTP_SERVICE_HTTP,
+            limit_concurrency=ENTRYPOINT_HTTP_SERVICE_LIMIT_CONCURRENCY,
+            limit_max_requests=ENTRYPOINT_HTTP_SERVICE_LIMIT_MAX_REQUESTS,
+            timeout_keep_alive=ENTRYPOINT_HTTP_SERVICE_TIMEOUT_KEEP_ALIVE,
+            backlog=ENTRYPOINT_HTTP_SERVICE_BACKLOG
         )
         self.uvicorn = uvicorn.Server(config)
 

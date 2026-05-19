@@ -4,7 +4,7 @@ import os
 
 import mode
 
-from bollydog.entrypoint.uds.config import SOCK_PATH
+from bollydog.entrypoint.uds.config import ENTRYPOINT_UDS_SOCK_PATH
 from bollydog.globals import hub
 from bollydog.models.base import BaseCommand, BaseService
 from bollydog.models.service import AppService
@@ -25,7 +25,7 @@ class UdsService(AppService):
 
     def __init__(self, sock_path=None, **kwargs):
         super().__init__(**kwargs)
-        self._sock_path = sock_path or SOCK_PATH
+        self._sock_path = sock_path or ENTRYPOINT_UDS_SOCK_PATH
         self._server = None
 
     async def send(self, command: str, kwargs: dict) -> dict:

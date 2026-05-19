@@ -265,7 +265,7 @@ Key rules:
 | ABC | Methods | Use Case |
 |-----|---------|----------|
 | `KVProtocol` | `get/set/remove/exists/keys` | Session, cache, state |
-| `CRUDProtocol` | `add/add_all/get/list/update/delete/count` | SQL, Elasticsearch |
+| `CRUDProtocol` | `add/add_all/get/list/update/delete/count` | SQL, DuckDB |
 | `GraphProtocol` | `execute(query, **params)` | Neo4j, GraphScope |
 | `FileProtocol` | `read/write` | File I/O, TOML config |
 
@@ -276,7 +276,6 @@ memory.py     MemoryProtocol, RedisProtocol, SQLiteProtocol
 sqlalchemy.py SqlAlchemyProtocol, PostgreSQLProtocol, MySQLProtocol, DuckDBProtocol
 graph.py      Neo4jProtocol, NeuGProtocol
 file.py       LocalFileProtocol, TOMLFileProtocol
-elastic.py    ElasticProtocol
 composite.py  CacheLayer, TableCacheLayer
 ```
 
@@ -291,8 +290,8 @@ from bollydog.adapters.composite import CacheLayer
 
 | Mixin | Adds | Used by |
 |-------|------|---------|
-| `BatchMixin` | `update_all/delete_all` | ElasticProtocol |
-| `StreamMixin` | `stream() -> AsyncIterator` | SqlAlchemy, Elastic |
+| `BatchMixin` | `update_all/delete_all` | SqlAlchemy, DuckDB |
+| `StreamMixin` | `stream() -> AsyncIterator` | SqlAlchemy, DuckDB |
 | `TransactionMixin` | `transaction() -> ctx` | SqlAlchemy, Neo4j |
 | `DialectMixin` | `compile(stmt) -> (sql, params)` | SqlAlchemy, DuckDB |
 
@@ -434,14 +433,56 @@ bollydog send <Command> <socket_path> [--config ...]
 
 ## Environment Variables
 
+Each module owns its own config via `os.getenv`, prefixed by module name (no global `BOLLYDOG_` prefix).
+
+### Command (models/base.py)
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BOLLYDOG_COMMAND_EXPIRE_TIME` | `3600` | Command timeout (s) |
-| `BOLLYDOG_DEFAULT_QOS` | `1` | Default QoS level |
-| `BOLLYDOG_QUEUE_MAX_SIZE` | `1000` | qos=1 queue capacity |
-| `BOLLYDOG_HTTP_ENABLED` | `0` | Enable HTTP entrypoint |
-| `BOLLYDOG_WS_ENABLED` | `0` | Enable WebSocket entrypoint |
-| `BOLLYDOG_UDS_ENABLED` | `0` | Enable UDS entrypoint |
+| `COMMAND_EXPIRE_TIME` | `3600` | Command timeout (s) |
+| `COMMAND_DEFAULT_QOS` | `1` | Default QoS level |
+| `COMMAND_DEFAULT_SIGN` | `1` | Soft-delete marker (1=normal, -1=deleted) |
+| `COMMAND_DELIVERY_COUNT` | `0` | Retry count on timeout |
+
+### Service (service/config.py)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `QUEUE_MAX_SIZE` | `1000` | qos=1 queue capacity |
+| `QUEUE_HISTORY_MAX_SIZE` | `1000` | Queue history length |
+
+### Entrypoint Toggle (service/__init__.py)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENTRYPOINT_HTTP_ENABLED` | `0` | Enable HTTP entrypoint |
+| `ENTRYPOINT_WS_ENABLED` | `0` | Enable WebSocket entrypoint |
+| `ENTRYPOINT_UDS_ENABLED` | `0` | Enable UDS entrypoint |
+
+### Entrypoint HTTP (entrypoint/http/config.py)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENTRYPOINT_HTTP_SERVICE_HOST` | `0.0.0.0` | Listen address |
+| `ENTRYPOINT_HTTP_SERVICE_PORT` | `8000` | Listen port |
+| `ENTRYPOINT_HTTP_SERVICE_DEBUG` | `False` | Debug mode |
+| `ENTRYPOINT_HTTP_SERVICE_LOG_LEVEL` | `info` | Log level |
+
+### Entrypoint WebSocket (entrypoint/websocket/config.py)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENTRYPOINT_WS_SERVICE_HOST` | `0.0.0.0` | Listen address |
+| `ENTRYPOINT_WS_SERVICE_PORT` | `8001` | Listen port |
+| `ENTRYPOINT_WS_SERVICE_DEBUG` | `False` | Debug mode |
+| `ENTRYPOINT_WS_SERVICE_LOG_LEVEL` | `info` | Log level |
+
+### Entrypoint UDS (entrypoint/uds/config.py)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENTRYPOINT_UDS_SOCK_PATH` | `/tmp/bollydog.sock` | Unix domain socket path |
+| `ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG` | - | Default send config |
 
 ## Design Rules
 

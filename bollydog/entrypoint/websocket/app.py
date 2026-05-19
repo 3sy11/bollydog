@@ -6,7 +6,7 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from bollydog.entrypoint.websocket.config import SERVICE_DEBUG, SERVICE_PORT, SERVICE_LOG_LEVEL, SERVICE_HOST
+from bollydog.entrypoint.websocket.config import ENTRYPOINT_WS_SERVICE_DEBUG, ENTRYPOINT_WS_SERVICE_PORT, ENTRYPOINT_WS_SERVICE_LOG_LEVEL, ENTRYPOINT_WS_SERVICE_HOST
 from bollydog.globals import hub, _hub_ctx_stack
 from bollydog.models.base import BaseCommand, BaseService
 from bollydog.models.service import AppService
@@ -78,12 +78,12 @@ class SocketService(AppService):
 
     async def on_start(self) -> None:
         self.socket_app.add_websocket_route("/", self.websocket_endpoint)
-        self.socket_app.debug = SERVICE_DEBUG
+        self.socket_app.debug = ENTRYPOINT_WS_SERVICE_DEBUG
         self.init_server()
         await super(SocketService, self).on_start()
 
     async def on_started(self) -> None:
-        self.logger.info(f'ws ws://{SERVICE_HOST}:{SERVICE_PORT}/')
+        self.logger.info(f'ws ws://{ENTRYPOINT_WS_SERVICE_HOST}:{ENTRYPOINT_WS_SERVICE_PORT}/')
         await super(SocketService, self).on_started()
 
     @mode.task
@@ -91,7 +91,7 @@ class SocketService(AppService):
         await self.uvicorn.serve()
 
     def init_server(self):
-        config = uvicorn.Config(host=SERVICE_HOST, app=self.socket_app, port=int(SERVICE_PORT), log_level=SERVICE_LOG_LEVEL)
+        config = uvicorn.Config(host=ENTRYPOINT_WS_SERVICE_HOST, app=self.socket_app, port=int(ENTRYPOINT_WS_SERVICE_PORT), log_level=ENTRYPOINT_WS_SERVICE_LOG_LEVEL)
         self.uvicorn = uvicorn.Server(config)
 
     async def on_stop(self) -> None:

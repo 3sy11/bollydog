@@ -1,11 +1,12 @@
 import asyncio
 import logging
 from collections import OrderedDict, deque
+from functools import partial
 from typing import Optional, Tuple
 
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
-from bollydog.service.config import QUEUE_MAX_SIZE, HISTORY_MAX_SIZE, DOMAIN
+from bollydog.service.config import QUEUE_MAX_SIZE, QUEUE_HISTORY_MAX_SIZE, DOMAIN
 from bollydog.exception import ServiceMaxSizeOfQueueError
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ class Queue(AppService):
     _history: deque
     _notify: asyncio.Event
 
-    def __init__(self, history_size=HISTORY_MAX_SIZE, **kwargs):
+    def __init__(self, history_size=QUEUE_HISTORY_MAX_SIZE, **kwargs):
         super().__init__(**kwargs)
         self._store = OrderedDict()
         self._history = deque(maxlen=history_size)
@@ -61,6 +62,16 @@ class Queue(AppService):
             if not fut.done():
                 fut.set_exception(error)
             self._archive(message_id, msg, FAILED)
+
+    def _on_message_completed(self, message_id, state):
+        try:
+            if state.exception(): self.nack(message_id, state.exception())
+            else: self.ack(message_id)
+        except Exception as error:
+            logger.exception(f'ack callback error: {error}')
+
+    def bind_ack_callback(self, message):
+        message.state.add_done_callback(partial(self._on_message_completed, message.iid))
 
     @property
     def has_pending(self) -> bool:

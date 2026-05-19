@@ -1,17 +1,17 @@
 from starlette.authentication import AuthenticationBackend, UnauthenticatedUser, AuthCredentials, SimpleUser
 from starlette.requests import Request
 
-from .config import SERVICE_PRIVATE_KEY, SERVICE_PUBLIC_KEY, SERVICE_PRIVATE_KEY_PATH, \
-    SERVICE_PUBLIC_KEY_PATH
+from .config import ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY, ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY, \
+    ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH, ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY_PATH
 from .utils import JWT
 
 
 class BaseAuthBackend(AuthenticationBackend):
     _jwt: JWT = None
-    private_key: str = SERVICE_PRIVATE_KEY
-    public_key: str = SERVICE_PUBLIC_KEY
-    public_key_path: str = SERVICE_PRIVATE_KEY_PATH
-    private_key_path: str = SERVICE_PUBLIC_KEY_PATH
+    private_key: str = ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY
+    public_key: str = ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY
+    public_key_path: str = ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH
+    private_key_path: str = ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY_PATH
 
     async def authenticate(self, request: Request):
         user = request.session.get('user', None)

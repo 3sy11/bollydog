@@ -1,15 +1,10 @@
-from bollydog.models.service import BaseService
-from bollydog.adapters.memory import MemoryProtocol
+from bollydog.models.service import AppService
 from bollydog.service.config import DOMAIN
 
 
-class Session(BaseService):
+class Session(AppService):
     domain = DOMAIN
     protocol = None
-
-    def on_init_dependencies(self):
-        if self.protocol is None: self.protocol = MemoryProtocol()
-        return [self.protocol]
 
     async def get(self, key) -> dict:
         return await self.protocol.get(key) or {}
