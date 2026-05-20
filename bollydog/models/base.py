@@ -18,7 +18,6 @@ REPOSITORY_VERSION = get_repository_version()
 COMMAND_EXPIRE_TIME = int(os.getenv('COMMAND_EXPIRE_TIME', 3600))
 COMMAND_DEFAULT_SIGN = int(os.getenv('COMMAND_DEFAULT_SIGN', 1))
 COMMAND_DELIVERY_COUNT = int(os.getenv('COMMAND_DELIVERY_COUNT', 0))
-COMMAND_DEFAULT_QOS = int(os.getenv('COMMAND_DEFAULT_QOS', 1))
 
 
 from bollydog.models.state import StreamState  # noqa: E402
@@ -50,7 +49,7 @@ class BaseCommand(_ModelMixin):
     destination: ClassVar[str] = None
 
     expire_time: float = Field(default=COMMAND_EXPIRE_TIME)
-    qos: int = Field(default=COMMAND_DEFAULT_QOS)
+    # qos: int — removed. All messages go through Queue uniformly.
     delivery_count: int = Field(default=COMMAND_DELIVERY_COUNT)
     state: InstanceOf[asyncio.Future] = Field(default_factory=asyncio.Future)
 
@@ -68,13 +67,6 @@ class BaseCommand(_ModelMixin):
     span_id: str = Field(default='--')
     parent_span_id: str = Field(default='--')
     data: dict = Field(default_factory=dict)
-
-    def add_event(self, event) -> None:
-        self.data.setdefault("events", []).append(event.model_dump() if hasattr(event, 'model_dump') else event)
-
-    def get_event(self, index: int = -1):
-        events = self.data.get("events", [])
-        return events[index] if events else None
 
     @property
     def is_async_gen(self) -> bool:

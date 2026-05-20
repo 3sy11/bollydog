@@ -17,7 +17,7 @@ CLI / HTTP / WS / UDS
    ┌────▼────┐
    │   Hub   │── Exchange (pub/sub router)
    │         │── Session  (KV via Protocol)
-   │         │── Queue    (qos=1 buffer)
+   │         │── Queue    (message buffer)
    └────┬────┘
         │  dispatch / execute
    ┌────▼──────────┐
@@ -63,20 +63,17 @@ bollydog execute Hello --config config.toml --name bollydog
 
 ## Dispatch Pipeline
 
-`Hub.dispatch(message)` routes by type and qos:
+`Hub.dispatch(message)` — unified Queue path:
 
-| Path | Condition | Routing | Publish |
-|------|-----------|---------|---------|
-| Event | `BaseEvent` | `create_task(_fire)` | Yes |
-| Command qos=0 | default | `create_task(_fire)` | Yes |
-| Command qos=1 | `qos=1` | `queue.put` -> consumer | Yes |
+All messages (Command + Event) go through `queue.put()` -> consumer `queue.take()` -> `create_task(_process_and_complete)`.
+`execute(msg)` = `dispatch(msg)` + `await msg.state` (syntactic sugar).
+Exchange subscriber callbacks bind only on Events (`isinstance(message, BaseEvent)`).
 
-All paths go through `_execute(msg, runner)` which runs before-hooks -> runner -> after-hooks.
+`_execute(msg, runner)` runs before-hooks -> runner -> after-hooks.
 
 - **`_run`**: coroutine runner with retry. Detects handoff (return Command instance).
 - **`_run_gen`**: async generator runner. Detects `yield Command` (sequential), `yield [cmd, ...]` (parallel fan-out/fan-in), `yield value` (stream).
 - **`_with_context`**: pushes `app`, `protocol`, `message` globals per request scope.
-- **`_publish`**: matches `destination` topic via Exchange, dispatches handler Commands.
 - **`execute`**: CLI direct mode. No queue, no publish.
 
 ## Command Patterns
@@ -440,7 +437,6 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `COMMAND_EXPIRE_TIME` | `3600` | Command timeout (s) |
-| `COMMAND_DEFAULT_QOS` | `1` | Default QoS level |
 | `COMMAND_DEFAULT_SIGN` | `1` | Soft-delete marker (1=normal, -1=deleted) |
 | `COMMAND_DELIVERY_COUNT` | `0` | Retry count on timeout |
 
@@ -448,7 +444,7 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `QUEUE_MAX_SIZE` | `1000` | qos=1 queue capacity |
+| `QUEUE_MAX_SIZE` | `1000` | Queue capacity |
 | `QUEUE_HISTORY_MAX_SIZE` | `1000` | Queue history length |
 
 ### Entrypoint Toggle (service/__init__.py)

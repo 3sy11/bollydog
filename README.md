@@ -39,7 +39,7 @@ Async microservice framework built on [mode](https://github.com/faust-streaming/
 CLI / HTTP / WebSocket
         │
         ▼
-      Hub  ──── dispatch ──→  Queue.put (qos=0)
+      Hub  ──── dispatch ──→  Queue.put
        │                         │
        │                         ▼
        │                      Queue.take → Hub._process_message
@@ -193,7 +193,6 @@ Each module owns its env vars with module-name prefix (no global `BOLLYDOG_` pre
 | `COMMAND_EXPIRE_TIME` | `3600` | Command timeout (seconds) |
 | `COMMAND_DEFAULT_SIGN` | `1` | Default sign flag (1=normal, -1=deleted) |
 | `COMMAND_DELIVERY_COUNT` | `0` | Default retry count |
-| `COMMAND_DEFAULT_QOS` | `1` | Default QoS (0=fire-and-forget, 1=queued) |
 
 ### Service (service/config.py)
 

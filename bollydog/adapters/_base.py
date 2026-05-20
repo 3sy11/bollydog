@@ -18,6 +18,12 @@ class KVProtocol(Protocol, abstract=True):
         return await self.get(key) is not None
     async def keys(self, pattern: str = '*') -> list:
         raise NotImplementedError
+    async def remove_batch(self, keys: list):
+        """Batch remove. Override in subclass for bulk optimization."""
+        for key in keys: await self.remove(key)
+    async def set_batch(self, items: dict):
+        """Batch set. Override in subclass for bulk optimization."""
+        for key, value in items.items(): await self.set(key, value)
 
 
 class CRUDProtocol(Protocol, abstract=True):

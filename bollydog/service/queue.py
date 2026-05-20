@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from collections import OrderedDict, deque
-from functools import partial
 from typing import Optional, Tuple
 
 from bollydog.models.base import BaseCommand as Message
@@ -39,6 +38,7 @@ class Queue(AppService):
                 if status == PENDING:
                     self._store[iid] = (msg, fut, IN_FLIGHT)
                     return msg
+            if self.should_stop: return None
             self._notify.clear()
             await self._notify.wait()
 
@@ -46,32 +46,13 @@ class Queue(AppService):
         self._store.pop(message_id, None)
         self._history.append((message_id, msg, status))
 
-    def ack(self, message_id: str, result=None):
+    def complete(self, message_id: str):
+        """Archive message based on its state outcome. Called by Hub after processing."""
         entry = self._store.get(message_id)
-        if not entry:
-            return
+        if not entry: return
         msg, fut, _ = entry
-        if not fut.done():
-            fut.set_result(result)
-        self._archive(message_id, msg, DONE)
-
-    def nack(self, message_id: str, error: Exception):
-        entry = self._store.get(message_id)
-        if entry:
-            msg, fut, _ = entry
-            if not fut.done():
-                fut.set_exception(error)
-            self._archive(message_id, msg, FAILED)
-
-    def _on_message_completed(self, message_id, state):
-        try:
-            if state.exception(): self.nack(message_id, state.exception())
-            else: self.ack(message_id)
-        except Exception as error:
-            logger.exception(f'ack callback error: {error}')
-
-    def bind_ack_callback(self, message):
-        message.state.add_done_callback(partial(self._on_message_completed, message.iid))
+        status = FAILED if (fut.done() and fut.exception()) else DONE
+        self._archive(message_id, msg, status)
 
     @property
     def has_pending(self) -> bool:

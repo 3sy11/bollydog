@@ -3,7 +3,7 @@ from collections import defaultdict
 from functools import partial
 
 from bollydog.globals import hub
-from bollydog.models.base import BaseCommand
+from bollydog.models.base import BaseCommand, BaseEvent
 from bollydog.models.service import AppService
 from bollydog.service.config import DOMAIN
 
@@ -27,10 +27,12 @@ def match_topic(pattern: str, topic: str) -> bool:
 
 
 def _make_callback(svc, method_name, bound_method):
-    """Generate a Command class wrapping a bound service method."""
+    """Generate a Command class wrapping a bound service method.
+    __call__ passes self._source (live source message) to bound_method.
+    """
     dest = f'{svc.domain}.{svc.alias}.{method_name}'
-    async def _call(self): return await bound_method(self)
-    ns = {'__annotations__': {'qos': int}, 'destination': dest, 'alias': method_name, 'module': type(svc).__module__, 'qos': 0, '__call__': _call}
+    async def _call(self): return await bound_method(self._source)
+    ns = {'destination': dest, 'alias': method_name, 'module': type(svc).__module__, '_source': None, '__call__': _call}
     return type(method_name, (BaseCommand,), ns)
 
 
@@ -80,12 +82,13 @@ class Exchange(AppService):
         try:
             if state.cancelled() or state.exception(): return
             command = handler()
-            command.add_event(source_message)
+            command._source = source_message
             asyncio.ensure_future(hub.dispatch(command))
         except Exception as error:
             self.logger.exception(f'subscriber callback error: {error}')
 
     def bind_subscriber_callbacks(self, message):
+        if not isinstance(message, BaseEvent): return
         topic = type(message).destination
         if not topic: return
         for handler in self.match(topic):

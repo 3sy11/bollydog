@@ -19,29 +19,13 @@ if TYPE_CHECKING:
 
 
 class Hub(AppService):
-    """
-    Pipeline overview — callback-driven pub/sub & ack:
+    """Unified message pipeline: all messages go through Queue.
 
-    ```mermaid
-    flowchart TB
-        subgraph dispatch_entry ["dispatch(message)"]
-            bind_sub["exchange.bind_subscriber_callbacks"]
-            route{"routing"}
-            bind_ack["queue.bind_ack_callback（qos=1）"]
-            bind_sub --> route
-        end
-        subgraph run_ctx ["_run_with_context(message)"]
-            ctx["_with_context"] --> exec_step["_execute -> _run/_run_gen"]
-        end
-        subgraph cb_phase ["state done call_soon auto call"]
-            on_ack["_on_message_completed: queue.ack/nack"]
-            on_sub["_on_subscriber_done: hub.dispatch"]
-        end
-        route -->|"Event / qos=0"| run_ctx
-        route -->|"qos=1"| bind_ack --> run_ctx
-        run_ctx --> cb_phase
-    ```
-
+    dispatch(msg) -> exchange.bind_subscriber_callbacks (Events only)
+                  -> queue.put(msg)
+    Hub.run consumer -> queue.take() -> create_task(_process_and_complete)
+                     -> _run_with_context -> queue.complete
+    execute(msg) = dispatch(msg) + await msg.state
     """
     domain = DOMAIN
     commands = ['commands']
@@ -68,6 +52,13 @@ class Hub(AppService):
     async def on_first_start(self) -> None:
         self.exit_stack.enter_context(_hub_ctx_stack.push(self))
         self.exit_stack.enter_context(_session_ctx_stack.push(self.session))
+
+    async def on_stop(self) -> None:
+        self.queue._notify.set()
+
+    async def on_shutdown(self) -> None:
+        AppService._apps.clear()
+        self.registry.clear()
 
     async def on_start(self) -> None:
         if type(self).commands: type(self)._load_commands(type(self).commands)
@@ -99,24 +90,13 @@ class Hub(AppService):
         return await asyncio.gather(*(sub.state for sub in subs), return_exceptions=True)
 
     async def dispatch(self, message: Message) -> Message:
-        if isinstance(message, BaseEvent):
-            self.exchange.bind_subscriber_callbacks(message)
-            asyncio.create_task(self._run_with_context(message))
-        elif message.qos == 1:
-            self.queue.bind_ack_callback(message)
-            self.exchange.bind_subscriber_callbacks(message)
-            await self.queue.put(message)
-        else:
-            self.exchange.bind_subscriber_callbacks(message)
-            asyncio.create_task(self._run_with_context(message))
+        self.exchange.bind_subscriber_callbacks(message)
+        await self.queue.put(message)
         return message
 
-    async def execute(self, message: Message) -> Message:
-        self.exchange.bind_subscriber_callbacks(message)
-        runner = self._run_gen if message.is_async_gen else self._run
-        async with self._with_context(message):
-            await self._execute(message, runner)
-        return message
+    async def execute(self, message: Message):
+        await self.dispatch(message)
+        return await message.state
 
     async def _execute(self, message, runner):
         for fn in self._before:
@@ -193,11 +173,18 @@ class Hub(AppService):
             if not message.state.done(): message.state.set_exception(e)
         if not message.state.done(): await message.state.put(None)
 
+    async def _process_and_complete(self, message):
+        try:
+            await self._run_with_context(message)
+        except Exception as e:
+            if not message.state.done(): message.state.set_exception(e)
+        self.queue.complete(message.iid)
+
     @mode.Service.task
     async def run(self):
         while not self.should_stop or self.queue.size > 0:
             message = await self.queue.take()
             if not message: continue
             self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
-            asyncio.create_task(self._run_with_context(message))
+            asyncio.create_task(self._process_and_complete(message))
 
