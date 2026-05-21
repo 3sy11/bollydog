@@ -16,6 +16,7 @@ class Protocol(BaseService, abstract=True):
         return super().add_dependency(service)
 
     async def __aenter__(self):
+        await self.maybe_start()
         return self.adapter
 
     async def __aexit__(self, *exc_info):

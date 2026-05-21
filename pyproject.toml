@@ -42,6 +42,8 @@ test = [
     "httpx==0.28.1",
     "aiosqlite==0.22.0",
     "aiomonitor==0.7.0",
+    "greenlet>=3.0.0",
+    "tomli_w>=1.0.0",
 ]
 cli = ["mycli==1.67.1", "iredis==1.16.1", "pycli==2.0.3"]
 viz = ["pydot==4.0.1", "pydot-ng==2.0.0", "graphviz==0.21"]
@@ -56,6 +58,7 @@ requires = ["hatchling==1.29.0"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]

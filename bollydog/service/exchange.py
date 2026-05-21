@@ -61,6 +61,12 @@ class Exchange(AppService):
             self.logger.info(f'subscriptions({sum(len(v) for v in subs.values())}):\n  {lines}')
         await super().on_started()
 
+    # TODO: hot-reload extension point
+    #   Dynamic subscription management requires:
+    #   1. A persistence Protocol (KV/File) to store subscription definitions
+    #   2. External entry points (Commands) to add/remove subscriptions at runtime
+    #   Currently subscribe/unsubscribe are internal-only, called by on_started once.
+
     def subscribe(self, topic: str, handler):
         store = self._patterns if ('#' in topic or '*' in topic) else self._exact
         store[topic].add(handler)
@@ -70,6 +76,7 @@ class Exchange(AppService):
         store.get(topic, set()).discard(handler)
 
     def match(self, topic: str) -> set:
+        """Return matched handlers. Note: unordered set, no priority guarantee."""
         matched = set()
         for h in self._exact.get(topic, set()):
             matched.add(h)

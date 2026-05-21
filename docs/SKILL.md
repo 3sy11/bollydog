@@ -53,7 +53,7 @@ Normative document defining framework architecture, components, configuration, a
 | [CLI](#cli) | Command-line tools | Phase 7 System execution |
 | [Environment Variables](#environment-variables) | Env var overrides | Phase 7 Configuration |
 | [Design Rules](#design-rules) | Framework design constraints | Design Audit |
-| [Testing Strategy](#testing-strategy) | Testing strategy | Phase 6 full reference |
+| [Testing Strategy](#testing-strategy) | Four-layer test model, fixtures, `testing.py` utilities | Phase 6 full reference |
 | [Troubleshooting](#troubleshooting) | Common issues | Diagnostics |
 
 ---
@@ -82,7 +82,7 @@ Procedural document defining development workflow steps, deliverables, and check
 | [Phase 6: Behavior Verification (TDD)](#phase-6-behavior-verification-tdd) | Command test-driven development | `tests/test_*.py` |
 | — TDD high/low gear | Low=domain model, High=Command | |
 | — Test build order | Unit → Behavior → Cross-service | |
-| — Test template | MemoryProtocol-driven template | |
+| — Test template | Four-layer templates: sync / Protocol / Command / E2E | |
 | [Phase 7: Walking Skeleton](#phase-7-walking-skeleton) | Bottom-up construction of runnable system | `04-skeleton.md` |
 | — Stub strategy & `_stub_` tracking | Stub naming rules and progress tracking | |
 | — System execution | CLI launch and verification commands | |
@@ -121,7 +121,7 @@ Phase 8 → Iteratively replace stubs
 | 3 | AppService must not dispatch proactively (Design Rules) |
 | 4 | Command signature = own fields as params + `__call__` return type. Never write `__call__()` with empty parens (End-to-End Tracing) |
 | 5 | Command fields and return values must be primitive types only: `str`, `int`, `float`, `bool`, `list`, `dict`, `None` (Command Patterns / Design Rules) |
-| 6 | Behavior tests must not depend on Hub (Testing Strategy) |
+| 6 | Layer 1-3 tests must not depend on Hub; Layer 4 uses `run_hub` fixture (Testing Strategy) |
 | 7 | `module` is a framework-reserved key in TOML (TOML Configuration) |
 
 ### Deliverable-to-Phase Mapping
@@ -130,6 +130,7 @@ Phase 8 → Iteratively replace stubs
 docs/00-scenarios.md   ← P0 Scenarios + P1 Domain + P2 Behavior + P3 Service
 docs/01-sequence.md    ← P4 End-to-end sequence diagrams
 docs/02-interfaces.md  ← P5 Interface signatures + data models + serialization
-tests/test_*.py        ← P6 Behavior verification test cases
+tests/conftest.py      ← P6 Fixtures: clean_globals, memory_protocol, hub
+tests/test_*.py        ← P6 Four-layer tests (logic / protocol / command / e2e)
 docs/04-skeleton.md    ← P7 Skeleton notes + TOML config + run commands + stub list
 ```

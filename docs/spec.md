@@ -492,12 +492,58 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 
 ## Testing Strategy
 
+### Four-layer test model
+
+| Layer | What to test | Tools | Hub needed? |
+|-------|-------------|-------|-------------|
+| 1. Pure logic | `match_topic`, `__init_subclass__`, `_resolve_command` | `def test_*()` — sync, no fixture | No |
+| 2. Protocol standalone | `MemoryProtocol`, `SQLiteProtocol`, `CacheLayer` | `async with proto:` (lazy `maybe_start`) | No |
+| 3. Command unit | Single Command `__call__` with context | `run_command(cmd, app, protocol)` | No |
+| 4. E2E integration | Full dispatch → Queue → run → result | `run_hub()` context manager or `hub` fixture | Yes |
+
+### Test utilities (`bollydog/testing.py`)
+
+```python
+from bollydog.testing import command_context, run_command, run_hub
+
+# Layer 3: Command unit test
+with command_context(app=my_app, protocol=my_proto):
+    result = await cmd()
+
+result = await run_command(cmd, app=my_app, protocol=my_proto)
+
+# Layer 4: E2E test
+async with run_hub('config.toml') as hub:
+    result = await hub.execute(MyCommand(x=1))
+```
+
+### Fixtures (`tests/conftest.py`)
+
+| Fixture | Scope | Purpose |
+|---------|-------|---------|
+| `clean_globals` | autouse | Clears `_apps`, `registry`, all `LocalStack` after each test |
+| `memory_protocol` | per-test | Standalone `MemoryProtocol` with lifecycle |
+| `hub` | per-test | Full Hub via `run_hub()`, loads `bollydog/service/config.toml` |
+
+### Production / test swap
+
 | Layer | Production | Test |
 |-------|------------|------|
 | Protocol | `SqlAlchemy`, `Redis` | `MemoryProtocol` |
 | AppService methods | real impl | mock return values |
 | Pure compute Command | `await cmd()` | same, no Hub needed |
 | Orchestration Command | full Hub | mock `app.method` + `MemoryProtocol` |
+
+### Running tests
+
+```bash
+uv run pytest                         # all tests + coverage
+uv run pytest -m unit                 # unit only
+uv run pytest -m "not slow"           # skip slow
+uv run pytest tests/test_protocol.py  # single file
+```
+
+Coverage reports: `tmp/htmlcov/` (HTML), `tmp/coverage.xml` (XML).
 
 ## Troubleshooting
 

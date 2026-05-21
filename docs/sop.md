@@ -373,19 +373,44 @@ This means: **no Hub, no service startup, no config file** needed to verify each
 
 ### Test Template
 
+**Layer 2 — Protocol standalone** (uses `maybe_start` via `async with`):
+
 ```python
+async def test_protocol_set_get():
+    from bollydog.adapters.memory import SQLiteProtocol
+    async with SQLiteProtocol(path=':memory:') as db:
+        await db.set('key', {'value': 1})
+        assert await db.get('key') == {'value': 1}
+```
+
+**Layer 3 — Command unit test** (uses `run_command`, no Hub):
+
+```python
+from bollydog.testing import run_command
+
 async def test_command_basic_flow():
     """Phase 0 scenario: [describe the corresponding scenario story]"""
+    from bollydog.adapters.memory import MemoryProtocol
     proto = MemoryProtocol()
-    await proto.start()
-    await proto.set('__initial_state', {'key': 'value'})
+    async with proto:
+        await proto.set('__initial_state', {'key': 'value'})
+        cmd = SomeCommand(param='input')
+        result = await run_command(cmd, protocol=proto)
+        assert result is not None
+        state = await proto.get('__initial_state')
+        assert state['key'] != 'value'  # verify side effects
+```
 
-    cmd = SomeCommand(param='input')
-    result = await cmd()
+**Layer 4 — E2E test** (uses `run_hub` or `hub` fixture):
 
-    assert result is not None
-    state = await proto.get('__initial_state')
-    assert state['key'] != 'value'  # verify side effects
+```python
+from bollydog.testing import run_hub
+
+async def test_e2e_main_flow():
+    """One per feature — verify glue, not logic."""
+    async with run_hub('config.toml') as hub:
+        result = await hub.execute(SomeCommand(param='value'))
+        assert result is not None
 ```
 
 ### Use Primitive Types in Tests (from Cosmic Python Ch.5)
@@ -518,14 +543,24 @@ After skeleton runs, add a few E2E tests. Cosmic Python's guiding principle:
 
 > **One E2E test per feature**. Goal is to verify all components are glued correctly, not to verify business logic (that's Phase 6's job).
 
+Use `run_hub` context manager or the `hub` pytest fixture:
+
 ```python
+from bollydog.testing import run_hub
+
 async def test_e2e_main_flow():
     """Verify main path: [corresponding Phase 0 core scenario]"""
-    async with Hub() as hub:
-        msg = SomeCommand(param='value')
-        await hub.execute(msg)
-        # assert final state
+    async with run_hub('config.toml') as hub:
+        result = await hub.execute(SomeCommand(param='value'))
+        assert result is not None
+
+# Or with conftest fixture:
+async def test_e2e_via_fixture(hub):
+    result = await hub.execute(SomeCommand(param='value'))
+    assert result is not None
 ```
+
+The `hub` fixture handles `load_from_config` → `async with hub:` → `stop + service_reset` → `on_shutdown` (clears `_apps`, `registry`). The `clean_globals` autouse fixture cleans `LocalStack` after every test.
 
 ### Checkpoints
 
@@ -631,20 +666,21 @@ Use this checklist at key milestones:
 
 ```
         ╱╲
-       ╱  ╲         E2E tests (few)
-      ╱    ╲        One per feature, verify glue
+       ╱  ╲         Layer 4: E2E (few) — run_hub fixture, verify glue
+      ╱    ╲
      ╱──────╲
-    ╱        ╲       Command behavior tests (many)
+    ╱        ╲       Layer 3: Command behavior (many) — run_command, no Hub
    ╱          ╲      High-gear TDD, MemoryProtocol-driven
   ╱────────────╲
- ╱              ╲     Domain model unit tests (as needed)
-╱                ╲    Low-gear TDD, complex business logic
+ ╱              ╲     Layer 2: Protocol standalone — async with proto
+╱                ╲    Layer 1: Pure logic — sync, no async
 ╲────────────────╱
 ```
 
-- **Bottom**: Domain model methods — precise feedback but coupled to implementation
-- **Middle**: Command `__call__` — driven by primitive types, covers all business scenarios
-- **Top**: E2E (Hub + real Protocol) — only verifies integration correctness
+- **Layer 1**: Pure logic (`match_topic`, `__init_subclass__`, CLI resolve) — sync `def test_*()`
+- **Layer 2**: Protocol standalone — `async with SQLiteProtocol(...)`, no service tree needed (uses `maybe_start`)
+- **Layer 3**: Command `__call__` — `run_command(cmd, protocol=proto)`, covers all business scenarios
+- **Layer 4**: E2E (Hub + Queue + Exchange) — `hub` fixture or `run_hub()`, one per feature
 
 > "If you find yourself needing to manipulate domain objects directly to prepare data in Command tests, your Command layer isn't complete enough." — Cosmic Python Ch.5
 

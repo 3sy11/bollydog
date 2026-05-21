@@ -69,7 +69,7 @@ class CLI:
             print(f'{name:<{w0}}  {topic:<{w1}}  {params}')
 
     @staticmethod
-    def execute(command: str, **kwargs):
+    def execute(command: str, timeout: int = 300, **kwargs):
         config = kwargs.pop('config', None)
         load_from_config(config)
         hub = AppService._apps['bollydog.Hub']
@@ -78,7 +78,7 @@ class CLI:
         logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
         async def _run():
             async with hub:
-                await hub.execute(msg)
+                await asyncio.wait_for(hub.execute(msg), timeout=timeout or None)
         asyncio.run(_run())
         logging.info(json.dumps(msg.model_dump(), ensure_ascii=False))
 
