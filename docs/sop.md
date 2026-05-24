@@ -598,22 +598,24 @@ The registry is the single source of truth for what the system currently contain
 # System Registry
 
 ## Services
-| Service | Domain | Alias | Protocol | Depends | Issue |
+| Service | Domain | Alias | Protocol | Depends |
 
 ## Commands
-| Command | Service | Destination | QoS | Issue |
+| Command | Service | Destination | QoS |
 
 ## Events
-| Event | Source | Subscribers | Issue |
+| Event | Source | Subscribers |
 
 ## Protocols
-| Protocol | Type | Used By | Config | Issue |
+| Protocol | Type | Used By | Config |
 
 ## TOML Nodes
 (current complete config.toml structure)
 ```
 
-After Phase 7 of the first build, register all entities into REGISTRY.md. Every subsequent issue appends rows after passing tests.
+The registry is a **pure current-state snapshot** — no history columns. Change traceability is handled entirely by git commit trailers (see [Commit Convention](#commit-convention)).
+
+After Phase 7 of the first build, register all entities into REGISTRY.md. Every subsequent issue appends or updates rows after passing tests. Use `git log` with trailer queries to trace any entity's full history (see [Commit Convention](#commit-convention)).
 
 ### Issue Protocol
 
@@ -638,7 +640,7 @@ docs/issues/20260524-user-auth/
 ├── stories.md        ← P0-P3: scenarios + domain/behavior/service for this issue
 ├── sequence.md       ← P4: sequence diagram fragments
 ├── interfaces.md     ← P5: signatures + data models
-└── notes.md          ← decisions, implementation notes
+└── notes.md          ← intersection analysis + decisions + registry delta
 ```
 
 All story-driven design for this issue lives entirely within its directory.
@@ -660,7 +662,17 @@ Read REGISTRY.md and answer:
 | New Event / Subscriber? | Y/N | If Y → check Event topology |
 | New Protocol or Protocol change? | Y/N | If Y → verify MemoryProtocol testability |
 
-Record the analysis result in `notes.md`.
+Record the analysis result in `notes.md`. At the end of `notes.md`, maintain a **Registry Delta** section — this block will be copied directly into the merge commit's Git trailers:
+
+```markdown
+## Registry Delta
+
++ service CacheService domain=data protocol=CacheProtocol
+~ service DataEngine protocol=CacheLayer→DuckDB
++ command FlushCache dest=data.DataEngine.FlushCache
+```
+
+Update this section as design progresses. When merging (Step 7), prepend `Delta: ` to each line and use as commit trailers.
 
 #### Step 4: Complete Issue Docs
 
@@ -679,9 +691,65 @@ Continue Phase 4-5 within the issue directory:
 
 Only after Step 5-6 pass:
 
-1. Add new rows to REGISTRY.md tables
+1. Add/update rows in REGISTRY.md tables
 2. Update TOML config if new Services/Protocols were added
-3. Issue directory is retained for traceability
+3. Commit with delta trailers (see [Commit Convention](#commit-convention))
+4. Issue directory is retained for reference
+
+### Commit Convention
+
+Merge commits use **Conventional Commits** header + **Git Trailers** footer. This is the sole traceability mechanism — REGISTRY.md carries no history columns.
+
+**Format**:
+
+```
+<type>(<scope>): <summary>
+
+<optional body — why this change was made>
+
+Issue: <YYYYMMDD-name>
+Delta: <action> <entity> <name> [detail]
+```
+
+- **Header**: Conventional Commits — `type` is `feat`/`fix`/`refactor`/`docs`/`test`, `scope` is the affected domain(s)
+- **Issue trailer**: corresponds to the `docs/issues/` directory name
+- **Delta trailers**: one per entity change, can appear multiple times
+
+**Delta line format**: `<action> <entity> <name> [detail]`
+
+| Field | Values |
+|-------|--------|
+| action | `+` add / `~` modify / `-` remove |
+| entity | `service` / `command` / `event` / `protocol` / `depends` / `config` |
+| name | entity name |
+| detail | free-form (optional) |
+
+**Example**:
+
+```
+feat(data): add cache layer and flush command
+
+Introduce CacheLayer wrapping for DataEngine and a new FlushCache command.
+
+Issue: 20260601-cache-layer
+Delta: + service CacheService domain=data protocol=CacheProtocol
+Delta: ~ service DataEngine protocol=CacheLayer→DuckDB
+Delta: ~ depends DataEngine +CacheService
+Delta: + command FlushCache dest=data.DataEngine.FlushCache
+Delta: + protocol CacheProtocol type=CacheLayer used_by=CacheService
+```
+
+**When to use**: only on the merge commit (tests passed, REGISTRY updated). Intermediate development commits do not require delta trailers.
+
+**Searching** (all native Git commands):
+
+| What | Command |
+|------|---------|
+| All changes to an entity | `git log --grep="Delta.*DataEngine"` |
+| All added commands | `git log --grep="^Delta: + command"` |
+| All commits for an issue | `git log --format="%h %s %(trailers:key=Issue,valueonly)"` |
+| Extract all deltas | `git log --format="%h %s %(trailers:key=Delta,valueonly)"` |
+| All dependency changes | `git log --grep="^Delta: [+~-] depends"` |
 
 ### Priority
 
@@ -697,9 +765,11 @@ Only after Step 5-6 pass:
 □ REGISTRY intersection analysis in notes.md
 □ Sequence and interfaces docs complete
 □ No conflicts with existing REGISTRY entries
+□ Registry Delta section in notes.md is up to date
 □ Phase 6 tests passing (new + regression)
 □ CLI still runs end-to-end
 □ REGISTRY.md updated with new rows
+□ Merge commit uses Conventional Commits header + Delta trailers
 ```
 
 ### Stub Decremental Tracking
