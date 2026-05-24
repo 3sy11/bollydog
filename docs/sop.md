@@ -26,13 +26,18 @@ Phase 8  Iterative Delivery ──→ Replace stubs layer by layer
 
 ```
 docs/
-├── 00-scenarios.md       ← Phase 0-3: Scenarios + domain + behavior + service declarations
-├── 01-sequence.md        ← Phase 4: End-to-end sequence diagrams
-├── 02-interfaces.md      ← Phase 5: Interface signatures + data models + serialization
-└── 04-skeleton.md        ← Phase 7: Skeleton notes + config + run commands
+├── REGISTRY.md           ← Living system registry (accumulated across all issues)
+└── issues/               ← All design work lives here
+    └── YYYYMMDD-name/    ← e.g. 20260524-initial-design/
+        ├── stories.md    ← P0-P3: scenarios + domain + behavior + service
+        ├── sequence.md   ← P4: sequence diagrams
+        ├── interfaces.md ← P5: signatures + data models + serialization
+        └── notes.md      ← P7 skeleton notes + decisions
 tests/
 └── test_*.py             ← Phase 6: Behavior verification test cases
 ```
+
+**REGISTRY.md** is the single source of truth for what the system contains. Every build — including the initial one — is an issue under `docs/issues/`. Passing tests gate the merge into REGISTRY. See [Phase 8](#phase-8-iterative-delivery) for the issue-driven protocol.
 
 ---
 
@@ -143,7 +148,7 @@ Three-segment: `domain.ServiceAlias.CommandAlias`
 
 ---
 
-> **Phase 0-3 deliverables are consolidated into `docs/00-scenarios.md`**
+> **Phase 0-3 deliverables are consolidated into `stories.md` within the current issue directory**
 
 ---
 
@@ -257,7 +262,7 @@ User trigger
 
 ### Deliverable
 
-`docs/01-sequence.md` — one sequence diagram per core scenario.
+`sequence.md` (in the current issue directory) — one sequence diagram per core scenario.
 
 ---
 
@@ -326,7 +331,7 @@ Determine serialization for each data model:
 
 ### Deliverable
 
-`docs/02-interfaces.md` — interface signatures + data models + serialization mapping
+`interfaces.md` (in the current issue directory) — interface signatures + data models + serialization mapping
 
 ---
 
@@ -571,7 +576,7 @@ The `hub` fixture handles `load_from_config` → `async with hub:` → `stop + s
 
 ### Deliverable
 
-`docs/04-skeleton.md` — containing:
+`notes.md` (in the current issue directory) — containing:
 - Skeleton implementation notes (what's real, what's stub)
 - TOML configuration file content
 - System startup and verification commands
@@ -581,41 +586,102 @@ The `hub` fixture handles `load_from_config` → `async with hub:` → `stop + s
 
 ## Phase 8: Iterative Delivery
 
-After skeleton runs, flesh out layer by layer. Each iteration does one thing.
+**All development — including the initial build — is issue-driven.** The first build is the first issue (e.g. `docs/issues/20260524-initial-design/`). Each issue produces its own complete story-driven SOP document set under `docs/issues/`, and only merges into REGISTRY.md after all tests pass.
 
-### Iteration Workflow
+### System Registry (REGISTRY.md)
 
-**Each iteration starts from story narrative**, following the full Phase 0 → Phase 7 path, but most content should be reusable from existing design:
+The registry is the single source of truth for what the system currently contains. It is a structured inventory, not a design document. Content is only added to it **after** an issue passes verification.
+
+**Registry structure**:
+
+```markdown
+# System Registry
+
+## Services
+| Service | Domain | Alias | Protocol | Depends | Issue |
+
+## Commands
+| Command | Service | Destination | QoS | Issue |
+
+## Events
+| Event | Source | Subscribers | Issue |
+
+## Protocols
+| Protocol | Type | Used By | Config | Issue |
+
+## TOML Nodes
+(current complete config.toml structure)
+```
+
+After Phase 7 of the first build, register all entities into REGISTRY.md. Every subsequent issue appends rows after passing tests.
+
+### Issue Protocol
+
+Each issue follows this flow:
 
 ```
-1. Select the story scenario (or sub-scenario) for this iteration
-2. Check reuse list:
-   □ Domain partition (Phase 1) covered? → Reuse
-   □ Behavior mapping (Phase 2) covered? → Reuse
-   □ Service declaration (Phase 3) covered? → Reuse
-   □ Sequence diagram (Phase 4) covered? → Reuse
-   □ Interface signature (Phase 5) covered? → Reuse
-3. If a Phase cannot be reused, new design content is needed
-   → Explicitly list what needs to be added
-   → Supplement the corresponding Phase document
-4. Write behavior tests (Phase 6)
-5. Replace corresponding stubs (Phase 7)
-6. Verify end-to-end path
+1. Create issue directory: docs/issues/YYYYMMDD-name/
+2. Write stories in the issue directory
+3. Read REGISTRY → intersection analysis
+4. Complete issue SOP docs (P0-P5, scoped to this issue)
+5. Write tests (P6) → must pass (new + regression)
+6. Build/modify skeleton (P7) → must run
+7. Merge into REGISTRY
 ```
 
-### Reuse Assessment Table
+#### Step 1: Create Issue
 
-Fill in before each iteration:
+Create a dated directory under `docs/issues/`:
 
-| Phase | Reusable? | New Content Needed | Impact Scope |
-|-------|----------|-------------------|--------------|
-| 1 Domain Boundary | | | |
-| 2 Behavior Design | | | |
-| 3 Service Responsibility | | | |
-| 4 Sequence Diagram | | | |
-| 5 Interface Contract | | | |
+```
+docs/issues/20260524-user-auth/
+├── stories.md        ← P0-P3: scenarios + domain/behavior/service for this issue
+├── sequence.md       ← P4: sequence diagram fragments
+├── interfaces.md     ← P5: signatures + data models
+└── notes.md          ← decisions, implementation notes
+```
 
-If more than 2 Phases need new content, consider splitting into multiple iterations.
+All story-driven design for this issue lives entirely within its directory.
+
+#### Step 2: Write Stories
+
+Write the complete scenario narratives for this issue in `stories.md`, following Phase 0 rules. Then continue through Phase 1-3 in the same file — domain partition, behavior design, service responsibility, all scoped to this issue's stories.
+
+#### Step 3: Intersection Analysis
+
+Read REGISTRY.md and answer:
+
+| Question | Answer | Action |
+|----------|--------|--------|
+| New domain? | Y/N | If Y → new Service, new domain partition |
+| New Service in existing domain? | Y/N | If Y → add Service row |
+| New Command on existing Service? | Y/N | If Y → add Command row |
+| Modify existing Command signature? | Y/N | If Y → list downstream impact |
+| New Event / Subscriber? | Y/N | If Y → check Event topology |
+| New Protocol or Protocol change? | Y/N | If Y → verify MemoryProtocol testability |
+
+Record the analysis result in `notes.md`.
+
+#### Step 4: Complete Issue Docs
+
+Continue Phase 4-5 within the issue directory:
+- `sequence.md` — new or modified sequence fragments
+- `interfaces.md` — new or modified signatures and data models
+
+#### Step 5-6: Test and Build
+
+- Write behavior tests (Phase 6) for the issue
+- Build or modify skeleton (Phase 7)
+- All existing tests must still pass (regression)
+- New tests must pass
+
+#### Step 7: Merge to Registry
+
+Only after Step 5-6 pass:
+
+1. Add new rows to REGISTRY.md tables
+2. Update TOML config if new Services/Protocols were added
+3. Issue directory is retained for traceability
 
 ### Priority
 
@@ -623,16 +689,17 @@ If more than 2 Phases need new content, consider splitting into multiple iterati
 2. **Enhancement path**: Improves quality
 3. **Edge path**: Only needed in extreme cases
 
-### Per-Iteration Checklist
+### Per-Issue Checklist
 
 ```
-□ This iteration's story: [one-sentence description]
-□ Which arrow in Phase 4 sequence diagram?
-□ Is the signature defined in Phase 5? If not, add it first
-□ Need new data models? Add to Phase 5 first
-□ Which stubs replaced? Confirm with grep _stub_
-□ Phase 6 tests passing?
-□ CLI still runs end-to-end?
+□ Issue directory created: docs/issues/YYYYMMDD-name/
+□ Stories written in stories.md
+□ REGISTRY intersection analysis in notes.md
+□ Sequence and interfaces docs complete
+□ No conflicts with existing REGISTRY entries
+□ Phase 6 tests passing (new + regression)
+□ CLI still runs end-to-end
+□ REGISTRY.md updated with new rows
 ```
 
 ### Stub Decremental Tracking
