@@ -74,13 +74,17 @@ class CLI:
         load_from_config(config)
         hub = AppService._apps['bollydog.Hub']
         cmd = _resolve_command(command)
-        msg = cmd(**kwargs)
-        logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
+
         async def _run():
+            msg = cmd(**kwargs)
+            logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
             async with hub:
                 await asyncio.wait_for(hub.execute(msg), timeout=timeout or None)
-        asyncio.run(_run())
+            return msg
+
+        msg = asyncio.run(_run())
         logging.info(json.dumps(msg.model_dump(), ensure_ascii=False))
+        os._exit(0)
 
     @staticmethod
     def send(command: str, socket: str, **kwargs):
