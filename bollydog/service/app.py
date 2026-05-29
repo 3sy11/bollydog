@@ -54,7 +54,7 @@ class Hub(AppService):
         self.exit_stack.enter_context(_session_ctx_stack.push(self.session))
 
     async def on_stop(self) -> None:
-        self.queue._notify.set()
+        pass
 
     async def on_shutdown(self) -> None:
         AppService._apps.clear()
@@ -182,9 +182,9 @@ class Hub(AppService):
 
     @mode.Service.task
     async def run(self):
-        while not self.should_stop or self.queue.size > 0:
+        while not self.should_stop:
             message = await self.queue.take()
-            if not message: continue
+            if not message: break
             self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
-            asyncio.create_task(self._process_and_complete(message))
+            self.add_future(self._process_and_complete(message))
 

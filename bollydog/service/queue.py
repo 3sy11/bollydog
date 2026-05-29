@@ -32,6 +32,9 @@ class Queue(AppService):
         self._notify.set()
         return message
 
+    async def on_stop(self) -> None:
+        self._notify.set()
+
     async def take(self) -> Optional[Message]:
         while True:
             for iid, (msg, fut, status) in self._store.items():

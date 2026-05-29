@@ -169,3 +169,4 @@ dist/
 .claude
 .kilo
 .vscode
+temp/

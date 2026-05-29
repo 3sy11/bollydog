@@ -87,10 +87,11 @@ class Exchange(AppService):
 
     def _on_subscriber_done(self, handler, source_message, state):
         try:
+            if self.should_stop: return
             if state.cancelled() or state.exception(): return
             command = handler()
             command._source = source_message
-            asyncio.ensure_future(hub.dispatch(command))
+            self.add_future(hub.dispatch(command))
         except Exception as error:
             self.logger.exception(f'subscriber callback error: {error}')
 
