@@ -5,6 +5,8 @@ protocol = { module = "bollydog.adapters.memory.MemoryProtocol" }
 
 ["bollydog.service.queue.Queue"]
 
-["bollydog.service.app.Hub"]
+["bollydog.service.app.HubService"]
 router_mapping = { TaskCount = ["GET", "/api/ping"] }
-depends = ["bollydog.Exchange", "bollydog.Session", "bollydog.Queue"]
+depends = ["bollydog.Exchange", "bollydog.Queue"]
+
+["bollydog.service.executor.ExecuteService"]

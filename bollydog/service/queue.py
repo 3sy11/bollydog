@@ -43,7 +43,8 @@ class Queue(AppService):
                     return msg
             if self.should_stop: return None
             self._notify.clear()
-            await self._notify.wait()
+            coro = await self.wait(self._notify.wait())
+            if coro.stopped: return None
 
     def _archive(self, message_id: str, msg: Message, status: int):
         self._store.pop(message_id, None)

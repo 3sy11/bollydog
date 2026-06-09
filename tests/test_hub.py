@@ -25,7 +25,7 @@ async def test_hub_registry_populated(hub):
 
 async def test_hub_apps_populated(hub):
     from bollydog.models.service import AppService
-    assert 'bollydog.Hub' in AppService._apps
+    assert 'bollydog.HubService' in AppService._apps
 
 async def test_globals_clean_after_hub():
     """After hub fixture teardown, globals should be clean (via clean_globals fixture)."""

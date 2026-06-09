@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from typing import Dict
 
 import environs
@@ -13,7 +14,7 @@ from bollydog.entrypoint.uds.app import UdsService
 from bollydog.entrypoint.uds.config import ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService, BaseService
-from bollydog.service import load_from_config
+from bollydog.service import parse_config, build_services
 
 logging.info(f'load .env from {os.getcwd()}')
 environs.Env().read_env(os.getcwd() + '/.env', recurse=False, verbose=True)
@@ -37,14 +38,21 @@ class CLI:
 
     @staticmethod
     def service(config: str = None, domains: list = None):
-        load_from_config(config)
-        hub = AppService._apps['bollydog.Hub']
-        if domains: hub._domains = set(domains)
-        raise Bootstrap(hub, override_logging=False).execute_from_commandline()
+        if config:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
+        parsed = parse_config(config)
+        build_services(parsed, mode='service')
+        hub = AppService._apps['bollydog.HubService']
+        bootstrap = Bootstrap(hub, override_logging=False)
+        if domains: bootstrap._domains = set(domains)
+        bootstrap.execute_from_commandline()
 
     @staticmethod
     def ls(config: str = None):
-        load_from_config(config)
+        if config:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
+        parsed = parse_config(config)
+        build_services(parsed, mode='service')
         registry = BaseService.registry
         _base_fields = set(BaseCommand.model_fields.keys())
         alias_count: Dict[str, list] = {}
@@ -70,26 +78,26 @@ class CLI:
 
     @staticmethod
     def execute(command: str, timeout: int = 300, **kwargs):
+        """Execute a single command. timeout is unified into message.expire_time."""
         config = kwargs.pop('config', None)
-        load_from_config(config)
-        hub = AppService._apps['bollydog.Hub']
-        cmd = _resolve_command(command)
-
-        async def _run():
-            msg = cmd(**kwargs)
-            logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
-            async with hub:
-                await asyncio.wait_for(hub.execute(msg), timeout=timeout or None)
-            return msg
-
-        msg = asyncio.run(_run())
-        logging.info(json.dumps(msg.model_dump(), ensure_ascii=False))
-        os._exit(0)
+        if config:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
+        parsed = parse_config(config)
+        build_services(parsed, mode='execute')
+        cmd_cls = _resolve_command(command)
+        msg = cmd_cls(**kwargs)
+        logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
+        executor = AppService._apps['bollydog.ExecuteService']
+        bootstrap = Bootstrap(executor, override_logging=False)
+        bootstrap.run_once(msg, timeout=timeout)
 
     @staticmethod
     def send(command: str, socket: str, **kwargs):
         config = kwargs.pop('config', ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG)
-        load_from_config(config)
+        if config:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
+        parsed = parse_config(config)
+        build_services(parsed, mode='service')
         cmd_cls = _resolve_command(command)
         uds = UdsService(sock_path=socket)
         resp = asyncio.run(uds.send(cmd_cls.destination, kwargs))
@@ -97,8 +105,11 @@ class CLI:
 
     @staticmethod
     def shell(config: str = None):
-        load_from_config(config)
-        hub = AppService._apps['bollydog.Hub']
+        if config:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
+        parsed = parse_config(config)
+        build_services(parsed, mode='service')
+        hub = AppService._apps['bollydog.HubService']
         for key, cmd_cls in BaseService.registry.items():
             print(f'{key} -> {cmd_cls}')
         ns = {**globals(), 'apps': AppService._apps, 'hub': hub, 'BaseCommand': BaseCommand}

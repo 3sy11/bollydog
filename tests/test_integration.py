@@ -65,7 +65,7 @@ def test_resolve_ambiguous():
 def test_cli_ls_no_commands(capsys):
     from bollydog.entrypoint.cli import CLI
     BaseService.registry.clear()
-    with patch('bollydog.entrypoint.cli.load_from_config'):
+    with patch('bollydog.entrypoint.cli.parse_config', return_value={}), patch('bollydog.entrypoint.cli.build_services'):
         CLI.ls(config=None)
     assert 'No commands registered' in capsys.readouterr().out
 
@@ -79,7 +79,7 @@ def test_cli_ls_with_commands(capsys):
     derived = Show._derive('app.Svc')
     BaseService.registry.clear()
     BaseService.registry[derived.destination] = derived
-    with patch('bollydog.entrypoint.cli.load_from_config'):
+    with patch('bollydog.entrypoint.cli.parse_config', return_value={}), patch('bollydog.entrypoint.cli.build_services'):
         CLI.ls(config=None)
     out = capsys.readouterr().out
     assert 'Show' in out
