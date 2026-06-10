@@ -24,12 +24,12 @@ async def test_hub_registry_populated(hub):
     assert len(BaseService.registry) > 0
 
 async def test_hub_apps_populated(hub):
-    from bollydog.models.service import AppService
-    assert 'bollydog.HubService' in AppService._apps
+    from bollydog.globals import apps
+    assert 'bollydog.HubService' in apps
 
 async def test_globals_clean_after_hub():
     """After hub fixture teardown, globals should be clean (via clean_globals fixture)."""
-    from bollydog.models.service import AppService
+    from bollydog.globals import apps
     from bollydog.models.base import BaseService
-    assert len(AppService._apps) == 0
+    assert apps._get_current_object() is None
     assert len(BaseService.registry) == 0

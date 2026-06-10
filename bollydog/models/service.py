@@ -25,14 +25,10 @@ def _build_protocol(conf: dict):
 
 
 class AppService(BaseService, abstract=True):
-    _apps: ClassVar[Dict[str, 'AppService']] = {}
     protocol = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        key = f'{self.domain}.{self.alias}'
-        if key in AppService._apps: logger.warning(f'AppService._apps overwrite: {key}')
-        AppService._apps[key] = self
 
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
         if isinstance(service, Protocol) and self.protocol is None:
@@ -41,10 +37,11 @@ class AppService(BaseService, abstract=True):
 
     @classmethod
     def resolve_app(cls, message) -> Optional['AppService']:
+        from bollydog.globals import apps
         dest = (message if isinstance(message, type) else type(message)).destination
         if not dest: return None
         key = '.'.join(dest.split('.')[:2])
-        return None if key == '_._' else cls._apps.get(key)
+        return None if key == '_._' else apps.get(key)
 
     @classmethod
     def _derive(cls, alias: str = None):

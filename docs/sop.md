@@ -406,15 +406,21 @@ async def test_command_basic_flow():
         assert state['key'] != 'value'  # verify side effects
 ```
 
-**Layer 4 — E2E test** (uses `run_hub` or `hub` fixture):
+**Layer 4 — E2E test** (uses `run_hub`, `run_execute`, or `hub` fixture):
 
 ```python
-from bollydog.testing import run_hub
+from bollydog.testing import run_hub, run_execute
 
 async def test_e2e_main_flow():
     """One per feature — verify glue, not logic."""
     async with run_hub('config.toml') as hub:
         result = await hub.execute(SomeCommand(param='value'))
+        assert result is not None
+
+async def test_e2e_lightweight():
+    """Lightweight E2E without Queue/Exchange — faster, sufficient for most cases."""
+    async with run_execute('config.toml') as executor:
+        result = await executor.execute(SomeCommand(param='value'))
         assert result is not None
 ```
 
@@ -462,15 +468,16 @@ The skeleton **provides a runtime environment for verified Command behavior chai
 
 3. Service registration and configuration
    → Write config.toml
-   → load_from_config validation
+   → parse_config + build_services validation
 
 4. Hub integration
-   → Hub startup, dispatch main path
-   → _publish + Exchange broadcast verification
+   → Bootstrap(hub) startup, dispatch main path
+   → Exchange broadcast verification
 
 5. Entry point verification
-   → bollydog ls      ← confirm all Commands registered
-   → bollydog execute ← end-to-end main path
+   → bollydog ls --config config.toml         ← confirm all Commands registered
+   → bollydog execute Cmd --config config.toml ← end-to-end main path (uses ExecuteService)
+   → bollydog service --config config.toml    ← full daemon startup (uses HubService)
 ```
 
 ### TOML Configuration Template
@@ -529,18 +536,23 @@ After skeleton implementation, verify the system with these commands:
 # List all registered Commands
 bollydog ls --config config.toml
 
-# Execute a single Command end-to-end
-bollydog execute SomeCommand --config config.toml --param value
+# Execute a single Command end-to-end (timeout default 300s)
+bollydog execute SomeCommand --config config.toml --timeout 300 --param value
 
-# Start service (HTTP mode)
-bollydog serve --config config.toml --http
+# Start service (entrypoints controlled by env vars)
+ENTRYPOINT_HTTP_ENABLED=1 bollydog service --config config.toml
 
-# Start service (WebSocket mode)
-bollydog serve --config config.toml --ws
+# Start with WebSocket entrypoint
+ENTRYPOINT_WS_ENABLED=1 bollydog service --config config.toml
 
-# Start service (UDS mode)
-bollydog serve --config config.toml --uds /tmp/myapp.sock
+# Start with UDS entrypoint
+ENTRYPOINT_UDS_ENABLED=1 bollydog service --config config.toml
+
+# Filter domains (only start specific domains)
+bollydog service --config config.toml --domains myapp,infra
 ```
+
+**Note**: Entrypoints (HTTP/WS/UDS) are toggled via environment variables (`ENTRYPOINT_HTTP_ENABLED`, `ENTRYPOINT_WS_ENABLED`, `ENTRYPOINT_UDS_ENABLED`), not CLI flags. The CLI command is `service` (not `serve`).
 
 ### End-to-End Tests
 
@@ -548,15 +560,21 @@ After skeleton runs, add a few E2E tests. Cosmic Python's guiding principle:
 
 > **One E2E test per feature**. Goal is to verify all components are glued correctly, not to verify business logic (that's Phase 6's job).
 
-Use `run_hub` context manager or the `hub` pytest fixture:
+Use `run_hub` / `run_execute` context manager or the `hub` pytest fixture:
 
 ```python
-from bollydog.testing import run_hub
+from bollydog.testing import run_hub, run_execute
 
 async def test_e2e_main_flow():
     """Verify main path: [corresponding Phase 0 core scenario]"""
     async with run_hub('config.toml') as hub:
         result = await hub.execute(SomeCommand(param='value'))
+        assert result is not None
+
+async def test_e2e_execute_mode():
+    """Lightweight E2E: no Queue/Exchange, faster iteration."""
+    async with run_execute('config.toml') as executor:
+        result = await executor.execute(SomeCommand(param='value'))
         assert result is not None
 
 # Or with conftest fixture:
@@ -565,12 +583,13 @@ async def test_e2e_via_fixture(hub):
     assert result is not None
 ```
 
-The `hub` fixture handles `load_from_config` → `async with hub:` → `stop + service_reset` → `on_shutdown` (clears `_apps`, `registry`). The `clean_globals` autouse fixture cleans `LocalStack` after every test.
+The `hub` fixture handles `parse_config` + `build_services` → `async with hub:` → `stop + service_reset` → `on_shutdown` (clears `apps`, `BaseService.registry`). The `clean_globals` autouse fixture cleans `LocalStack` after every test.
 
 ### Checkpoints
 
-- `bollydog ls` shows all expected Commands
-- `bollydog execute` runs main path end-to-end
+- `bollydog ls --config config.toml` shows all expected Commands
+- `bollydog execute SomeCommand --config config.toml` runs main path end-to-end
+- `bollydog service --config config.toml` starts daemon successfully (with appropriate entrypoint env vars)
 - Phase 4 sequence diagram main paths are all traceable
 - Stub count is known and finite
 

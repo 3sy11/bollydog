@@ -12,7 +12,6 @@ import mode
 
 from bollydog.globals import _hub_ctx_stack, _session_ctx_stack
 from bollydog.models.base import BaseCommand as Message, BaseEvent, BaseService
-from bollydog.models.service import AppService
 
 
 class Bootstrap(mode.Worker):
@@ -20,14 +19,18 @@ class Bootstrap(mode.Worker):
     _message: Optional[Message] = None
     _domains: Optional[set] = None
 
+    def __init__(self, *services, apps: dict = None, **kwargs):
+        self.apps = apps or {}
+        super().__init__(*services, **kwargs)
+
     def on_init_dependencies(self) -> Iterable[mode.ServiceT]:
         return self.services
 
     async def on_first_start(self) -> None:
         self.install_signal_handlers()
-        session = AppService._apps.get('bollydog.Session')
+        session = self.apps.get('bollydog.Session')
         if session: self.exit_stack.enter_context(_session_ctx_stack.push(session))
-        hub = AppService._apps.get('bollydog.HubService')
+        hub = self.apps.get('bollydog.HubService')
         if hub: self.exit_stack.enter_context(_hub_ctx_stack.push(hub))
         await super(Bootstrap, self).on_first_start()
 
@@ -35,7 +38,7 @@ class Bootstrap(mode.Worker):
         pass
 
     async def on_started(self) -> None:
-        for key, svc in list(AppService._apps.items()):
+        for key, svc in list(self.apps.items()):
             if svc in (s for s in self.services): continue
             if self._domains and key.split('.')[0] not in self._domains: continue
             await svc.maybe_start()
@@ -53,7 +56,7 @@ class Bootstrap(mode.Worker):
             await super(Bootstrap, self).on_started()
 
     def _log_registry(self):
-        for sid, svc in list(AppService._apps.items()):
+        for sid, svc in list(self.apps.items()):
             if svc.commands: self.logger.info(f'[{sid}] {type(svc).__name__} | commands={svc.commands}')
         registry = BaseService.registry
         if registry:
@@ -62,7 +65,7 @@ class Bootstrap(mode.Worker):
             self.logger.info(f'registry({len(registry)}):\n  {reg}')
 
     async def on_shutdown(self) -> None:
-        AppService._apps.clear()
+        self.apps.clear()
         BaseService.registry.clear()
 
     def run_once(self, message: Message, timeout: int = 300):

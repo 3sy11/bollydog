@@ -12,7 +12,12 @@ Async microservice framework built on `mode`. Commands as executable units, Hub 
 ```
 CLI / HTTP / WS / UDS
         │
-   load_from_config(toml)
+   parse_config(toml) + build_services(mode)
+        │
+   ┌────▼─────────┐
+   │  Bootstrap   │── mode.Worker, unified entry for service/execute
+   │  (Worker)    │── pushes hub/session globals, starts all apps
+   └────┬─────────┘
         │
    ┌────▼────┐
    │   Hub   │── Exchange (pub/sub router)
@@ -27,7 +32,7 @@ CLI / HTTP / WS / UDS
    └───────────────┘
 ```
 
-**Key types**: `BaseCommand` (callable action), `BaseEvent` (fire-and-forget), `AppService` (resource owner), `Protocol` (data access), `Hub` (dispatcher + lifecycle).
+**Key types**: `BaseCommand` (callable action), `BaseEvent` (fire-and-forget), `AppService` (resource owner), `Protocol` (data access), `HubService` (dispatcher + lifecycle), `Bootstrap` (unified Worker entry), `ExecuteService` (lightweight one-shot executor).
 
 ## Quick Start
 
@@ -63,18 +68,39 @@ bollydog execute Hello --config config.toml --name bollydog
 
 ## Dispatch Pipeline
 
-`Hub.dispatch(message)` — unified Queue path:
+### Two execution modes
 
-All messages (Command + Event) go through `queue.put()` -> consumer `queue.take()` -> `create_task(_process_and_complete)`.
-`execute(msg)` = `dispatch(msg)` + `await msg.state` (syntactic sugar).
-Exchange subscriber callbacks bind only on Events (`isinstance(message, BaseEvent)`).
+| Mode | Entry | Runner | Queue | Exchange | Use Case |
+|------|-------|--------|-------|----------|----------|
+| **service** | `Bootstrap(hub)` | `HubService` | Yes | Yes | Long-running daemon, full pub/sub |
+| **execute** | `Bootstrap(executor)` | `ExecuteService` | No | No | One-shot CLI command execution |
+
+### CommandRunnerMixin (shared logic)
+
+Both `HubService` and `ExecuteService` extend `CommandRunnerMixin`. Subclass must implement `_submit(message) -> Any` to route sub-commands (Queue pipeline vs inline recursive).
 
 `_execute(msg, runner)` runs before-hooks -> runner -> after-hooks.
 
 - **`_run`**: coroutine runner with retry. Detects handoff (return Command instance).
 - **`_run_gen`**: async generator runner. Detects `yield Command` (sequential), `yield [cmd, ...]` (parallel fan-out/fan-in), `yield value` (stream).
-- **`_with_context`**: pushes `app`, `protocol`, `message` globals per request scope.
-- **`execute`**: CLI direct mode. No queue, no publish.
+- **`_with_context`**: asynccontextmanager, pushes `app`, `protocol`, `message` globals per request scope.
+- **`_run_with_context`**: combines `_with_context` + `_execute`, convenience method.
+
+### HubService (service mode)
+
+`Hub.dispatch(message)` — unified Queue path:
+
+All messages (Command + Event) go through `exchange.bind_subscriber_callbacks` -> `queue.put()` -> consumer `queue.take()` -> `create_task(_process_and_complete)`.
+`execute(msg)` = `dispatch(msg)` + `await msg.state` (syntactic sugar).
+Exchange subscriber callbacks bind only on Events (`isinstance(message, BaseEvent)`).
+
+Hub accesses Exchange and Queue lazily via `apps` proxy (not via `on_init_dependencies`).
+
+### ExecuteService (execute mode)
+
+Lightweight one-shot executor — no Queue, no Exchange, no consumer loop.
+
+`execute(message)` directly calls `_with_context` + `_execute`. Sub-commands (`_submit`) are executed inline recursively. Target AppService + Protocol are started on demand (`maybe_start`).
 
 ## Command Patterns
 
@@ -151,21 +177,24 @@ Handoff inherits `trace_id`, merges `data`, dispatches transparently. Keep chain
 
 | Name | Type | Scope | Description |
 |------|------|-------|-------------|
-| `hub` | Hub | singleton | Central dispatcher |
+| `hub` | HubService | singleton | Central dispatcher |
 | `session` | Session | singleton | KV session via Protocol |
+| `apps` | DictProxy | singleton | Service registry (`{domain.alias: svc}`) |
 | `app` | AppService | per-request | Resolved from `destination` |
 | `protocol` | Protocol | per-request | From current `app.protocol` |
 | `message` | BaseCommand | per-request | Current executing command |
 
 ```python
-from bollydog.globals import hub, app, protocol, session, message
+from bollydog.globals import hub, app, apps, protocol, session, message
 ```
+
+`apps` is a `DictProxy` over `LocalStack` — forwards dict operations (`__getitem__`, `get`, `values`, etc.) to the underlying service registry dict pushed by `build_services`.
 
 ## Destination & Topic
 
 Format: `domain.ServiceAlias.CommandAlias` (3-part topic).
 
-- Unbound commands default to `_._.CommandAlias`; `_load_commands` rewrites to `{domain}.{alias}.{CommandAlias}`.
+- Unbound commands default to `_._.CommandAlias`; `_load_commands` calls `cmd._derive(dest_prefix)` to create a derived subclass with isolated destination (`{domain}.{alias}.{CommandAlias}`), original class unchanged.
 - `AppService.resolve_app(msg)` takes first two segments to find the owning service.
 - Exchange uses full destination as topic for pattern matching.
 
@@ -199,7 +228,7 @@ TOML:
 - Callback signature: `async def method(self, message)` — self = AppService instance, message = Command instance.
 - AMQP-style wildcards: `*` = one segment, `#` = zero or more.
 - Multiple instances subscribing to the same topic → each instance's handlers dispatch independently in parallel.
-- `_publish` fires matched handlers with `add_event(original_msg)`.
+- `bind_subscriber_callbacks(msg)` adds done-callbacks to Event's state Future. When Event completes, `_on_subscriber_done` creates a callback Command with `_source = original_msg` and dispatches it.
 
 ## Hooks (before/after)
 
@@ -220,10 +249,12 @@ Before-hooks run in order; after-hooks in reverse. Non-None return from before s
 Global singleton (`globals.session`). Thin KV layer over Protocol (default `MemoryProtocol`).
 
 ```python
-await session.get(key)                   # -> dict
+await session.get(key)                            # -> dict
 await session.set(key, data)
-await session.append(key, 'turns', msg)  # list append
-turns = await session.history(key)       # -> list
+await session.delete(key)                         # remove key
+await session.append(key, 'turns', msg)           # list append to field
+turns = await session.history(key)                # -> list (field='turns')
+turns = await session.history(key, field='msgs', last_n=10)  # last N items
 ```
 
 Business logic chooses the key: `trace_id` for conversations, `created_by` for user scope, etc.
@@ -247,8 +278,10 @@ class DataEngine(AppService):
 
 Key rules:
 - `protocol` is auto-assigned when `add_dependency` receives a `Protocol` instance.
-- `_apps` ClassVar is the global service registry; `__init__` auto-registers.
-- `create_from(**conf)` merges TOML config into ClassVar (`commands`, `router_mapping`, `subscriber`).
+- Service registry is the `apps` DictProxy (`globals.apps`), keyed by `{domain}.{alias}`. Populated by `build_services`.
+- `BaseService.registry` is the command registry (ClassVar dict, `{destination: cmd_cls}`).
+- `create_from(**conf)` calls `_derive(alias)` for ClassVar isolation, then merges TOML config (`commands`, `router_mapping`, `subscriber`, `depends`).
+- `resolve_app(message)` uses first two segments of `destination` to find the owning service from `apps`.
 - Commands access the owning service via `globals.app`; never reach into sub-services.
 
 ## Protocol System
@@ -404,29 +437,56 @@ min_strength = 0.6        # ← same, remove it
 
 ### Service lifecycle
 
+Configuration loading is split into two phases: `parse_config` (pure I/O) + `build_services` (instantiation + wiring):
+
 ```
-load_from_config(config)
-  1. Parse TOML -> cls.create_from(**conf) per section
-  2. Create entrypoint services (HTTP/WS/UDS if enabled)
+parse_config(config)
+  1. Read hub config.toml (framework defaults)
+  2. Read user config.toml, merge (user overrides framework)
+  → returns plain dict
+
+build_services(parsed, mode='service'|'execute')
+  1. Iterate TOML sections -> cls.create_from(**conf) per section
+     - mode='execute': skip HubService, Exchange, Queue (SKIP_IN_EXECUTE set)
+     - mode='service': create all + entrypoint services (HTTP/WS/UDS if env enabled)
+  2. Push apps dict onto _apps_ctx_stack (globals.apps available)
   3. Resolve depends: string refs -> [AppService instances], add_dependency for lifecycle ordering
   4. _load_commands per service class (deferred, once)
+  → returns apps dict {domain.alias: svc}
 
-Hub()
-  on_init_dependencies -> Exchange, Session, Queue
-  on_first_start       -> push globals (hub, session)
+Bootstrap(mode.Worker)
+  __init__(*services, apps=apps)
+  on_first_start       -> install signals, push session/hub globals onto LocalStack
+  on_started           -> maybe_start all apps (respects _domains filter), log registry
+                       -> if _message set (execute mode): execute -> stop
+  on_shutdown          -> clear apps, clear BaseService.registry
+
+HubService(CommandRunnerMixin, AppService)
+  on_first_start       -> push hub onto _hub_ctx_stack
   on_start             -> _load_commands for Hub
-  on_started           -> maybe_start all AppService._apps
+  exchange/queue       -> lazy property, resolved from apps proxy
 ```
+
+Legacy wrapper `load_from_config(config)` = `build_services(parse_config(config), mode='service')` — still usable but prefer the two-phase API.
 
 ## CLI
 
 ```bash
 bollydog service --config config.toml [--domains myapp,infra]
 bollydog ls --config config.toml
-bollydog execute <Command> --config config.toml [--param value]
+bollydog execute <Command> --config config.toml [--timeout 300] [--param value]
 bollydog shell --config config.toml
 bollydog send <Command> <socket_path> [--config ...]
 ```
+
+### Command resolution (`_resolve_command`)
+
+CLI uses fuzzy matching: exact destination → suffix match (`*.Name`) → case-insensitive alias. Ambiguous matches raise `KeyError` with candidate list.
+
+### `service` vs `execute` mode
+
+- `service`: `parse_config` → `build_services(mode='service')` → `Bootstrap(hub).execute_from_commandline()` — daemon, full lifecycle.
+- `execute`: `parse_config` → `build_services(mode='execute')` → `Bootstrap(executor).run_once(msg, timeout)` — one-shot, stops after completion. `timeout` parameter is unified into `message.expire_time`.
 
 ## Environment Variables
 
@@ -504,7 +564,7 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 ### Test utilities (`bollydog/testing.py`)
 
 ```python
-from bollydog.testing import command_context, run_command, run_hub
+from bollydog.testing import command_context, run_command, run_hub, run_execute
 
 # Layer 3: Command unit test
 with command_context(app=my_app, protocol=my_proto):
@@ -512,16 +572,20 @@ with command_context(app=my_app, protocol=my_proto):
 
 result = await run_command(cmd, app=my_app, protocol=my_proto)
 
-# Layer 4: E2E test
+# Layer 4: E2E test (full Hub + Queue + Exchange)
 async with run_hub('config.toml') as hub:
     result = await hub.execute(MyCommand(x=1))
+
+# Layer 4 alternative: lightweight E2E (ExecuteService, no Queue/Exchange)
+async with run_execute('config.toml') as executor:
+    result = await executor.execute(MyCommand(x=1))
 ```
 
 ### Fixtures (`tests/conftest.py`)
 
 | Fixture | Scope | Purpose |
 |---------|-------|---------|
-| `clean_globals` | autouse | Clears `_apps`, `registry`, all `LocalStack` after each test |
+| `clean_globals` | autouse | Clears `apps`, `BaseService.registry`, all `LocalStack` after each test |
 | `memory_protocol` | per-test | Standalone `MemoryProtocol` with lifecycle |
 | `hub` | per-test | Full Hub via `run_hub()`, loads `bollydog/service/config.toml` |
 

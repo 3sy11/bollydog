@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import mode
 
-from bollydog.globals import _hub_ctx_stack
+from bollydog.globals import _hub_ctx_stack, apps as _apps_proxy
 from bollydog.models.base import BaseCommand as Message, BaseEvent
 from bollydog.models.service import AppService
 from bollydog.service.config import DOMAIN
@@ -36,11 +36,11 @@ class HubService(CommandRunnerMixin, AppService):
 
     @property
     def exchange(self) -> Exchange:
-        if not self._exchange: self._exchange = AppService._apps['bollydog.Exchange']
+        if not self._exchange: self._exchange = _apps_proxy['bollydog.Exchange']
         return self._exchange
     @property
     def queue(self) -> Queue:
-        if not self._queue: self._queue = AppService._apps['bollydog.Queue']
+        if not self._queue: self._queue = _apps_proxy['bollydog.Queue']
         return self._queue
 
     async def on_first_start(self) -> None:

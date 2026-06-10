@@ -34,10 +34,9 @@ async def run_hub(config: str = None):
     # HubService.__aexit__ -> stop + service_reset; Bootstrap.on_shutdown clears _apps + registry
     """
     from bollydog.service import parse_config, build_services
-    from bollydog.models.service import AppService
     parsed = parse_config(config)
-    build_services(parsed, mode='service')
-    _hub = AppService._apps['bollydog.HubService']
+    apps = build_services(parsed, mode='service')
+    _hub = apps['bollydog.HubService']
     async with _hub:
         yield _hub
 
@@ -50,9 +49,8 @@ async def run_execute(config: str = None):
         result = await executor.execute(MyCommand(x=1))
     """
     from bollydog.service import parse_config, build_services
-    from bollydog.models.service import AppService
     parsed = parse_config(config)
-    build_services(parsed, mode='execute')
-    _executor = AppService._apps['bollydog.ExecuteService']
+    apps = build_services(parsed, mode='execute')
+    _executor = apps['bollydog.ExecuteService']
     async with _executor:
         yield _executor

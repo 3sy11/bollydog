@@ -16,8 +16,8 @@ Two reference documents drive development. **Do NOT read them in full** — use 
 
 | Document | Lines | Role |
 |----------|-------|------|
-| [sop.md](sop.md) | 838 | 8-Phase workflow — what to do, in what order |
-| [spec.md](spec.md) | 555 | Architecture, API, constraints — how things work |
+| [sop.md](sop.md) | 857 | 8-Phase workflow — what to do, in what order |
+| [spec.md](spec.md) | 619 | Architecture, API, constraints — how things work |
 
 **Rule**: Every SOP step must comply with spec.md. Conflicts -> spec.md wins.
 
@@ -32,34 +32,34 @@ Two reference documents drive development. **Do NOT read them in full** — use 
 | P3 Service Responsibility | 155-220 | Protocol composition, lifecycle hooks |
 | P4 End-to-End Tracing | 221-268 | Drawing sequence diagrams |
 | P5 Interface Contract | 269-337 | Signatures, data models, serialization |
-| P6 Behavior Verification (TDD) | 338-445 | Writing tests, test pyramid |
-| P7 Walking Skeleton | 446-586 | Building skeleton, TOML config, stubs |
-| P8 Iterative Delivery | 587-783 | Issue protocol, registry, commit convention |
-| Design Audit | 785-801 | Quality gate checklist |
-| Test Pyramid | 802-825 | Layer 1-4 test structure |
-| Quick Reference | 826-838 | Phase summary table |
+| P6 Behavior Verification (TDD) | 338-451 | Writing tests, test pyramid |
+| P7 Walking Skeleton | 452-605 | Building skeleton, TOML config, stubs, run_execute |
+| P8 Iterative Delivery | 606-803 | Issue protocol, registry, commit convention |
+| Design Audit | 804-820 | Quality gate checklist |
+| Test Pyramid | 821-844 | Layer 1-4 test structure |
+| Quick Reference | 845-857 | Phase summary table |
 
 ### spec.md Index
 
 | Section | Lines | Read When |
 |---------|-------|-----------|
-| Architecture Overview | 10-31 | Understanding system structure |
-| Quick Start | 32-63 | First-time setup |
-| Dispatch Pipeline | 64-78 | Hub dispatch flow |
-| Command Patterns (4 types) | 79-149 | Designing commands |
-| Globals (request-scoped) | 150-163 | Using hub/session context vars |
-| Destination & Topic | 164-171 | Naming conventions |
-| Exchange (pub/sub) | 172-203 | Subscriber/fan-out design |
-| Hooks (before/after) | 204-217 | Middleware hooks |
-| Session | 218-230 | Session management |
-| AppService Design | 231-253 | Service class design |
-| Protocol System | 254-341 | Base, ABC, implementations, composites |
-| TOML Configuration | 342-420 | Config file structure, create_from |
-| CLI | 421-430 | Command-line interface |
-| Environment Variables | 431-482 | Env var naming, all variables |
-| Design Rules | 483-492 | Hard constraints |
-| Testing Strategy | 493-547 | Four-layer model, fixtures, utilities |
-| Troubleshooting | 548-555 | Common issues |
+| Architecture Overview | 10-36 | Understanding system structure (Bootstrap, Hub, ExecuteService) |
+| Quick Start | 37-68 | First-time setup |
+| Dispatch Pipeline | 69-103 | Two modes, CommandRunnerMixin, Hub vs ExecuteService |
+| Command Patterns (4 types) | 105-174 | Designing commands |
+| Globals (request-scoped) | 176-192 | Using hub/session/apps context vars |
+| Destination & Topic | 193-200 | Naming conventions, _derive |
+| Exchange (pub/sub) | 201-232 | Subscriber/fan-out design |
+| Hooks (before/after) | 233-246 | Middleware hooks |
+| Session | 247-261 | Session management (get/set/delete/history) |
+| AppService Design | 262-286 | Service class design, apps registry |
+| Protocol System | 287-374 | Base, ABC, implementations, composites |
+| TOML Configuration | 375-471 | Config file structure, parse_config, build_services, Bootstrap |
+| CLI | 472-490 | Command-line interface, fuzzy resolve, service vs execute |
+| Environment Variables | 491-542 | Env var naming, all variables |
+| Design Rules | 543-552 | Hard constraints |
+| Testing Strategy | 553-611 | Four-layer model, fixtures, run_hub/run_execute |
+| Troubleshooting | 612-619 | Common issues |
 
 ## Workflow Summary
 
@@ -98,7 +98,8 @@ Delta: ~ command DoThing dest=x.Foo.DoThing
 4. AppService must not dispatch — only Commands dispatch
 5. Protocol must be replaceable with MemoryProtocol for testing
 6. `module` is a framework-reserved TOML key
-7. Layer 1-3 tests: no Hub; Layer 4: `run_hub` fixture
+7. Layer 1-3 tests: no Hub; Layer 4: `run_hub` or `run_execute` fixture
+8. CLI command is `service` (not `serve`); entrypoints toggled by env vars
 
 ## Deliverables
 

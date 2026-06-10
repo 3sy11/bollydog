@@ -7,6 +7,7 @@ import asyncio
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'example'))
 
+from bollydog.globals import apps
 from bollydog.models.base import BaseCommand, BaseEvent, BaseService
 from bollydog.models.service import AppService
 
@@ -156,7 +157,7 @@ async def test_event_triggers_subscriber(hub):
             received.append(message.data)
 
     svc = _TestService()
-    AppService._apps['test._TestService'] = svc
+    apps['test._TestService'] = svc
     await hub.exchange.on_started()
 
     class ThingDone(BaseEvent):

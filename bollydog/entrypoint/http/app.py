@@ -15,7 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse, StreamingResponse
 
-from bollydog.globals import hub, _hub_ctx_stack
+from bollydog.globals import hub, apps as _apps_proxy, _hub_ctx_stack
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService, BaseService
 
@@ -147,7 +147,7 @@ class HttpService(AppService):
 
     async def on_start(self) -> None:
         merged = {}
-        for app in AppService._apps.values():
+        for app in _apps_proxy.values():
             merged.update(self._collect_router_mappings(app))
         for key, command_cls in BaseService.registry.items():
             alias = command_cls.alias
