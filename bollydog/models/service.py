@@ -3,6 +3,7 @@ from typing import ClassVar, Dict, List, Optional
 
 from mode.utils.imports import smart_import
 
+from bollydog.globals import services
 from bollydog.models.base import BaseCommand, BaseEvent, BaseService
 from bollydog.models.protocol import Protocol
 
@@ -37,11 +38,10 @@ class AppService(BaseService, abstract=True):
 
     @classmethod
     def resolve_app(cls, message) -> Optional['AppService']:
-        from bollydog.globals import apps
         dest = (message if isinstance(message, type) else type(message)).destination
         if not dest: return None
         key = '.'.join(dest.split('.')[:2])
-        return None if key == '_._' else apps.get(key)
+        return None if key == '_._' else services.get(key)
 
     @classmethod
     def _derive(cls, alias: str = None):

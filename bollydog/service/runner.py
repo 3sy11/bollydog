@@ -19,7 +19,8 @@ from bollydog.models.service import AppService
 
 class CommandRunnerMixin:
 
-    def _init_runner(self):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._before, self._after = [], []
 
     async def _submit(self, message: Message) -> Any:

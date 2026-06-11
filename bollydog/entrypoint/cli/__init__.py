@@ -1,8 +1,8 @@
+"""CLI entry point for bollydog framework."""
 import asyncio
 import json
 import logging
 import os
-import sys
 from typing import Dict
 
 import environs
@@ -12,17 +12,14 @@ from ptpython.repl import embed
 from bollydog.bootstrap import Bootstrap
 from bollydog.entrypoint.uds.app import UdsService
 from bollydog.entrypoint.uds.config import ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG
-from bollydog.globals import apps as _apps_proxy
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import BaseService
-from bollydog.service import parse_config, build_services
 
-logging.info(f'load .env from {os.getcwd()}')
 environs.Env().read_env(os.getcwd() + '/.env', recurse=False, verbose=True)
 
 
 def _resolve_command(name: str):
-    """CLI-level fuzzy resolve: exact -> suffix -> case-insensitive, with hints on ambiguity."""
+    """Fuzzy resolve: exact -> suffix -> case-insensitive, with hints on ambiguity."""
     registry = BaseService.registry
     if name in registry: return registry[name]
     matches = {k: v for k, v in registry.items() if k.endswith(f'.{name}')}
@@ -38,22 +35,12 @@ def _resolve_command(name: str):
 class CLI:
 
     @staticmethod
-    def service(config: str = None, domains: list = None):
-        if config:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
-        parsed = parse_config(config)
-        apps = build_services(parsed, mode='service')
-        hub = apps['bollydog.HubService']
-        bootstrap = Bootstrap(hub, apps=apps, override_logging=False)
-        if domains: bootstrap._domains = set(domains)
-        bootstrap.execute_from_commandline()
+    def service(config: str = None):
+        Bootstrap(config=config, override_logging=False).start_all()
 
     @staticmethod
     def ls(config: str = None):
-        if config:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
-        parsed = parse_config(config)
-        apps = build_services(parsed, mode='service')
+        bootstrap = Bootstrap(config=config, override_logging=False)
         registry = BaseService.registry
         _base_fields = set(BaseCommand.model_fields.keys())
         alias_count: Dict[str, list] = {}
@@ -78,28 +65,16 @@ class CLI:
             print(f'{name:<{w0}}  {topic:<{w1}}  {params}')
 
     @staticmethod
-    def execute(command: str, timeout: int = 300, **kwargs):
-        """Execute a single command. timeout is unified into message.expire_time."""
-        config = kwargs.pop('config', None)
-        if config:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
-        parsed = parse_config(config)
-        build_services(parsed, mode='execute')
+    def execute(command: str, config: str, timeout: int = 300, **kwargs):
+        """Execute a single command. config is required."""
+        bootstrap = Bootstrap(config=config, override_logging=False)
         cmd_cls = _resolve_command(command)
         msg = cmd_cls(**kwargs)
-        logging.info(f'{msg.trace_id[:2]}{msg.parent_span_id[:2]}:{msg.span_id[:2]} prepare {msg.alias}')
-        apps = build_services(parsed, mode='execute')
-        executor = apps['bollydog.ExecuteService']
-        bootstrap = Bootstrap(executor, apps=apps, override_logging=False)
         bootstrap.run_once(msg, timeout=timeout)
 
     @staticmethod
-    def send(command: str, socket: str, **kwargs):
-        config = kwargs.pop('config', ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG)
-        if config:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
-        parsed = parse_config(config)
-        apps = build_services(parsed, mode='service')
+    def send(command: str, socket: str, config: str = ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG, **kwargs):
+        bootstrap = Bootstrap(config=config, override_logging=False)
         cmd_cls = _resolve_command(command)
         uds = UdsService(sock_path=socket)
         resp = asyncio.run(uds.send(cmd_cls.destination, kwargs))
@@ -107,14 +82,11 @@ class CLI:
 
     @staticmethod
     def shell(config: str = None):
-        if config:
-            sys.path.insert(0, os.path.dirname(os.path.abspath(config)))
-        parsed = parse_config(config)
-        apps = build_services(parsed, mode='service')
-        hub = apps['bollydog.HubService']
+        bootstrap = Bootstrap(config=config, override_logging=False)
         for key, cmd_cls in BaseService.registry.items():
             print(f'{key} -> {cmd_cls}')
-        ns = {**globals(), 'apps': apps, 'hub': hub, 'BaseCommand': BaseCommand}
+        hub = bootstrap.services['bollydog.HubService']
+        ns = {**globals(), 'services': bootstrap.services, 'hub': hub, 'BaseCommand': BaseCommand}
         async def _run():
             async with hub:
                 await embed(ns, ns, return_asyncio_coroutine=True, history_filename='.ptpython.tmp', patch_stdout=True)

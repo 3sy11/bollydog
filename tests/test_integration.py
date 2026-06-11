@@ -65,7 +65,7 @@ def test_resolve_ambiguous():
 def test_cli_ls_no_commands(capsys):
     from bollydog.entrypoint.cli import CLI
     BaseService.registry.clear()
-    with patch('bollydog.entrypoint.cli.parse_config', return_value={}), patch('bollydog.entrypoint.cli.build_services'):
+    with patch('bollydog.entrypoint.cli.Bootstrap'):
         CLI.ls(config=None)
     assert 'No commands registered' in capsys.readouterr().out
 
@@ -79,7 +79,7 @@ def test_cli_ls_with_commands(capsys):
     derived = Show._derive('app.Svc')
     BaseService.registry.clear()
     BaseService.registry[derived.destination] = derived
-    with patch('bollydog.entrypoint.cli.parse_config', return_value={}), patch('bollydog.entrypoint.cli.build_services'):
+    with patch('bollydog.entrypoint.cli.Bootstrap'):
         CLI.ls(config=None)
     out = capsys.readouterr().out
     assert 'Show' in out
@@ -89,12 +89,11 @@ def test_cli_ls_with_commands(capsys):
 # ─── Bootstrap ────────────────────────────────────────────────
 
 def test_bootstrap_init():
-    """Bootstrap can be instantiated with a real Service."""
+    """Bootstrap can be instantiated without config."""
     from bollydog.bootstrap import Bootstrap
-    import mode
-    svc = mode.Service()
-    b = Bootstrap(svc, override_logging=False)
+    b = Bootstrap(override_logging=False)
     assert b is not None
+    assert isinstance(b.services, dict)
 
 
 # ─── HttpService mock ────────────────────────────────────────

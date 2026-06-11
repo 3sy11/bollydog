@@ -1,9 +1,9 @@
 """ExecuteService: lightweight one-shot command executor without Queue/Exchange."""
 from __future__ import annotations
 
+from bollydog.config import DOMAIN
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
-from bollydog.service.config import DOMAIN
 from bollydog.service.runner import CommandRunnerMixin
 
 
@@ -15,7 +15,6 @@ class ExecuteService(CommandRunnerMixin, AppService):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._init_runner()
 
     async def on_start(self) -> None:
         if type(self).commands: type(self)._load_commands(type(self).commands)

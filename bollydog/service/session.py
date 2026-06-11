@@ -1,5 +1,5 @@
+from bollydog.config import DOMAIN
 from bollydog.models.service import AppService
-from bollydog.service.config import DOMAIN
 
 
 class Session(AppService):

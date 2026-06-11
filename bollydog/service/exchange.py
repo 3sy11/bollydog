@@ -2,10 +2,10 @@ import asyncio
 from collections import defaultdict
 from functools import partial
 
-from bollydog.globals import hub, apps as _apps_proxy
+from bollydog.config import DOMAIN
+from bollydog.globals import hub, services
 from bollydog.models.base import BaseCommand, BaseEvent
 from bollydog.models.service import AppService
-from bollydog.service.config import DOMAIN
 
 
 def _match(pp, tp, pi, ti):
@@ -45,7 +45,7 @@ class Exchange(AppService):
         self._patterns = defaultdict(set)
 
     async def on_started(self) -> None:
-        for svc in _apps_proxy.values():
+        for svc in services.values():
             for topic, methods in svc.subscriber.items():
                 methods = [methods] if isinstance(methods, str) else methods
                 for method_name in methods:

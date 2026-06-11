@@ -5,18 +5,18 @@
 - hub: full E2E Hub with config loaded
 """
 import pytest
-from bollydog.models.base import BaseService
 from bollydog.globals import (
     _hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack,
-    _session_ctx_stack, _app_ctx_stack, _apps_ctx_stack,
+    _session_ctx_stack, _app_ctx_stack, _services_ctx_stack,
 )
+from bollydog.models.base import BaseService
 
 
 @pytest.fixture(autouse=True)
 async def clean_globals():
     yield
     BaseService.registry.clear()
-    for stack in (_hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack, _session_ctx_stack, _app_ctx_stack, _apps_ctx_stack):
+    for stack in (_hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack, _session_ctx_stack, _app_ctx_stack, _services_ctx_stack):
         while stack.top is not None:
             stack.pop()
 

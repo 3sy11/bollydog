@@ -229,15 +229,12 @@ async def test_socket_service_unsubscribe():
 
 def test_bootstrap_init():
     from bollydog.bootstrap import Bootstrap
-    import mode
-    svc = mode.Service()
-    b = Bootstrap(svc, override_logging=False)
+    b = Bootstrap(override_logging=False)
     assert b is not None
+    assert isinstance(b.services, dict)
 
-def test_bootstrap_on_init_dependencies():
+def test_bootstrap_services_populated():
     from bollydog.bootstrap import Bootstrap
-    import mode
-    svc = mode.Service()
-    b = Bootstrap(svc, override_logging=False)
-    deps = b.on_init_dependencies()
-    assert svc in deps
+    b = Bootstrap(override_logging=False)
+    assert 'bollydog.HubService' in b.services
+    assert 'bollydog.ExecuteService' in b.services

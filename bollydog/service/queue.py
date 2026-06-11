@@ -3,10 +3,10 @@ import logging
 from collections import OrderedDict, deque
 from typing import Optional, Tuple
 
+from bollydog.config import DOMAIN, QUEUE_MAX_SIZE, QUEUE_HISTORY_MAX_SIZE
+from bollydog.exception import ServiceMaxSizeOfQueueError
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
-from bollydog.service.config import QUEUE_MAX_SIZE, QUEUE_HISTORY_MAX_SIZE, DOMAIN
-from bollydog.exception import ServiceMaxSizeOfQueueError
 
 logger = logging.getLogger(__name__)
 
