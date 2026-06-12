@@ -1,15 +1,32 @@
 """Hub advanced tests — hooks, handoff, gather, async generator, subscriber.
 
 All tests use the `hub` fixture (E2E via run_hub).
-Commands are defined inline and registered dynamically.
+Commands are defined inline and registered dynamically via registry.bindings.
 """
 import asyncio
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'example'))
 
-from bollydog.globals import services
-from bollydog.models.base import BaseCommand, BaseEvent, BaseService
+from bollydog.globals import services, registry
+from bollydog.models.base import BaseCommand, BaseEvent
 from bollydog.models.service import AppService
+
+DEST_PREFIX = 'bollydog.HubService'
+
+
+def _reg(cmd_cls):
+    """Register a command class into registry.bindings and return destination."""
+    destination = f'{DEST_PREFIX}.{cmd_cls.alias}'
+    registry.bindings[destination] = cmd_cls
+    return destination
+
+
+def _make(cmd_cls, **kwargs):
+    """Create instance with destination set."""
+    destination = _reg(cmd_cls)
+    msg = cmd_cls(**kwargs)
+    msg.destination = destination
+    return msg
 
 
 # ─── Hooks ────────────────────────────────────────────────────
@@ -27,9 +44,7 @@ async def test_before_hook_short_circuit(hub):
             ran.append(1)
             return {'should': 'not reach'}
 
-    derived = _Blocked._derive('bollydog.Hub')
-    BaseService.registry[derived.destination] = derived
-    result = await hub.execute(derived())
+    result = await hub.execute(_make(_Blocked))
     assert result == {'blocked': True}
     assert ran == []
 
@@ -47,9 +62,7 @@ async def test_after_hook_receives_result(hub):
         async def __call__(self) -> dict:
             return {'ok': True}
 
-    derived = _Audited._derive('bollydog.Hub')
-    BaseService.registry[derived.destination] = derived
-    await hub.execute(derived())
+    await hub.execute(_make(_Audited))
     assert captured['result'] == {'ok': True}
     assert captured['exception'] is None
 
@@ -66,11 +79,8 @@ async def test_handoff_chain(hub):
         async def __call__(self):
             return _Step2(data={'chain': True})
 
-    for cls in (_Step1, _Step2):
-        derived = cls._derive('bollydog.Hub')
-        BaseService.registry[derived.destination] = derived
-
-    result = await hub.execute(_Step1._derive('bollydog.Hub')())
+    _reg(_Step2)
+    result = await hub.execute(_make(_Step1))
     assert result['from'] == 'step2'
     assert result['data']['chain'] is True
 
@@ -86,15 +96,7 @@ async def test_gather_parallel(hub):
     class _C(BaseCommand):
         async def __call__(self) -> int: return 3
 
-    for cls in (_A, _B, _C):
-        derived = cls._derive('bollydog.Hub')
-        BaseService.registry[derived.destination] = derived
-
-    results = await hub.gather([
-        _A._derive('bollydog.Hub')(),
-        _B._derive('bollydog.Hub')(),
-        _C._derive('bollydog.Hub')(),
-    ])
+    results = await hub.gather([_make(_A), _make(_B), _make(_C)])
     assert sorted(results) == [1, 2, 3]
 
 
@@ -109,9 +111,7 @@ async def test_async_gen_pipeline(hub):
             ping_result = yield Ping()
             yield {'pong': ping_result['pong'], 'tasks': ping_result['tasks']}
 
-    derived = _GenPipe._derive('bollydog.Hub')
-    BaseService.registry[derived.destination] = derived
-    msg = derived()
+    msg = _make(_GenPipe)
     await hub.dispatch(msg)
     values = []
     async for v in msg.state:
@@ -126,17 +126,14 @@ async def test_async_gen_parallel_fan_out(hub):
         n: int = 0
         async def __call__(self) -> int: return self.n * 10
 
-    derived_x = _TaskX._derive('bollydog.Hub')
-    BaseService.registry[derived_x.destination] = derived_x
+    _reg(_TaskX)
 
     class _FanOut(BaseCommand):
         async def __call__(self):
-            results = yield [derived_x(n=1), derived_x(n=2), derived_x(n=3)]
+            results = yield [_TaskX(n=1), _TaskX(n=2), _TaskX(n=3)]
             yield {'sums': sorted(results)}
 
-    derived = _FanOut._derive('bollydog.Hub')
-    BaseService.registry[derived.destination] = derived
-    msg = derived()
+    msg = _make(_FanOut)
     await hub.dispatch(msg)
     values = []
     async for v in msg.state:
@@ -152,18 +149,16 @@ async def test_event_triggers_subscriber(hub):
 
     class _TestService(AppService):
         domain = 'test'
-        subscriber = {'test._TestService.ThingDone': 'on_done'}
         async def on_done(self, message):
             received.append(message.data)
 
-    svc = _TestService()
+    svc = _TestService(subscriber={'test._TestService.ThingDone': 'on_done'})
     services['test._TestService'] = svc
     await hub.exchange.on_started()
 
     class ThingDone(BaseEvent):
         destination = 'test._TestService.ThingDone'
 
-    BaseService.registry['test._TestService.ThingDone'] = ThingDone
     evt = ThingDone(data={'info': 'ok'})
     await hub.execute(evt)
     await asyncio.sleep(0.15)
@@ -182,12 +177,10 @@ async def test_command_retry_on_timeout(hub):
         async def __call__(self) -> str:
             attempts.append(1)
             if len(attempts) == 1:
-                await asyncio.sleep(1)  # trigger timeout on first try
+                await asyncio.sleep(1)
             return 'ok'
 
-    derived = _Slow._derive('bollydog.Hub')
-    BaseService.registry[derived.destination] = derived
-    result = await hub.execute(derived())
+    result = await hub.execute(_make(_Slow))
     assert result == 'ok'
     assert len(attempts) == 2
 
@@ -197,8 +190,6 @@ async def test_command_exception_sets_state(hub):
         async def __call__(self):
             raise ValueError('kaboom')
 
-    derived = _Boom._derive('bollydog.Hub')
-    BaseService.registry[derived.destination] = derived
     import pytest
     with pytest.raises(ValueError, match='kaboom'):
-        await hub.execute(derived())
+        await hub.execute(_make(_Boom))

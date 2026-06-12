@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from bollydog.config import DOMAIN
+from bollydog.globals import registry
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
 from bollydog.service.runner import CommandRunnerMixin
@@ -17,12 +18,11 @@ class ExecuteService(CommandRunnerMixin, AppService):
         super().__init__(**kwargs)
 
     async def on_start(self) -> None:
-        if type(self).commands: type(self)._load_commands(type(self).commands)
         await super().on_start()
 
     async def _submit(self, message: Message):
-        app = AppService.resolve_app(message)
-        if app and not app._started.is_set(): await app.maybe_start()
+        _app = registry.resolve_app(message)
+        if _app and not _app._started.is_set(): await _app.maybe_start()
         async with self._with_context(message):
             runner = self._run_gen if message.is_async_gen else self._run
             await self._execute(message, runner)

@@ -5,8 +5,8 @@ import os
 import mode
 
 from bollydog.entrypoint.uds.config import ENTRYPOINT_UDS_SOCK_PATH
-from bollydog.globals import hub
-from bollydog.models.base import BaseCommand, BaseService
+from bollydog.globals import hub, registry
+from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService
 
 
@@ -66,7 +66,7 @@ class UdsService(AppService):
         try:
             data = await _read_frame(reader)
             req = json.loads(data)
-            cmd_cls = BaseService.registry[req['command']]
+            cmd_cls = registry.resolve(req['command'])
             msg = cmd_cls(**req.get('kwargs', {}))
             msg = await hub.dispatch(msg)
             await msg.state

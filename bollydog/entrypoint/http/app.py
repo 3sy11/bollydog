@@ -15,9 +15,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, HTMLResponse, StreamingResponse
 
-from bollydog.globals import hub, services, _hub_ctx_stack
+from bollydog.globals import hub, services, registry, _hub_ctx_stack
 from bollydog.models.base import BaseCommand
-from bollydog.models.service import AppService, BaseService
+from bollydog.models.service import AppService
 
 from .config import (
     ENTRYPOINT_HTTP_SERVICE_DEBUG, ENTRYPOINT_HTTP_SERVICE_PORT, ENTRYPOINT_HTTP_SERVICE_LOG_LEVEL, ENTRYPOINT_HTTP_SERVICE_HOST,
@@ -146,30 +146,29 @@ class HttpService(AppService):
         return rm
 
     async def on_start(self) -> None:
-        merged = {}
-        for app in services.values():
-            merged.update(self._collect_router_mappings(app))
-        for key, command_cls in BaseService.registry.items():
-            alias = command_cls.alias
-            route = merged.get(command_cls.__name__, merged.get(alias, merged.get(key)))
-            if route is None:
-                continue
-            methods = route[0] if len(route) > 0 else 'GET'
-            methods = [methods] if isinstance(methods, str) else methods
-            path = route[1] if len(route) > 1 else None
-            if not path:
-                domain = command_cls.destination.split('.')[0] if command_cls.destination else None
-                path = f'/api/{domain}/{alias}' if domain else f'/api/{alias}'
-            if 'SSE' in methods:
-                methods = ['GET']
-                if inspect.isasyncgenfunction(command_cls.__call__):
-                    handler = SseHandler(command_cls)
+        _merged = {}
+        for service in services.values():
+            _merged.update(self._collect_router_mappings(service))
+        for destination, cmd_cls in registry.bindings.items():
+            cmd_alias = cmd_cls.alias
+            _route = _merged.get(cmd_cls.__name__, _merged.get(cmd_alias, _merged.get(destination)))
+            if _route is None: continue
+            _methods = _route[0] if len(_route) > 0 else 'GET'
+            _methods = [_methods] if isinstance(_methods, str) else _methods
+            _path = _route[1] if len(_route) > 1 else None
+            if not _path:
+                _domain = destination.split('.')[0]
+                _path = f'/api/{_domain}/{cmd_alias}'
+            if 'SSE' in _methods:
+                _methods = ['GET']
+                if inspect.isasyncgenfunction(cmd_cls.__call__):
+                    _handler = SseHandler(cmd_cls)
                 else:
-                    logging.warning(f'{alias} mapped as SSE but is not async generator, falling back to HTTP')
-                    handler = HttpHandler(command_cls)
+                    logging.warning(f'{cmd_alias} mapped as SSE but is not async generator, falling back to HTTP')
+                    _handler = HttpHandler(cmd_cls)
             else:
-                handler = HttpHandler(command_cls)
-            self.http_app.router.add_route(path, handler, methods=methods, name=alias, include_in_schema=True)
+                _handler = HttpHandler(cmd_cls)
+            self.http_app.router.add_route(_path, _handler, methods=_methods, name=cmd_alias, include_in_schema=True)
         self.http_app.user_middleware = self.middlewares
         self.http_app.debug = ENTRYPOINT_HTTP_SERVICE_DEBUG
         self._asgi_app = HubContextMiddleware(self.http_app, hub._get_current_object())

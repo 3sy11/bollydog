@@ -12,9 +12,8 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from bollydog.exception import HandlerTimeOutError, HandlerMaxRetryError
-from bollydog.globals import _protocol_ctx_stack, _message_ctx_stack, _app_ctx_stack
+from bollydog.globals import registry, _protocol_ctx_stack, _message_ctx_stack, _app_ctx_stack
 from bollydog.models.base import BaseCommand as Message
-from bollydog.models.service import AppService
 
 
 class CommandRunnerMixin:
@@ -46,8 +45,8 @@ class CommandRunnerMixin:
 
     @asynccontextmanager
     async def _with_context(self, message):
-        app = AppService.resolve_app(message)
-        with (_protocol_ctx_stack.push(app.protocol if app else None), _message_ctx_stack.push(message), _app_ctx_stack.push(app)):
+        _app = registry.resolve_app(message)
+        with (_protocol_ctx_stack.push(_app.protocol if _app else None), _message_ctx_stack.push(message), _app_ctx_stack.push(_app)):
             yield
 
     async def _run_with_context(self, message):

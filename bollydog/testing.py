@@ -11,6 +11,7 @@ from bollydog.bootstrap import Bootstrap
 from bollydog.globals import (
     _app_ctx_stack, _protocol_ctx_stack, _message_ctx_stack,
     _services_ctx_stack, _session_ctx_stack, _hub_ctx_stack,
+    _registry_ctx_stack,
 )
 
 
@@ -33,28 +34,28 @@ async def run_command(cmd, app=None, protocol=None):
 async def run_hub(config: str = None):
     """E2E context manager: build services, start HubService, yield for testing."""
     bootstrap = Bootstrap(config=config)
-    service_dict = bootstrap.services
-    hub = service_dict['bollydog.HubService']
-    session = service_dict.get('bollydog.Session')
     with ExitStack() as stack:
-        stack.enter_context(_services_ctx_stack.push(service_dict))
-        stack.enter_context(_hub_ctx_stack.push(hub))
-        if session:
-            stack.enter_context(_session_ctx_stack.push(session))
-        async with hub:
-            yield hub
+        stack.enter_context(_services_ctx_stack.push(bootstrap.services))
+        if bootstrap.registry_service:
+            stack.enter_context(_registry_ctx_stack.push(bootstrap.registry_service))
+            bootstrap.registry_service.register()
+        if bootstrap.session_service:
+            stack.enter_context(_session_ctx_stack.push(bootstrap.session_service))
+        stack.enter_context(_hub_ctx_stack.push(bootstrap.hub_service))
+        async with bootstrap.hub_service:
+            yield bootstrap.hub_service
 
 
 @asynccontextmanager
 async def run_execute(config: str = None):
     """Lightweight E2E: ExecuteService without Queue/Exchange."""
     bootstrap = Bootstrap(config=config)
-    service_dict = bootstrap.services
-    executor = service_dict['bollydog.ExecuteService']
-    session = service_dict.get('bollydog.Session')
     with ExitStack() as stack:
-        stack.enter_context(_services_ctx_stack.push(service_dict))
-        if session:
-            stack.enter_context(_session_ctx_stack.push(session))
-        async with executor:
-            yield executor
+        stack.enter_context(_services_ctx_stack.push(bootstrap.services))
+        if bootstrap.registry_service:
+            stack.enter_context(_registry_ctx_stack.push(bootstrap.registry_service))
+            bootstrap.registry_service.register()
+        if bootstrap.session_service:
+            stack.enter_context(_session_ctx_stack.push(bootstrap.session_service))
+        async with bootstrap.executor_service:
+            yield bootstrap.executor_service

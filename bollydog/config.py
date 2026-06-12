@@ -14,6 +14,7 @@ ENTRYPOINT_UDS_ENABLED = os.getenv('ENTRYPOINT_UDS_ENABLED', '0') == '1'
 
 # All framework services (mode-agnostic, always fully built)
 DEFAULT_SERVICES = {
+    "bollydog.service.registry.RegistryService": {},
     "bollydog.service.session.Session": {
         "protocol": {"module": "bollydog.adapters.memory.MemoryProtocol"}
     },

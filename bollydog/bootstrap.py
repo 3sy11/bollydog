@@ -4,8 +4,6 @@ Exposes two entry methods for CLI:
   start_all()        -> eager start all services, daemon mode
   run_once(msg)      -> execute single command, then stop
 """
-import json
-import logging
 import signal
 import tomllib
 from functools import cached_property
@@ -15,8 +13,8 @@ import mode
 from mode.utils.imports import smart_import
 
 from bollydog.config import DEFAULT_SERVICES
-from bollydog.globals import _hub_ctx_stack, _session_ctx_stack, _services_ctx_stack
-from bollydog.models.base import BaseCommand as Message, BaseEvent, BaseService
+from bollydog.globals import _hub_ctx_stack, _session_ctx_stack, _services_ctx_stack, _registry_ctx_stack
+from bollydog.models.base import BaseCommand as Message
 
 
 class Bootstrap(mode.Worker):
@@ -28,13 +26,16 @@ class Bootstrap(mode.Worker):
         _services = self._build_services()
         super().__init__(*_services.values(), **kwargs)
         self.services = _services
+        self.registry_service = self.services.get('bollydog.RegistryService')
+        self.session_service = self.services.get('bollydog.Session')
+        self.hub_service = self.services.get('bollydog.HubService')
+        self.executor_service = self.services.get('bollydog.ExecuteService')
 
     def on_init_dependencies(self):
         return []
 
     @cached_property
     def config(self) -> dict:
-        """Merged config: DEFAULT_SERVICES + user TOML. Mode-agnostic."""
         merged = dict(DEFAULT_SERVICES)
         if self._config_path:
             with open(self._config_path, 'rb') as f:
@@ -42,82 +43,71 @@ class Bootstrap(mode.Worker):
         return merged
 
     def _build_services(self) -> dict:
-        """Iterate self.config, create all service instances, resolve depends, load commands."""
         service_dict = {}
         for node_name, node_conf in self.config.items():
             node_conf = dict(node_conf)
             module = node_conf.pop('module', node_name)
             service = smart_import(module).create_from(**node_conf)
-            service_dict[f'{service.domain}.{service.alias}'] = service
+            service_key = f'{service.domain}.{service.alias}'
+            service_dict[service_key] = service
         for service in service_dict.values():
-            if isinstance(service.depends, (list, tuple)) and service.depends and isinstance(service.depends[0], str):
-                resolved = []
+            if (isinstance(service.depends, (list, tuple)) and service.depends
+                    and isinstance(service.depends[0], str)):
+                _resolved = []
                 for dep_key in service.depends:
-                    dependency = service_dict.get(dep_key)
-                    if dependency is None:
+                    _dep = service_dict.get(dep_key)
+                    if _dep is None:
                         raise ValueError(f"depends '{dep_key}' not found for {service.domain}.{service.alias}")
-                    service.add_dependency(dependency)
-                    resolved.append(dependency)
-                service.depends = resolved
-        for service in service_dict.values():
-            if type(service).commands:
-                type(service)._load_commands(type(service).commands)
+                    service.add_dependency(_dep)
+                    _resolved.append(_dep)
+                service.depends = _resolved
         return service_dict
 
-    # --- entry methods for CLI ---
+    # --- entry methods ---
 
     def start_all(self):
-        """Service mode: eager start all services, enter daemon loop."""
         self.execute_from_commandline()
 
     def run_once(self, message: Message, timeout: int = 300):
-        """Execute mode: run single command then stop."""
         self._message = message
         if timeout:
             self._message.expire_time = min(self._message.expire_time, timeout)
         self.execute_from_commandline()
 
-    # --- lifecycle hooks ---
+    # --- lifecycle ---
 
     async def on_first_start(self) -> None:
         self.install_signal_handlers()
         self.exit_stack.enter_context(_services_ctx_stack.push(self.services))
-        session = self.services.get('bollydog.Session')
-        if session:
-            self.exit_stack.enter_context(_session_ctx_stack.push(session))
-        hub = self.services.get('bollydog.HubService')
-        if hub:
-            self.exit_stack.enter_context(_hub_ctx_stack.push(hub))
+        if self.registry_service:
+            self.exit_stack.enter_context(_registry_ctx_stack.push(self.registry_service))
+            self.registry_service.register()
+        if self.session_service:
+            self.exit_stack.enter_context(_session_ctx_stack.push(self.session_service))
+        if self.hub_service:
+            self.exit_stack.enter_context(_hub_ctx_stack.push(self.hub_service))
         await super().on_first_start()
 
     async def on_started(self) -> None:
         if self._message:
-            executor = self.services['bollydog.ExecuteService']
-            await executor.maybe_start()
-            try:
-                await executor.execute(self._message)
-            except Exception as e:
-                self.logger.exception(e)
-            finally:
-                await self.stop()
+            await self.executor_service.maybe_start()
+            try: await self.executor_service.execute(self._message)
+            except Exception as e: self.logger.exception(e)
+            finally: await self.stop()
         else:
-            for svc in self.services.values():
-                await svc.maybe_start()
-            self._log_registry()
+            for service in self.services.values():
+                await service.maybe_start()
+            self._log_bindings()
 
-    def _log_registry(self):
-        for sid, svc in self.services.items():
-            if svc.commands:
-                self.logger.info(f'[{sid}] {type(svc).__name__} | commands={svc.commands}')
-        registry = BaseService.registry
-        if registry:
-            def _tag(c): return 'Event' if issubclass(c, BaseEvent) else 'Command'
-            reg = '\n  '.join(f'{_tag(c):7} {c.alias:20} dest={c.destination or "-"}' for c in registry.values())
-            self.logger.info(f'registry({len(registry)}):\n  {reg}')
+    def _log_bindings(self):
+        if not self.registry_service: return
+        bindings = self.registry_service.bindings
+        if bindings:
+            _lines = '\n  '.join(f'{cmd_cls.alias:<20} -> {destination}' for destination, cmd_cls in bindings.items())
+            self.logger.info(f'bindings({len(bindings)}):\n  {_lines}')
 
     async def on_shutdown(self) -> None:
         self.services.clear()
-        BaseService.registry.clear()
 
     def on_worker_shutdown(self) -> None:
         pass

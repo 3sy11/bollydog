@@ -4,7 +4,7 @@ import pathlib
 import time
 import uuid
 from abc import abstractmethod
-from typing import Dict, List, Optional, Type, Any, ClassVar
+from typing import List, Optional, Any, ClassVar
 
 import mode
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
@@ -80,18 +80,20 @@ class BaseCommand(_ModelMixin):
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
 
+    # Pydantic v2 blocks instance assignment to ClassVar (by design, no config to relax it; unchanged through v2.14).
+    # Event subclasses set destination at class level; Command instances need runtime routing via RegistryService.
+    # Official workaround: object.__setattr__(instance, 'destination', value) at the single injection site.
+    # TODO: This global __setattr__ override is not elegant — prefer localized object.__setattr__ in RegistryService; revisit if Pydantic adds a proper mechanism.
+    def __setattr__(self, name, value):
+        if name == 'destination':
+            self.__dict__[name] = value
+        else:
+            super().__setattr__(name, value)
+
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
         if 'module' not in cls.__dict__: cls.module = cls.__module__
         if 'alias' not in cls.__dict__: cls.alias = cls.__name__
-        if not abstract and '__call__' in cls.__dict__:
-            if 'destination' not in cls.__dict__ or cls.__dict__.get('destination') is None:
-                cls.destination = f'_._.{cls.alias}'  # placeholder, rebound by _derive in _load_commands
-
-    @classmethod
-    def _derive(cls, dest_prefix: str):
-        """Create derived subclass with isolated destination. Original class unchanged."""
-        return type(cls.__name__, (cls,), {'destination': f'{dest_prefix}.{cls.alias}', 'module': cls.module, 'alias': cls.alias})
 
     def __str__(self):
         _t = 'Event' if isinstance(self, BaseEvent) else 'Command'
@@ -111,7 +113,6 @@ class BaseService(mode.Service):
     abstract = True
     domain: ClassVar[str]
     alias: ClassVar[str]
-    registry: ClassVar[Dict[str, Type[BaseCommand]]] = {}
     router_mapping: ClassVar[dict] = {}
     subscriber: ClassVar[dict] = {}
     commands: ClassVar[List[str]] = []

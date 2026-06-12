@@ -45,7 +45,6 @@ class HubService(CommandRunnerMixin, AppService):
         self.exit_stack.enter_context(_hub_ctx_stack.push(self))
 
     async def on_start(self) -> None:
-        if type(self).commands: type(self)._load_commands(type(self).commands)
         await super().on_start()
 
     async def _submit(self, message: Message):

@@ -7,8 +7,8 @@ from starlette.applications import Starlette
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from bollydog.entrypoint.websocket.config import ENTRYPOINT_WS_SERVICE_DEBUG, ENTRYPOINT_WS_SERVICE_PORT, ENTRYPOINT_WS_SERVICE_LOG_LEVEL, ENTRYPOINT_WS_SERVICE_HOST
-from bollydog.globals import hub, _hub_ctx_stack
-from bollydog.models.base import BaseCommand, BaseService
+from bollydog.globals import hub, registry, _hub_ctx_stack
+from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService
 
 
@@ -52,7 +52,7 @@ class SocketService(AppService):
                 self.logger.debug(f"received: {raw}")
                 name = raw.pop('name', None) or raw.pop('alias', None)
                 try:
-                    cmd_cls = BaseService.registry[name] if name else None
+                    cmd_cls = registry.resolve(name) if name else None
                 except KeyError:
                     await websocket.send_json({'error': f"command '{name}' not found"})
                     continue

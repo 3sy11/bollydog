@@ -1,72 +1,83 @@
 """Integration tests — CLI _resolve_command, Bootstrap, entrypoint logic via mock."""
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import patch, MagicMock
 
-from bollydog.models.base import BaseCommand, BaseService
+from bollydog.globals import _registry_ctx_stack
+from bollydog.models.base import BaseCommand
+from bollydog.service.registry import RegistryService
+
+
+# ─── helpers ─────────────────────────────────────────────────
+
+def _make_registry_with(*cmd_classes, prefix='app.Svc'):
+    """Create a RegistryService, populate bindings, push to context stack."""
+    reg = RegistryService()
+    for cls in cmd_classes:
+        destination = f'{prefix}.{cls.alias}'
+        reg.bindings[destination] = cls
+    reg._build_cmd_alias_index()
+    return reg
 
 
 # ─── CLI: _resolve_command ────────────────────────────────────
 
-def _setup_registry():
-    """Populate registry with test commands for resolve tests."""
+def test_resolve_exact():
+    from bollydog.entrypoint.cli import _resolve_command
 
     class Alpha(BaseCommand):
         async def __call__(self): return 1
-    class Beta(BaseCommand):
-        async def __call__(self): return 2
 
-    a = Alpha._derive('app.Svc')
-    b = Beta._derive('app.Svc')
-    BaseService.registry.clear()
-    BaseService.registry[a.destination] = a
-    BaseService.registry[b.destination] = b
-    return a, b
-
-
-def test_resolve_exact():
-    from bollydog.entrypoint.cli import _resolve_command
-    a, b = _setup_registry()
-    assert _resolve_command(a.destination) is a
+    reg = _make_registry_with(Alpha)
+    with _registry_ctx_stack.push(reg):
+        dest, cls = _resolve_command('app.Svc.Alpha')
+        assert cls is Alpha
+        assert dest == 'app.Svc.Alpha'
 
 def test_resolve_suffix():
     from bollydog.entrypoint.cli import _resolve_command
-    _setup_registry()
-    result = _resolve_command('Alpha')
-    assert result.alias == 'Alpha'
 
-def test_resolve_case_insensitive():
-    from bollydog.entrypoint.cli import _resolve_command
-    _setup_registry()
-    result = _resolve_command('alpha')
-    assert result.alias == 'Alpha'
+    class Alpha(BaseCommand):
+        async def __call__(self): return 1
+
+    reg = _make_registry_with(Alpha)
+    with _registry_ctx_stack.push(reg):
+        dest, cls = _resolve_command('Alpha')
+        assert cls.alias == 'Alpha'
 
 def test_resolve_not_found():
     from bollydog.entrypoint.cli import _resolve_command
-    _setup_registry()
-    with pytest.raises(KeyError, match="not found"):
-        _resolve_command('NonExistent')
+
+    class Alpha(BaseCommand):
+        async def __call__(self): return 1
+
+    reg = _make_registry_with(Alpha)
+    with _registry_ctx_stack.push(reg):
+        with pytest.raises(KeyError, match="not found"):
+            _resolve_command('NonExistent')
 
 def test_resolve_ambiguous():
     from bollydog.entrypoint.cli import _resolve_command
 
     class Dup(BaseCommand):
         async def __call__(self): return 0
-    d1 = Dup._derive('a.S1')
-    d2 = Dup._derive('b.S2')
-    BaseService.registry.clear()
-    BaseService.registry[d1.destination] = d1
-    BaseService.registry[d2.destination] = d2
-    with pytest.raises(KeyError, match="Ambiguous"):
-        _resolve_command('Dup')
+
+    reg = RegistryService()
+    reg.bindings['a.S1.Dup'] = Dup
+    reg.bindings['b.S2.Dup'] = Dup
+    reg._build_cmd_alias_index()
+    with _registry_ctx_stack.push(reg):
+        with pytest.raises(KeyError, match="Ambiguous"):
+            _resolve_command('Dup')
 
 
 # ─── CLI: ls ──────────────────────────────────────────────────
 
 def test_cli_ls_no_commands(capsys):
     from bollydog.entrypoint.cli import CLI
-    BaseService.registry.clear()
-    with patch('bollydog.entrypoint.cli.Bootstrap'):
-        CLI.ls(config=None)
+    reg = RegistryService()
+    with _registry_ctx_stack.push(reg):
+        with patch('bollydog.entrypoint.cli.Bootstrap'):
+            CLI.ls(config=None)
     assert 'No commands registered' in capsys.readouterr().out
 
 def test_cli_ls_with_commands(capsys):
@@ -76,11 +87,10 @@ def test_cli_ls_with_commands(capsys):
         name: str = ''
         async def __call__(self): return {}
 
-    derived = Show._derive('app.Svc')
-    BaseService.registry.clear()
-    BaseService.registry[derived.destination] = derived
-    with patch('bollydog.entrypoint.cli.Bootstrap'):
-        CLI.ls(config=None)
+    reg = _make_registry_with(Show)
+    with _registry_ctx_stack.push(reg):
+        with patch('bollydog.entrypoint.cli.Bootstrap'):
+            CLI.ls(config=None)
     out = capsys.readouterr().out
     assert 'Show' in out
     assert 'COMMAND' in out

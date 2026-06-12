@@ -46,20 +46,23 @@ def test_command_subclass_gets_alias_and_module():
             return self.x
     assert Foo.alias == 'Foo'
     assert Foo.module == __name__
-    assert Foo.destination.endswith('.Foo')
+    assert Foo.destination is None
 
 def test_event_subclass():
     class SomethingHappened(BaseEvent):
         pass
     assert SomethingHappened.alias == 'SomethingHappened'
 
-def test_command_derive_isolates_destination():
+def test_command_destination_instance_attr():
+    """Instance attribute destination shadows ClassVar None."""
     class Bar(BaseCommand):
         async def __call__(self):
             return 1
-    derived = Bar._derive('myapp.MySvc')
-    assert derived.destination == 'myapp.MySvc.Bar'
-    assert Bar.destination != derived.destination
+    msg = Bar()
+    assert type(msg).destination is None
+    msg.destination = 'myapp.MySvc.Bar'
+    assert msg.destination == 'myapp.MySvc.Bar'
+    assert type(msg).destination is None
 
 def test_command_str():
     class Baz(BaseCommand):
