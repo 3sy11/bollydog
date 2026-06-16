@@ -53,16 +53,15 @@ def test_event_subclass():
         pass
     assert SomethingHappened.alias == 'SomethingHappened'
 
-def test_command_destination_instance_attr():
-    """Instance attribute destination shadows ClassVar None."""
+def test_command_destination_dynamic_subclass():
+    """Dynamic subclass carries destination as ClassVar."""
     class Bar(BaseCommand):
         async def __call__(self):
             return 1
-    msg = Bar()
-    assert type(msg).destination is None
-    msg.destination = 'myapp.MySvc.Bar'
-    assert msg.destination == 'myapp.MySvc.Bar'
-    assert type(msg).destination is None
+    Bound = type('Bar', (Bar,), {'destination': 'myapp.MySvc.Bar'})
+    msg = Bound()
+    assert type(msg).destination == 'myapp.MySvc.Bar'
+    assert Bar.destination is None
 
 def test_command_str():
     class Baz(BaseCommand):

@@ -15,18 +15,19 @@ DEST_PREFIX = 'bollydog.HubService'
 
 
 def _reg(cmd_cls):
-    """Register a command class into registry.bindings and return destination."""
+    """Register a command class into registry.bindings via dynamic subclass."""
     destination = f'{DEST_PREFIX}.{cmd_cls.alias}'
-    registry.bindings[destination] = cmd_cls
+    bound = type(cmd_cls.__name__, (cmd_cls,), {'destination': destination})
+    registry.bindings[destination] = bound
     return destination
 
 
 def _make(cmd_cls, **kwargs):
-    """Create instance with destination set."""
-    destination = _reg(cmd_cls)
-    msg = cmd_cls(**kwargs)
-    msg.destination = destination
-    return msg
+    """Create instance via dynamic-subclass bound class."""
+    destination = f'{DEST_PREFIX}.{cmd_cls.alias}'
+    bound = type(cmd_cls.__name__, (cmd_cls,), {'destination': destination})
+    registry.bindings[destination] = bound
+    return bound(**kwargs)
 
 
 # ─── Hooks ────────────────────────────────────────────────────

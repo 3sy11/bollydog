@@ -15,7 +15,6 @@ def _make_registry_with(*cmd_classes, prefix='app.Svc'):
     for cls in cmd_classes:
         destination = f'{prefix}.{cls.alias}'
         reg.bindings[destination] = cls
-    reg._build_cmd_alias_index()
     return reg
 
 
@@ -64,7 +63,6 @@ def test_resolve_ambiguous():
     reg = RegistryService()
     reg.bindings['a.S1.Dup'] = Dup
     reg.bindings['b.S2.Dup'] = Dup
-    reg._build_cmd_alias_index()
     with _registry_ctx_stack.push(reg):
         with pytest.raises(KeyError, match="Ambiguous"):
             _resolve_command('Dup')

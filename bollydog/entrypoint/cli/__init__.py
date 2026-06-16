@@ -57,9 +57,8 @@ class CLI:
     def execute(command: str, config: str, timeout: int = 300, **kwargs):
         """Execute a single command. config is required."""
         bootstrap = Bootstrap(config=config, override_logging=False)
-        destination, cmd_cls = _resolve_command(command)
+        _, cmd_cls = _resolve_command(command)
         msg = cmd_cls(**kwargs)
-        msg.destination = destination
         bootstrap.run_once(msg, timeout=timeout)
 
     @staticmethod

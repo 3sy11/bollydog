@@ -80,16 +80,6 @@ class BaseCommand(_ModelMixin):
             self.trace_id = message.trace_id
             self.parent_span_id = message.span_id
 
-    # Pydantic v2 blocks instance assignment to ClassVar (by design, no config to relax it; unchanged through v2.14).
-    # Event subclasses set destination at class level; Command instances need runtime routing via RegistryService.
-    # Official workaround: object.__setattr__(instance, 'destination', value) at the single injection site.
-    # TODO: This global __setattr__ override is not elegant — prefer localized object.__setattr__ in RegistryService; revisit if Pydantic adds a proper mechanism.
-    def __setattr__(self, name, value):
-        if name == 'destination':
-            self.__dict__[name] = value
-        else:
-            super().__setattr__(name, value)
-
     def __init_subclass__(cls, abstract: bool = False, **kwargs):
         super().__init_subclass__(**kwargs)
         if 'module' not in cls.__dict__: cls.module = cls.__module__
