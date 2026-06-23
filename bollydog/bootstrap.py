@@ -30,6 +30,10 @@ class Bootstrap(mode.Worker):
         self.session_service = self.services.get('bollydog.Session')
         self.hub_service = self.services.get('bollydog.HubService')
         self.executor_service = self.services.get('bollydog.ExecuteService')
+        _services_ctx_stack.push_without_automatic_cleanup(self.services)
+        if self.registry_service:
+            _registry_ctx_stack.push_without_automatic_cleanup(self.registry_service)
+            self.registry_service.register()
 
     def on_init_dependencies(self):
         return []
@@ -53,13 +57,13 @@ class Bootstrap(mode.Worker):
         for service in service_dict.values():
             if (isinstance(service.depends, (list, tuple)) and service.depends
                     and isinstance(service.depends[0], str)):
-                _resolved = []
+                _resolved = {}
                 for dep_key in service.depends:
                     _dep = service_dict.get(dep_key)
                     if _dep is None:
                         raise ValueError(f"depends '{dep_key}' not found for {service.domain}.{service.alias}")
                     service.add_dependency(_dep)
-                    _resolved.append(_dep)
+                    _resolved[dep_key] = _dep
                 service.depends = _resolved
         return service_dict
 
@@ -78,10 +82,6 @@ class Bootstrap(mode.Worker):
 
     async def on_first_start(self) -> None:
         self.install_signal_handlers()
-        self.exit_stack.enter_context(_services_ctx_stack.push(self.services))
-        if self.registry_service:
-            self.exit_stack.enter_context(_registry_ctx_stack.push(self.registry_service))
-            self.registry_service.register()
         if self.session_service:
             self.exit_stack.enter_context(_session_ctx_stack.push(self.session_service))
         if self.hub_service:
@@ -105,6 +105,10 @@ class Bootstrap(mode.Worker):
         if bindings:
             _lines = '\n  '.join(f'{cmd_cls.alias:<20} -> {destination}' for destination, cmd_cls in bindings.items())
             self.logger.info(f'bindings({len(bindings)}):\n  {_lines}')
+        subs = self.registry_service.subscriptions
+        if subs:
+            _lines = '\n  '.join(f'{t} -> [{", ".join(dests)}]' for t, dests in subs.items())
+            self.logger.info(f'subscriptions({sum(len(v) for v in subs.values())}):\n  {_lines}')
 
     async def on_shutdown(self) -> None:
         self.services.clear()

@@ -468,10 +468,10 @@ The skeleton **provides a runtime environment for verified Command behavior chai
 
 3. Service registration and configuration
    → Write config.toml
-   → parse_config + build_services validation
+   → Bootstrap(_build_services) validation
 
 4. Hub integration
-   → Bootstrap(hub) startup, dispatch main path
+   → Bootstrap startup, registry.register() binds commands + subscribers
    → Exchange broadcast verification
 
 5. Entry point verification
@@ -583,7 +583,7 @@ async def test_e2e_via_fixture(hub):
     assert result is not None
 ```
 
-The `hub` fixture handles `parse_config` + `build_services` → `async with hub:` → `stop + service_reset` → `on_shutdown` (clears `apps`, `BaseService.registry`). The `clean_globals` autouse fixture cleans `LocalStack` after every test.
+The `hub` fixture handles Bootstrap → `async with hub:` → `stop` → `on_shutdown` (clears `services`). The `clean_globals` autouse fixture cleans all `LocalStack` (services, registry, hub, session, etc.) after every test.
 
 ### Checkpoints
 

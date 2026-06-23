@@ -17,7 +17,7 @@ Two reference documents drive development. **Do NOT read them in full** — use 
 | Document | Lines | Role |
 |----------|-------|------|
 | [sop.md](sop.md) | 857 | 8-Phase workflow — what to do, in what order |
-| [spec.md](spec.md) | 619 | Architecture, API, constraints — how things work |
+| [spec.md](spec.md) | 628 | Architecture, API, constraints — how things work |
 
 **Rule**: Every SOP step must comply with spec.md. Conflicts -> spec.md wins.
 
@@ -43,23 +43,23 @@ Two reference documents drive development. **Do NOT read them in full** — use 
 
 | Section | Lines | Read When |
 |---------|-------|-----------|
-| Architecture Overview | 10-36 | Understanding system structure (Bootstrap, Hub, ExecuteService) |
-| Quick Start | 37-68 | First-time setup |
-| Dispatch Pipeline | 69-103 | Two modes, CommandRunnerMixin, Hub vs ExecuteService |
-| Command Patterns (4 types) | 105-174 | Designing commands |
-| Globals (request-scoped) | 176-192 | Using hub/session/apps context vars |
-| Destination & Topic | 193-200 | Naming conventions, _derive |
-| Exchange (pub/sub) | 201-232 | Subscriber/fan-out design |
-| Hooks (before/after) | 233-246 | Middleware hooks |
-| Session | 247-261 | Session management (get/set/delete/history) |
-| AppService Design | 262-286 | Service class design, apps registry |
-| Protocol System | 287-374 | Base, ABC, implementations, composites |
-| TOML Configuration | 375-471 | Config file structure, parse_config, build_services, Bootstrap |
-| CLI | 472-490 | Command-line interface, fuzzy resolve, service vs execute |
-| Environment Variables | 491-542 | Env var naming, all variables |
-| Design Rules | 543-552 | Hard constraints |
-| Testing Strategy | 553-611 | Four-layer model, fixtures, run_hub/run_execute |
-| Troubleshooting | 612-619 | Common issues |
+| Architecture Overview | 10-38 | Understanding system structure (Bootstrap, Registry, Hub) |
+| Quick Start | 39-70 | First-time setup |
+| Dispatch Pipeline | 71-106 | Two modes, CommandRunnerMixin, Hub vs ExecuteService |
+| Command Patterns (4 types) | 107-177 | Designing commands |
+| Globals (request-scoped) | 178-197 | Using hub/session/registry/services context vars |
+| Destination & Topic | 198-205 | Naming conventions, dynamic subclass binding |
+| Exchange (pub/sub) | 206-244 | Subscriber/fan-out design, RegistryService + Exchange |
+| Hooks (before/after) | 245-258 | Middleware hooks |
+| Session | 259-273 | Session management (get/set/delete/history) |
+| AppService Design | 274-298 | Service class design, services registry |
+| Protocol System | 299-386 | Base, ABC, implementations, composites |
+| TOML Configuration | 387-479 | Config file structure, Bootstrap lifecycle |
+| CLI | 480-498 | Command-line interface, fuzzy resolve, service vs execute |
+| Environment Variables | 499-550 | Env var naming, all variables |
+| Design Rules | 551-560 | Hard constraints |
+| Testing Strategy | 561-619 | Four-layer model, fixtures, run_hub/run_execute |
+| Troubleshooting | 620-628 | Common issues |
 
 ## Workflow Summary
 
