@@ -170,3 +170,5 @@ dist/
 .kilo
 .vscode
 temp/
+tmp/
+.cursor/

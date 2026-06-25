@@ -155,7 +155,7 @@ async def test_event_triggers_subscriber(hub):
 
     svc = _TestService(subscriber={'test._TestService.ThingDone': 'on_done'})
     services['test._TestService'] = svc
-    await hub.exchange.on_started()
+    registry._register_subscribers('test._TestService', svc)
 
     class ThingDone(BaseEvent):
         destination = 'test._TestService.ThingDone'

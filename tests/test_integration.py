@@ -134,44 +134,24 @@ def test_hub_context_middleware_init():
     assert mw.hub_instance is mock_hub
 
 
-# ─── Exchange: match / subscribe / unsubscribe ────────────────
+# ─── Exchange: match via registry.subscriptions ───────────────
 
 def test_exchange_subscribe_unsubscribe():
     from bollydog.service.exchange import Exchange
     ex = Exchange()
-
-    class H1(BaseCommand):
-        destination = 'a.b.c'
-        async def __call__(self): return 1
-
-    ex.subscribe('a.b.c', H1)
-    assert H1 in ex.match('a.b.c')
-    ex.unsubscribe('a.b.c', H1)
-    assert H1 not in ex.match('a.b.c')
+    reg = RegistryService()
+    with _registry_ctx_stack.push(reg):
+        reg.subscribe('a.b.c', 'svc.Handler1')
+        assert 'svc.Handler1' in ex.match('a.b.c')
+        reg.unsubscribe('a.b.c', 'svc.Handler1')
+        assert 'svc.Handler1' not in ex.match('a.b.c')
 
 def test_exchange_pattern_subscribe():
     from bollydog.service.exchange import Exchange
     ex = Exchange()
-
-    class H2(BaseCommand):
-        destination = 'x.y.z'
-        async def __call__(self): return 2
-
-    ex.subscribe('x.*.z', H2)
-    assert H2 in ex.match('x.y.z')
-    assert len(ex.match('x.q.z')) == 1
-    assert len(ex.match('x.y.w')) == 0
-
-def test_exchange_list_topics():
-    from bollydog.service.exchange import Exchange
-    ex = Exchange()
-
-    class H3(BaseCommand):
-        destination = 'p.q.r'
-        async def __call__(self): return 3
-
-    ex.subscribe('p.q.r', H3)
-    ex.subscribe('p.#', H3)
-    topics = ex.list_topics()
-    assert 'p.q.r' in topics['exact']
-    assert 'p.#' in topics['patterns']
+    reg = RegistryService()
+    with _registry_ctx_stack.push(reg):
+        reg.subscribe('x.*.z', 'svc.Handler2')
+        assert 'svc.Handler2' in ex.match('x.y.z')
+        assert len(ex.match('x.q.z')) == 1
+        assert len(ex.match('x.y.w')) == 0
