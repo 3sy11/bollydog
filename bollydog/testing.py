@@ -36,14 +36,14 @@ async def run_hub(config: str = None):
     bootstrap = Bootstrap(config=config)
     with ExitStack() as stack:
         stack.enter_context(_services_ctx_stack.push(bootstrap.services))
-        if bootstrap.registry_service:
-            stack.enter_context(_registry_ctx_stack.push(bootstrap.registry_service))
-            bootstrap.registry_service.register()
-        if bootstrap.session_service:
-            stack.enter_context(_session_ctx_stack.push(bootstrap.session_service))
-        stack.enter_context(_hub_ctx_stack.push(bootstrap.hub_service))
-        async with bootstrap.hub_service:
-            yield bootstrap.hub_service
+        if bootstrap.services.registry:
+            stack.enter_context(_registry_ctx_stack.push(bootstrap.services.registry))
+            bootstrap.services.registry.register()
+        if bootstrap.services.session:
+            stack.enter_context(_session_ctx_stack.push(bootstrap.services.session))
+        stack.enter_context(_hub_ctx_stack.push(bootstrap.services.hub))
+        async with bootstrap.services.hub:
+            yield bootstrap.services.hub
 
 
 @asynccontextmanager
@@ -52,10 +52,10 @@ async def run_execute(config: str = None):
     bootstrap = Bootstrap(config=config)
     with ExitStack() as stack:
         stack.enter_context(_services_ctx_stack.push(bootstrap.services))
-        if bootstrap.registry_service:
-            stack.enter_context(_registry_ctx_stack.push(bootstrap.registry_service))
-            bootstrap.registry_service.register()
-        if bootstrap.session_service:
-            stack.enter_context(_session_ctx_stack.push(bootstrap.session_service))
-        async with bootstrap.executor_service:
-            yield bootstrap.executor_service
+        if bootstrap.services.registry:
+            stack.enter_context(_registry_ctx_stack.push(bootstrap.services.registry))
+            bootstrap.services.registry.register()
+        if bootstrap.services.session:
+            stack.enter_context(_session_ctx_stack.push(bootstrap.services.session))
+        async with bootstrap.services.executor:
+            yield bootstrap.services.executor

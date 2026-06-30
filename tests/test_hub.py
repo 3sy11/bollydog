@@ -21,7 +21,7 @@ async def test_execute_echo_default(hub):
 
 async def test_hub_registry_populated(hub):
     from bollydog.globals import registry
-    assert len(registry.bindings) > 0
+    assert len(registry.commands) > 0
 
 async def test_hub_apps_populated(hub):
     from bollydog.globals import services

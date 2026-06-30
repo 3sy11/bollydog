@@ -297,7 +297,7 @@ class SomeService(AppService):
 **Subscriber signatures**:
 ```python
 class AnotherService(AppService):
-    subscriber = {'domain.SomeService.TaskDone': 'on_task_done'}
+    subscribers = {'domain.SomeService.TaskDone': 'on_task_done'}
     async def on_task_done(self, message: BaseCommand) -> dict | None: ...
 ```
 
@@ -464,7 +464,7 @@ The skeleton **provides a runtime environment for verified Command behavior chai
 
 2. Service declaration
    → AppService class definition, mount Protocol
-   → commands / subscriber / depends declarations
+   → commands / subscribers / depends declarations
 
 3. Service registration and configuration
    → Write config.toml
@@ -485,12 +485,12 @@ The skeleton **provides a runtime environment for verified Command behavior chai
 TOML should be **minimal** — only framework-level wiring keys and overrides of non-default service parameters. Service-level custom parameters are defined in `__init__` with defaults; TOML's role is override, not definition.
 
 ```toml
-# Framework-level keys: commands, subscriber, depends, protocol — always explicit
+# Framework-level keys: commands, subscribers, depends, protocol — always explicit
 ["myapp.services.SomeService"]
 commands = ["commands"]
 depends = ["infra.ConfigSvc"]
 
-["myapp.services.SomeService".subscriber]
+["myapp.services.SomeService".subscribers]
 "domain.*.TaskDone" = "on_task_done"
 
 # Protocol parameters: only include values that differ from class defaults

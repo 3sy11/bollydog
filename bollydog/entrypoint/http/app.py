@@ -136,20 +136,20 @@ class HttpService(AppService):
     #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     @staticmethod
-    def _collect_router_mappings(service, visited=None):
+    def _collect_routers(service, visited=None):
         if visited is None: visited = set()
         if id(service) in visited: return {}
         visited.add(id(service))
-        rm = dict(service.router_mapping)
+        rm = dict(service.routers)
         for child in getattr(service, '_children', []):
-            rm.update(HttpService._collect_router_mappings(child, visited))
+            rm.update(HttpService._collect_routers(child, visited))
         return rm
 
     async def on_start(self) -> None:
         _merged = {}
         for service in services.values():
-            _merged.update(self._collect_router_mappings(service))
-        for destination, cmd_cls in registry.bindings.items():
+            _merged.update(self._collect_routers(service))
+        for destination, cmd_cls in registry.commands.items():
             cmd_alias = cmd_cls.alias
             _route = _merged.get(cmd_cls.__name__, _merged.get(cmd_alias, _merged.get(destination)))
             if _route is None: continue

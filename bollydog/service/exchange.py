@@ -29,26 +29,26 @@ class Exchange(AppService):
     domain = DOMAIN
 
     async def on_started(self) -> None:
-        subs = registry.subscriptions
+        subs = registry.subscribers
         if subs:
-            lines = '\n  '.join(f'{t} -> [{", ".join(dests)}]' for t, dests in subs.items())
-            self.logger.info(f'subscriptions({sum(len(v) for v in subs.values())}):\n  {lines}')
+            lines = '\n  '.join(f'{t} -> [{", ".join(destinations)}]' for t, destinations in subs.items())
+            self.logger.info(f'subscribers({sum(len(v) for v in subs.values())}):\n  {lines}')
         await super().on_started()
 
     def match(self, topic: str) -> set:
-        """Match topic against registry.subscriptions, return set of handler destinations."""
+        """Match topic against registry.subscribers, return set of handler destinations."""
         matched = set()
-        for pattern, dests in registry.subscriptions.items():
+        for pattern, destinations in registry.subscribers.items():
             if pattern == topic or match_topic(pattern, topic):
-                matched.update(dests)
+                matched.update(destinations)
         return matched
 
-    def _on_subscriber_done(self, dest, source_message, state):
+    def _on_subscriber_done(self, destination, source_message, state):
         try:
             if self.should_stop: return
             if state.cancelled() or state.exception(): return
-            handler_cls = registry.resolve(dest)
-            command = handler_cls()
+            handler = registry.resolve(destination)
+            command = handler()
             command._source = source_message
             self.add_future(hub.dispatch(command))
         except Exception as e:
@@ -58,5 +58,5 @@ class Exchange(AppService):
         if not isinstance(message, BaseEvent): return
         topic = type(message).destination
         if not topic: return
-        for dest in self.match(topic):
-            message.state.add_done_callback(partial(self._on_subscriber_done, dest, message))
+        for destination in self.match(topic):
+            message.state.add_done_callback(partial(self._on_subscriber_done, destination, message))

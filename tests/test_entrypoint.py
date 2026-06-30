@@ -131,12 +131,12 @@ def test_http_service_build_middlewares():
         mws = HttpService._build_middlewares()
         assert isinstance(mws, list)
 
-def test_http_service_collect_router_mappings():
+def test_http_service_collect_routers():
     from bollydog.entrypoint.http.app import HttpService
     mock_svc = MagicMock()
-    mock_svc.router_mapping = {'Ping': ['GET', '/api/ping']}
+    mock_svc.routers = {'Ping': ['GET', '/api/ping']}
     mock_svc._children = []
-    result = HttpService._collect_router_mappings(mock_svc)
+    result = HttpService._collect_routers(mock_svc)
     assert result == {'Ping': ['GET', '/api/ping']}
 
 def test_http_handler_init():

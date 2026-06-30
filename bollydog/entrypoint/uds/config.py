@@ -1,4 +1,7 @@
 import os
 
+ENTRYPOINT_UDS_ENABLED = os.getenv('ENTRYPOINT_UDS_ENABLED', '0') == '1'
 ENTRYPOINT_UDS_SOCK_PATH = os.getenv('ENTRYPOINT_UDS_SOCK_PATH', '/tmp/bollydog.sock')
 ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG = os.getenv('ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG') or None
+
+ENTRYPOINT_UDS_SERVICE_CONFIG = {"bollydog.entrypoint.uds.app.UdsService": {}} if ENTRYPOINT_UDS_ENABLED else {}

@@ -26,17 +26,17 @@ def _build_protocol(conf: dict):
 
 class AppService(BaseService, abstract=True):
     commands: ClassVar[List[str]] = []
-    router_mapping: ClassVar[dict] = {}
-    subscriber: ClassVar[dict] = {}
+    routers: ClassVar[dict] = {}
+    subscribers: ClassVar[dict] = {}
     depends: ClassVar[list] = []
     protocol = None
 
-    def __init__(self, commands_modules=None, router_mapping=None,
-                 subscriber=None, depends=None, **kwargs):
+    def __init__(self, commands=None, routers=None,
+                 subscribers=None, depends=None, **kwargs):
         super().__init__(**kwargs)
-        self.commands_modules = commands_modules or []
-        self.router_mapping = router_mapping or {}
-        self.subscriber = subscriber or {}
+        self.commands = commands or []
+        self.routers = routers or {}
+        self.subscribers = subscribers or {}
         self.depends = depends or []
 
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
@@ -48,12 +48,12 @@ class AppService(BaseService, abstract=True):
     def create_from(cls, **conf):
         svc_alias = conf.pop('alias', None)
         commands = [*{*(cls.commands or []), *(conf.pop('commands', None) or [])}]
-        router_mapping = {**(cls.router_mapping or {}), **(conf.pop('router_mapping', None) or {})}
-        subscriber = {**(cls.subscriber or {}), **(conf.pop('subscriber', None) or {})}
+        routers = {**(cls.routers or {}), **(conf.pop('routers', None) or {})}
+        subscribers = {**(cls.subscribers or {}), **(conf.pop('subscribers', None) or {})}
         depends = [*{*(cls.depends or []), *(conf.pop('depends', None) or [])}]
         protocol_conf = conf.pop('protocol', None)
-        service = cls(commands_modules=commands, router_mapping=router_mapping,
-                      subscriber=subscriber, depends=depends, **conf)
+        service = cls(commands=commands, routers=routers,
+                      subscribers=subscribers, depends=depends, **conf)
         if svc_alias: service.alias = svc_alias
         service.config = conf
         if protocol_conf: service.add_dependency(_build_protocol(protocol_conf))

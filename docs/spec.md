@@ -18,8 +18,8 @@ CLI / HTTP / WS / UDS
    └────┬─────────┘
         │
    ┌────▼──────────┐
-   │  Registry     │── bindings: {destination → BoundCommandClass}
-   │  Service      │── subscriptions: {topic → Set[destination]}
+   │  Registry     │── commands: {destination → BoundCommandClass}
+   │  Service      │── subscribers: {topic → Set[destination]}
    └────┬──────────┘
         │
    ┌────▼────┐
@@ -30,7 +30,7 @@ CLI / HTTP / WS / UDS
         │  dispatch / execute
    ┌────▼──────────┐
    │  AppService   │── protocol (data layer)
-   │  (domain)     │── commands / subscriber (config)
+   │  (domain)     │── commands / subscribers (config)
    └───────────────┘
 ```
 
@@ -193,7 +193,7 @@ from bollydog.globals import hub, app, services, registry, protocol, session, me
 
 `services` is a `MutableMappingProxy` over `LocalStack` — forwards dict operations (`__getitem__`, `get`, `values`, etc.) to the underlying service registry dict pushed by Bootstrap.
 
-`registry` is a `Proxy` over `LocalStack` — pushed during `Bootstrap.on_first_start`, provides `bindings`, `subscriptions`, `resolve`, `resolve_app`, `get_app`.
+`registry` is a `Proxy` over `LocalStack` — pushed during `Bootstrap.__init__`, provides `commands`, `subscribers`, `resolve`, `resolve_app`, `get_app`.
 
 ## Destination & Topic
 
@@ -205,11 +205,11 @@ Format: `domain.ServiceAlias.CommandAlias` (3-part topic).
 
 ## Exchange (pub/sub)
 
-Subscriber values are **method names** (str or list) pointing to methods on the AppService. RegistryService generates handler Commands at startup and maintains subscriptions; Exchange is a stateless routing trigger.
+Subscriber values are **method names** (str or list) pointing to methods on the AppService. RegistryService generates handler Commands at startup and maintains subscribers; Exchange is a stateless routing trigger.
 
 ```python
 class DataEngine(AppService):
-    subscriber = {
+    subscribers = {
         'analytics.*.DataReady': 'on_data_ready',                   # single method
         'trading.DataEngine.BarsReady': ['on_bars', 'update_cache'], # fan-out: both run in parallel
     }
@@ -224,18 +224,18 @@ class DataEngine(AppService):
 TOML:
 
 ```toml
-["trading.app.DataEngine".subscriber]
+["trading.app.DataEngine".subscribers]
 "analytics.*.DataReady" = "on_data_ready"
 "trading.DataEngine.BarsReady" = ["on_bars", "update_cache"]
 ```
 
 ### Registration (RegistryService)
 
-During `registry.register()`, subscriber configs are scanned. For each `(topic, method_name)`, a dynamic Command class wrapping the bound method is generated, stored in `registry.bindings`, and the topic→destination mapping is stored in `registry.subscriptions`.
+During `registry.register()`, subscriber configs are scanned. For each `(topic, method_name)`, a dynamic Command class wrapping the bound method is generated, stored in `registry.commands`, and the topic→destination mapping is stored in `registry.subscribers`.
 
 ### Routing (Exchange)
 
-Exchange reads `registry.subscriptions` at runtime — no local state. `bind_subscriber_callbacks(msg)` adds done-callbacks to Event's state Future. When Event completes, `_on_subscriber_done` resolves the handler via `registry.resolve(dest)`, instantiates it with `_source = original_msg`, and dispatches it through Hub.
+Exchange reads `registry.subscribers` at runtime — no local state. `bind_subscriber_callbacks(msg)` adds done-callbacks to Event's state Future. When Event completes, `_on_subscriber_done` resolves the handler via `registry.resolve(destination)`, instantiates it with `_source = original_msg`, and dispatches it through Hub.
 
 - Callback signature: `async def method(self, message)` — self = AppService instance, message = the source Event instance.
 - AMQP-style wildcards: `*` = one segment, `#` = zero or more.
@@ -278,7 +278,7 @@ class DataEngine(AppService):
     domain = 'trading'
     commands = ['commands']
     depends = ['infra.ConfigEngine']                            # resolved to instances at startup
-    subscriber = {'trading.*.BarsReady': 'on_bars_ready'}       # method name, not Command class
+    subscribers = {'trading.*.BarsReady': 'on_bars_ready'}      # method name, not Command class
 
     async def on_bars_ready(self, message):
         event = message.get_event()
@@ -291,8 +291,8 @@ class DataEngine(AppService):
 Key rules:
 - `protocol` is auto-assigned when `add_dependency` receives a `Protocol` instance.
 - Service registry is the `services` MutableMappingProxy (`globals.services`), keyed by `{domain}.{alias}`. Populated by Bootstrap.
-- `RegistryService` manages all command bindings (`bindings`) and event subscriptions (`subscriptions`). Accessible globally via `globals.registry`.
-- `create_from(**conf)` merges TOML config (`commands`, `router_mapping`, `subscriber`, `depends`) with class-level defaults.
+- `RegistryService` manages all command bindings (`commands`) and event subscriptions (`subscribers`). Accessible globally via `globals.registry`.
+- `create_from(**conf)` merges TOML config (`commands`, `routers`, `subscribers`, `depends`) with class-level defaults.
 - `registry.resolve_app(message)` reads `type(msg).destination` and uses first two segments to find the owning service from `services`.
 - Commands access the owning service via `globals.app`; never reach into sub-services.
 
@@ -392,12 +392,12 @@ await proto.execute_raw(sql)
 ["myapp.app.MyService"]
 commands = ["commands", "extra_commands"]
 
-["myapp.app.MyService".router_mapping]
+["myapp.app.MyService".routers]
 Ping = ["GET",  "/api/ping"]
 Echo = ["POST", "/api/echo"]
 Stream = ["SSE", "/api/stream"]
 
-["myapp.app.MyService".subscriber]
+["myapp.app.MyService".subscribers]
 "analytics.*.DataReady" = "on_data_ready"
 "trading.DataEngine.BarsReady" = ["on_bars", "update_cache"]
 
@@ -415,9 +415,9 @@ Top-level key = fully-qualified AppService class. `module` key in protocol secti
 | Config Key | Type | Merged Into |
 |------------|------|-------------|
 | `commands` | `list[str]` | `cls.commands` ClassVar |
-| `router_mapping` | `dict` | `cls.router_mapping` ClassVar |
-| `subscriber` | `dict` | `{topic: method_name \| [method_names]}` merged into `cls.subscriber` |
-| `depends` | `list[str]` | Resolved to `dict[str, AppService]` after all services created. Access via `self.dep("domain.alias")` |
+| `routers` | `dict` | `cls.routers` ClassVar |
+| `subscribers` | `dict` | `{topic: method_name \| [method_names]}` merged into `cls.subscribers` |
+| `depends` | `list[str]` | Resolved to `dict[str, AppService]` after all services created. Access via `self.get_dependency("domain.alias")` |
 | `protocol` | `dict` | Instance `protocol` via `add_dependency` |
 | other keys | any | Passed as `**kwargs` to `__init__` |
 
@@ -425,7 +425,7 @@ Top-level key = fully-qualified AppService class. `module` key in protocol secti
 
 TOML keys are split into two categories:
 
-1. **Framework-level keys** (`commands`, `router_mapping`, `subscriber`, `depends`, `protocol`) — always defined in TOML when needed. These control framework wiring.
+1. **Framework-level keys** (`commands`, `routers`, `subscribers`, `depends`, `protocol`) — always defined in TOML when needed. These control framework wiring.
 2. **Service-level custom parameters** — defined as `__init__` parameters with defaults in the service/protocol class itself. TOML only overrides values that differ from defaults.
 
 **Principle**: TOML should be minimal. If a service parameter equals its class default, omit it from TOML. Custom parameters belong in each service's `__init__` signature with sensible defaults; TOML's role is override, not definition.
@@ -454,21 +454,18 @@ Bootstrap handles config loading and service instantiation in a single `_build_s
 ```
 Bootstrap(mode.Worker)
   __init__(config=path)
-    -> _build_services(): read TOML, merge DEFAULT_SERVICES, iterate sections
+    -> _build_services(): read TOML, merge SERVICE_CONFIG, iterate sections
        -> cls.create_from(**conf) per section
        -> resolve depends: string refs -> AppService instances, add_dependency
-    -> bind well-known services: registry_service, session_service, hub_service, executor_service
+    -> returns BollydogServices(dict) with typed property accessors (.registry, .hub, .session, .executor)
+    -> push all context stacks: services, registry, session, hub
 
   on_first_start
     -> install signals
-    -> push services onto _services_ctx_stack
-    -> push registry_service onto _registry_ctx_stack
-    -> registry_service.register()  (scans commands + subscribers)
-    -> push session_service, hub_service onto their stacks
 
   on_started
-    -> if _message set (execute mode): executor.execute -> stop
-    -> else: maybe_start all services, log bindings + subscriptions
+    -> if _message set (execute mode): services.executor.execute -> stop
+    -> else: maybe_start all services, log commands + subscribers
 
   on_shutdown -> services.clear()
 
@@ -487,14 +484,14 @@ bollydog shell --config config.toml
 bollydog send <Command> <socket_path> [--config ...]
 ```
 
-### Command resolution (`_resolve_command`)
+### Command resolution
 
-CLI uses fuzzy matching against `registry.bindings`: exact destination → suffix match (`.Name`). Ambiguous suffix matches raise `KeyError` with candidate list.
+CLI uses `registry.resolve(command)` for exact destination matching. Raises `KeyError` if not found.
 
 ### `service` vs `execute` mode
 
-- `service`: `Bootstrap(config=path).start_all()` — daemon, full lifecycle.
-- `execute`: `Bootstrap(config=path).run_once(msg, timeout)` — one-shot, stops after completion. `timeout` parameter is unified into `message.expire_time`.
+- `service`: `Bootstrap(config=path).run()` — daemon, full lifecycle.
+- `execute`: `Bootstrap(config=path).run(msg, timeout)` — one-shot, stops after completion. `timeout` parameter is unified into `message.expire_time`.
 
 ## Environment Variables
 
@@ -515,7 +512,7 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 | `QUEUE_MAX_SIZE` | `1000` | Queue capacity |
 | `QUEUE_HISTORY_MAX_SIZE` | `1000` | Queue history length |
 
-### Entrypoint Toggle (service/__init__.py)
+### Entrypoint Toggle (each entrypoint's config.py)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -554,7 +551,7 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 2. **AppService** = resource owner. Expose business methods. Inner sub-services stay invisible to Commands.
 3. **Protocol** = environment abstraction. Swap `SqlAlchemyProtocol` -> `MemoryProtocol` for tests.
 4. Use `globals.app` (bound by `_with_context` from `destination`). Never `app.child_service.xxx`.
-5. **Cross-domain access**: undeclared services must go through `hub.dispatch(cmd)` or `yield cmd`. **Declared dependencies** (via `depends` in TOML/class) can be accessed directly via `self.dep("domain.alias").method(...)` — the dependency is explicit, lifecycle-managed, and auditable.
+5. **Cross-domain access**: undeclared services must go through `hub.dispatch(cmd)` or `yield cmd`. **Declared dependencies** (via `depends` in TOML/class) can be accessed directly via `self.get_dependency("domain.alias").method(...)` — the dependency is explicit, lifecycle-managed, and auditable.
 6. AppService does not proactively dispatch Commands — it exposes capabilities, Commands schedule.
 7. **Command fields and return values must be primitive types** (`str`, `int`, `float`, `bool`, `list`, `dict`, `None`). No class references, domain model instances, or complex objects as input fields or return values. This ensures Commands are naturally serializable, transportable across process boundaries, and self-describing for service discovery.
 
@@ -564,7 +561,7 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 
 | Layer | What to test | Tools | Hub needed? |
 |-------|-------------|-------|-------------|
-| 1. Pure logic | `match_topic`, `__init_subclass__`, `_resolve_command` | `def test_*()` — sync, no fixture | No |
+| 1. Pure logic | `match_topic`, `__init_subclass__` | `def test_*()` — sync, no fixture | No |
 | 2. Protocol standalone | `MemoryProtocol`, `SQLiteProtocol`, `CacheLayer` | `async with proto:` (lazy `maybe_start`) | No |
 | 3. Command unit | Single Command `__call__` with context | `run_command(cmd, app, protocol)` | No |
 | 4. E2E integration | Full dispatch → Queue → run → result | `run_hub()` context manager or `hub` fixture | Yes |
@@ -625,4 +622,4 @@ Coverage reports: `tmp/htmlcov/` (HTML), `tmp/coverage.xml` (XML).
 | `resolve` fails | Use full destination; suffix match only works in CLI |
 | Wrong `app` in Command | Ensure class-level `destination` matches service key |
 | Protocol not started | Must be added via `add_dependency`, not just assigned |
-| subscriber not triggered | Verify `subscriber` config in TOML; check `registry.subscriptions` |
+| subscriber not triggered | Verify `subscribers` config in TOML; check `registry.subscribers` |

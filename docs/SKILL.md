@@ -55,7 +55,7 @@ Two reference documents drive development. **Do NOT read them in full** — use 
 | AppService Design | 274-298 | Service class design, services registry |
 | Protocol System | 299-386 | Base, ABC, implementations, composites |
 | TOML Configuration | 387-479 | Config file structure, Bootstrap lifecycle |
-| CLI | 480-498 | Command-line interface, fuzzy resolve, service vs execute |
+| CLI | 480-498 | Command-line interface, exact resolve, service vs execute |
 | Environment Variables | 499-550 | Env var naming, all variables |
 | Design Rules | 551-560 | Hard constraints |
 | Testing Strategy | 561-619 | Four-layer model, fixtures, run_hub/run_execute |

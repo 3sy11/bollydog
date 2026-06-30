@@ -1,7 +1,7 @@
 """Hub advanced tests — hooks, handoff, gather, async generator, subscriber.
 
 All tests use the `hub` fixture (E2E via run_hub).
-Commands are defined inline and registered dynamically via registry.bindings.
+Commands are defined inline and registered dynamically via registry.commands.
 """
 import asyncio
 import sys, os
@@ -15,10 +15,10 @@ DEST_PREFIX = 'bollydog.HubService'
 
 
 def _reg(cmd_cls):
-    """Register a command class into registry.bindings via dynamic subclass."""
+    """Register a command class into registry.commands via dynamic subclass."""
     destination = f'{DEST_PREFIX}.{cmd_cls.alias}'
     bound = type(cmd_cls.__name__, (cmd_cls,), {'destination': destination})
-    registry.bindings[destination] = bound
+    registry.commands[destination] = bound
     return destination
 
 
@@ -26,7 +26,7 @@ def _make(cmd_cls, **kwargs):
     """Create instance via dynamic-subclass bound class."""
     destination = f'{DEST_PREFIX}.{cmd_cls.alias}'
     bound = type(cmd_cls.__name__, (cmd_cls,), {'destination': destination})
-    registry.bindings[destination] = bound
+    registry.commands[destination] = bound
     return bound(**kwargs)
 
 

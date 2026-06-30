@@ -103,12 +103,12 @@ class BaseService(mode.Service):
     abstract = True
     domain: ClassVar[str]
     alias: ClassVar[str]
-    router_mapping: ClassVar[dict] = {}
-    subscriber: ClassVar[dict] = {}
+    routers: ClassVar[dict] = {}
+    subscribers: ClassVar[dict] = {}
     commands: ClassVar[List[str]] = []
     depends: ClassVar[dict] = {}
 
-    def dep(self, key: str) -> 'BaseService':
+    def get_dependency(self, key: str) -> 'BaseService':
         """Get declared dependency by domain.alias key. Raises ValueError if not found."""
         svc = self.depends.get(key)
         if svc is None: raise ValueError(f'{self.domain}.{self.alias} has no dependency: {key}')
