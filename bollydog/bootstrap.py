@@ -86,10 +86,9 @@ class Bootstrap(mode.Worker):
 
     # --- entry ---
 
-    def run(self, message: Message = None, timeout: int = 300):
-        if message:
-            self._message = message
-            if timeout: self._message.expire_time = min(self._message.expire_time, timeout)
+    def run(self, message=None, timeout: int = 300):
+        self._message = message
+        self._timeout = timeout
         self.execute_from_commandline()
 
     # --- lifecycle ---
@@ -99,7 +98,9 @@ class Bootstrap(mode.Worker):
         await super().on_first_start()
 
     async def on_started(self) -> None:
+        if callable(self._message): self._message = self._message()
         if self._message:
+            if self._timeout: self._message.expire_time = min(self._message.expire_time, self._timeout)
             await self.services.executor.maybe_start()
             try: await self.services.executor.execute(self._message)
             except Exception as e: self.logger.exception(e)

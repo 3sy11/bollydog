@@ -46,8 +46,7 @@ class CLI:
         """Execute a single command. config is required."""
         bootstrap = Bootstrap(config=config, override_logging=False)
         cmd_cls = registry.resolve(command)
-        msg = cmd_cls(**kwargs)
-        bootstrap.run(msg, timeout=timeout)
+        bootstrap.run(lambda: cmd_cls(**kwargs), timeout=timeout)
 
     @staticmethod
     def send(command: str, socket: str, config: str = ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG, **kwargs):
