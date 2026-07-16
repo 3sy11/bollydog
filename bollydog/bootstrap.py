@@ -41,8 +41,9 @@ class Bootstrap(mode.Worker):
     def __init__(self, config: str = None, **kwargs):
         self._config = config
         self._message: Optional[Message] = None
-        self.services = self._build_services()
-        super().__init__(*self.services.values(), **kwargs)
+        _built = self._build_services()
+        super().__init__(*_built.values(), **kwargs)
+        self.services = _built
         _services_ctx_stack.push_without_automatic_cleanup(self.services)
         if self.services.registry:
             _registry_ctx_stack.push_without_automatic_cleanup(self.services.registry)

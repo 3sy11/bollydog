@@ -42,8 +42,7 @@ class CLI:
             print(f'{cmd_alias:<{_w0}}  {destination:<{_w1}}  {params}')
 
     @staticmethod
-    def execute(command: str, config: str, timeout: int = 300, **kwargs):
-        """Execute a single command. config is required."""
+    def execute(command: str, config: str = None, timeout: int = 300, **kwargs):
         bootstrap = Bootstrap(config=config, override_logging=False)
         cmd_cls = registry.resolve(command)
         bootstrap.run(lambda: cmd_cls(**kwargs), timeout=timeout)
