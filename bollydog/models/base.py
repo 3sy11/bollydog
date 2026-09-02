@@ -89,6 +89,21 @@ class BaseCommand(_ModelMixin):
         _t = 'Event' if isinstance(self, BaseEvent) else 'Command'
         return f'{_t}({self.alias}) dest={self.destination or "-"} trace={self.trace_id[:8]}'
 
+    @classmethod
+    def describe(cls) -> dict:
+        """Return command metadata with user-defined parameter JSON Schema."""
+        full = cls.model_json_schema()
+        base_fields = set(BaseCommand.model_fields.keys()) | set(_ModelMixin.model_fields.keys())
+        properties = full.get('properties', {})
+        required = full.get('required', [])
+        return {
+            'name': cls.alias,
+            'destination': cls.destination,
+            'description': (cls.__doc__ or '').strip(),
+            'parameters': {k: v for k, v in properties.items() if k not in base_fields},
+            'required': [r for r in required if r not in base_fields],
+        }
+
     @abstractmethod
     async def __call__(self, *args, **kwargs) -> Any:
         ...

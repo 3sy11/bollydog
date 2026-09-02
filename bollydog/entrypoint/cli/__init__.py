@@ -27,19 +27,30 @@ class CLI:
     def ls(config: str = None):
         bootstrap = Bootstrap(config=config, override_logging=False)
         commands = registry.commands
-        _base_fields = set(BaseCommand.model_fields.keys())
-        rows = []
-        for destination, cmd_cls in commands.items():
-            _user_fields = {k: v for k, v in cmd_cls.model_fields.items() if k not in _base_fields}
-            _params = ', '.join(f'{k}: {v.annotation.__name__}' for k, v in _user_fields.items()) if _user_fields else '-'
-            rows.append((cmd_cls.alias, destination, _params))
-        if not rows:
+        if not commands:
             print('No commands registered.'); return
-        _w0 = max(len(r[0]) for r in rows)
-        _w1 = max(len(r[1]) for r in rows)
-        print(f'{"COMMAND":<{_w0}}  {"DESTINATION":<{_w1}}  PARAMS')
-        for cmd_alias, destination, params in rows:
-            print(f'{cmd_alias:<{_w0}}  {destination:<{_w1}}  {params}')
+
+        rows = []
+        for dest, cmd_cls in commands.items():
+            desc = cmd_cls.describe()
+            params = []
+            for k, v in desc['parameters'].items():
+                req = '*' if k in desc['required'] else ' '
+                ptype = v.get('type', v.get('anyOf', 'any'))
+                default = f'={v["default"]}' if 'default' in v else ''
+                params.append(f'{req}{k}: {ptype}{default}')
+            rows.append((desc['name'], dest, desc['description'], params))
+
+        w_name = max(len(r[0]) for r in rows)
+        w_dest = max(len(r[1]) for r in rows)
+        header = f'{"COMMAND":<{w_name}}  {"DESTINATION":<{w_dest}}  DESCRIPTION / PARAMS'
+        print(header)
+        print('-' * len(header))
+        indent = ' ' * (w_name + w_dest + 4)
+        for name, dest, description, params in rows:
+            print(f'{name:<{w_name}}  {dest:<{w_dest}}  {description or "-"}')
+            for p in params:
+                print(f'{indent}  {p}')
 
     @staticmethod
     def execute(command: str, config: str = None, timeout: int = 300, **kwargs):

@@ -57,6 +57,11 @@ class Exchange(AppService):
     def bind_subscriber_callbacks(self, message):
         if not isinstance(message, BaseEvent): return
         topic = type(message).destination
-        if not topic: return
+        if not topic:
+            self.logger.warning(
+                f'Event {type(message).__name__} has no destination bound, '
+                f'subscribers will not fire. Use registry.resolve() or svc.event() to construct events.'
+            )
+            return
         for destination in self.match(topic):
             message.state.add_done_callback(partial(self._on_subscriber_done, destination, message))
