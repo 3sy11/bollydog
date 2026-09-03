@@ -104,6 +104,13 @@ class BaseCommand(_ModelMixin):
             'required': [r for r in required if r not in base_fields],
         }
 
+    async def on_cancel(self):
+        """Called when the command is cancelled. Override for cleanup.
+
+        Runs before cancellation propagates. No need to catch CancelledError.
+        """
+        pass
+
     @abstractmethod
     async def __call__(self, *args, **kwargs) -> Any:
         ...

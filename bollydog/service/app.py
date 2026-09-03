@@ -68,10 +68,22 @@ class HubService(CommandRunnerMixin, AppService):
         return await message.state
 
     async def _process_and_complete(self, message):
-        try: await self._run_with_context(message)
+        try:
+            await self._run_with_context(message)
+        except asyncio.CancelledError:
+            try:
+                await message.on_cancel()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                self.logger.exception(e)
+            if not message.state.done():
+                message.state.cancel()
         except Exception as e:
-            if not message.state.done(): message.state.set_exception(e)
-        self.queue.complete(message.iid)
+            if not message.state.done():
+                message.state.set_exception(e)
+        finally:
+            self.queue.complete(message.iid)
 
     @mode.Service.task
     async def run(self):
@@ -79,4 +91,13 @@ class HubService(CommandRunnerMixin, AppService):
             message = await self.queue.take()
             if not message: break
             self.logger.info(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} {message.alias}')
-            self.add_future(self._process_and_complete(message))
+            fut = self.add_future(self._process_and_complete(message))
+            self.queue.activate(message.iid, fut)
+
+    def cancel(self, iid: str, msg: str = None) -> int:
+        """Cancel a queued or in-flight command by iid.
+
+        PENDING:    removed from Queue, state cancelled.
+        IN_FLIGHT:  Task.cancel() -> CancelledError -> on_cancel() -> state cancelled.
+        """
+        return 1 if self.queue.cancel(iid, msg=msg) else 0

@@ -10,12 +10,12 @@ from bollydog.models.service import AppService
 
 logger = logging.getLogger(__name__)
 
-PENDING, IN_FLIGHT, DONE, FAILED = 1, 2, 0, 3
+PENDING, IN_FLIGHT, DONE, FAILED, CANCELLED = 1, 2, 0, 3, 4
 
 
 class Queue(AppService):
     domain = DOMAIN
-    _store: OrderedDict[str, Tuple[Message, asyncio.Future, int]]
+    _store: OrderedDict[str, Tuple[Message, int, Optional[asyncio.Future]]]
     _history: deque
     _notify: asyncio.Event
 
@@ -28,7 +28,7 @@ class Queue(AppService):
     async def put(self, message: Message) -> Message:
         if len(self._store) >= QUEUE_MAX_SIZE:
             raise ServiceMaxSizeOfQueueError(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} Queue is full')
-        self._store[message.iid] = (message, message.state, PENDING)
+        self._store[message.iid] = (message, PENDING, None)
         self._notify.set()
         return message
 
@@ -37,14 +37,38 @@ class Queue(AppService):
 
     async def take(self) -> Optional[Message]:
         while True:
-            for iid, (msg, fut, status) in self._store.items():
+            for iid, (msg, status, _) in self._store.items():
                 if status == PENDING:
-                    self._store[iid] = (msg, fut, IN_FLIGHT)
                     return msg
             if self.should_stop: return None
             self._notify.clear()
             coro = await self.wait(self._notify.wait())
             if coro.stopped: return None
+
+    def activate(self, iid: str, fut: asyncio.Future):
+        """Mark message as IN_FLIGHT and bind its execution future. Called by Hub after add_future."""
+        entry = self._store.get(iid)
+        if not entry: return
+        msg, _, _ = entry
+        self._store[iid] = (msg, IN_FLIGHT, fut)
+
+    def cancel(self, iid: str, msg: str = None) -> bool:
+        """Cancel a message by iid.
+
+        PENDING:    cancel state future, archive immediately.
+        IN_FLIGHT:  Task.cancel() on execution future -> CancelledError at next await.
+        """
+        entry = self._store.get(iid)
+        if not entry: return False
+        message, status, exec_fut = entry
+        if status == PENDING:
+            if not message.state.done(): message.state.cancel(msg)
+            self._archive(iid, message, CANCELLED)
+            return True
+        if status == IN_FLIGHT and exec_fut and not exec_fut.done():
+            exec_fut.cancel(msg=msg)
+            return True
+        return False
 
     def _archive(self, message_id: str, msg: Message, status: int):
         self._store.pop(message_id, None)
@@ -54,13 +78,18 @@ class Queue(AppService):
         """Archive message based on its state outcome. Called by Hub after processing."""
         entry = self._store.get(message_id)
         if not entry: return
-        msg, fut, _ = entry
-        status = FAILED if (fut.done() and fut.exception()) else DONE
+        msg, _, _ = entry
+        if msg.state.cancelled():
+            status = CANCELLED
+        elif msg.state.done() and msg.state.exception():
+            status = FAILED
+        else:
+            status = DONE
         self._archive(message_id, msg, status)
 
     @property
     def has_pending(self) -> bool:
-        return any(s == PENDING for _, _, s in self._store.values())
+        return any(s == PENDING for _, s, _ in self._store.values())
 
     @property
     def size(self) -> int:

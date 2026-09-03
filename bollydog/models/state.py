@@ -10,6 +10,8 @@ class StreamState(asyncio.Queue):
         super().__init__()
         self._results, self._done_event, self._exception = [], asyncio.Event(), None
         self._done_callbacks = []
+        self._cancelled = False
+        self._cancel_message = None
 
     def add_done_callback(self, callback):
         if self.done():
@@ -41,8 +43,18 @@ class StreamState(asyncio.Queue):
         self.put_nowait(None)
         self._schedule_callbacks()
 
+    def cancel(self, msg=None):
+        """Cancel the stream. Terminates async for consumers."""
+        if self.done(): return False
+        self._cancelled = True
+        self._cancel_message = msg
+        self._done_event.set()
+        self.put_nowait(None)
+        self._schedule_callbacks()
+        return True
+
     def done(self): return self._done_event.is_set()
-    def cancelled(self): return False
+    def cancelled(self): return self._cancelled
     def exception(self): return self._exception
     def result(self):
         if self._exception: raise self._exception
