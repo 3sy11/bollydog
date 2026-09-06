@@ -7,6 +7,7 @@ from abc import abstractmethod
 from typing import List, Optional, Any, ClassVar
 
 import mode
+import pydantic
 from pydantic import BaseModel, Field, field_serializer, ConfigDict, InstanceOf
 
 import os
@@ -92,7 +93,11 @@ class BaseCommand(_ModelMixin):
     @classmethod
     def describe(cls) -> dict:
         """Return command metadata with user-defined parameter JSON Schema."""
-        full = cls.model_json_schema()
+        schema_cls = pydantic.create_model(
+            cls.__name__,
+            **{k: (f.annotation, f) for k, f in cls.model_fields.items() if k != 'state'},
+        )
+        full = schema_cls.model_json_schema()
         base_fields = set(BaseCommand.model_fields.keys()) | set(_ModelMixin.model_fields.keys())
         properties = full.get('properties', {})
         required = full.get('required', [])
@@ -125,19 +130,22 @@ class BaseService(mode.Service):
     abstract = True
     domain: ClassVar[str]
     alias: ClassVar[str]
-    routers: ClassVar[dict] = {}
-    subscribers: ClassVar[dict] = {}
-    commands: ClassVar[List[str]] = []
-    depends: ClassVar[dict] = {}
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+    @classmethod
+    def create_from(cls, **conf):
+        instance = cls()
+        for key, val in conf.items():
+            setattr(instance, key, val)
+        return instance
 
     def get_dependency(self, key: str) -> 'BaseService':
         """Get declared dependency by domain.alias key. Raises ValueError if not found."""
         svc = self.depends.get(key)
         if svc is None: raise ValueError(f'{self.domain}.{self.alias} has no dependency: {key}')
         return svc
-
-    def __init__(self, **kwargs):
-        super().__init__()
 
     def add_dependency(self, service: 'BaseService') -> 'BaseService':
         super().add_dependency(service)
@@ -151,8 +159,6 @@ class BaseService(mode.Service):
         super(BaseService, cls).__init_subclass__()
         if 'domain' not in cls.__dict__:
             cls.domain = pathlib.Path(inspect.getmodule(cls).__file__).parent.name
-        if 'alias' not in cls.__dict__:
-            cls.alias = cls.__name__
 
     def __repr__(self) -> str:
         return f"<{self._repr_name()}: {self.state}: {id(self)}>"

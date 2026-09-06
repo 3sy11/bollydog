@@ -7,14 +7,20 @@ Exposes entry method for CLI:
 import signal
 import tomllib
 from functools import cached_property
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import mode
 from mode.utils.imports import smart_import
 
-from bollydog.config import SERVICE_CONFIG
+from bollydog.config import (
+    ENTRYPOINT_HTTP_ENABLED,
+    ENTRYPOINT_WS_ENABLED,
+    ENTRYPOINT_UDS_ENABLED,
+)
 from bollydog.globals import _hub_ctx_stack, _session_ctx_stack, _services_ctx_stack, _registry_ctx_stack
 from bollydog.models.base import BaseCommand as Message
+from bollydog.models.service import AppService
 
 if TYPE_CHECKING:
     from bollydog.service.app import HubService
@@ -41,49 +47,93 @@ class Bootstrap(mode.Worker):
     def __init__(self, config: str = None, **kwargs):
         self._config = config
         self._message: Optional[Message] = None
-        _built = self._build_services()
-        super().__init__(*_built.values(), **kwargs)
-        self.services = _built
+        _services = self._build_services()
+        _app_services = BollydogServices({
+            k: v for k, v in _services.items()
+            if isinstance(v, AppService)
+        })
+        super().__init__(*_app_services.values(), **kwargs)
+        self.services = _app_services
         _services_ctx_stack.push_without_automatic_cleanup(self.services)
-        if self.services.registry:
-            _registry_ctx_stack.push_without_automatic_cleanup(self.services.registry)
-            self.services.registry.register()
-        if self.services.session:
-            _session_ctx_stack.push_without_automatic_cleanup(self.services.session)
-        if self.services.hub:
-            _hub_ctx_stack.push_without_automatic_cleanup(self.services.hub)
+        _registry_ctx_stack.push_without_automatic_cleanup(self.services.registry)
+        self.services.registry.register()
+        _session_ctx_stack.push_without_automatic_cleanup(self.services.session)
+        _hub_ctx_stack.push_without_automatic_cleanup(self.services.hub)
 
     def on_init_dependencies(self):
         return []
 
     @cached_property
     def config(self) -> dict:
-        merged = dict(SERVICE_CONFIG)
+        # TODO: ENABLED flags gate entrypoint TOML loading, but if app TOML
+        #  re-declares the same entrypoint key, the service will be created
+        #  regardless of ENABLED=0 — need a filtering step after merge.
+        merged = {}
+        base = Path(__file__).parent
+        with open(base / 'service' / 'config.toml', 'rb') as f:
+            merged.update(tomllib.load(f))
+        if ENTRYPOINT_HTTP_ENABLED:
+            with open(base / 'entrypoint' / 'http' / 'config.toml', 'rb') as f:
+                merged.update(tomllib.load(f))
+        if ENTRYPOINT_WS_ENABLED:
+            with open(base / 'entrypoint' / 'websocket' / 'config.toml', 'rb') as f:
+                merged.update(tomllib.load(f))
+        if ENTRYPOINT_UDS_ENABLED:
+            with open(base / 'entrypoint' / 'uds' / 'config.toml', 'rb') as f:
+                merged.update(tomllib.load(f))
         if self._config:
             with open(self._config, 'rb') as f:
                 merged.update(tomllib.load(f))
         return merged
 
-    def _build_services(self) -> 'BollydogServices':
-        services = BollydogServices()
-        for name, conf in self.config.items():
-            conf = dict(conf)
-            module = conf.pop('module', name)
-            _service = smart_import(module).create_from(**conf)
-            key = f'{_service.domain}.{_service.alias}'
-            services[key] = _service
-        for _service in services.values():
-            if (isinstance(_service.depends, (list, tuple)) and _service.depends
-                    and isinstance(_service.depends[0], str)):
-                _resolved = {}
-                for _depend in _service.depends:
-                    _dep = services.get(_depend)
-                    if _dep is None:
-                        raise ValueError(f"depends '{_depend}' not found for {_service.domain}.{_service.alias}")
-                    _service.add_dependency(_dep)
-                    _resolved[_depend] = _dep
-                _service.depends = _resolved
-        return services
+    def _build_services(self) -> dict:
+        """Three-phase build: create instances -> bind protocols -> resolve depends."""
+        config = self.config
+        _services = {}
+
+        # Phase 1: create all instances
+        for key, entry in config.items():
+            conf = dict(entry)
+            module_path = conf.pop('module', None)
+            if not module_path:
+                raise ValueError(f"TOML entry '{key}' missing 'module' field")
+
+            cls = smart_import(module_path)
+            domain, alias = key.rsplit('.', 1) if '.' in key else (cls.domain, key)
+
+            if key in _services:
+                raise ValueError(f"duplicate TOML key: '{key}'")
+
+            instance = cls.create_from(**conf)
+            instance.alias = alias
+            instance.domain = domain
+            _services[key] = instance
+
+        # Phase 2: bind protocol references
+        for key, instance in _services.items():
+            ref = getattr(instance, '_protocol', None)
+            if not ref:
+                continue
+            proto = _services.get(ref)
+            if proto is None:
+                raise ValueError(f"protocol '{ref}' not found for '{key}'")
+            instance.add_dependency(proto)
+
+        # Phase 3: resolve depends
+        for key, instance in _services.items():
+            raw = getattr(instance, '_depends', [])
+            if not raw:
+                continue
+            resolved = {}
+            for dep_ref in raw:
+                dep = _services.get(dep_ref)
+                if dep is None:
+                    raise ValueError(f"depends '{dep_ref}' not found for '{key}'")
+                instance.add_dependency(dep)
+                resolved[dep_ref] = dep
+            instance.depends = resolved
+
+        return _services
 
     # --- entry ---
 
@@ -113,16 +163,19 @@ class Bootstrap(mode.Worker):
 
     def _log_bindings(self):
         if not self.services.registry: return
-        commands = self.services.registry.commands
+        commands = self.services.registry.all_commands()
         if commands:
             _lines = '\n  '.join(f'{cmd_cls.alias:<20} -> {destination}' for destination, cmd_cls in commands.items())
             self.logger.info(f'commands({len(commands)}):\n  {_lines}')
-        subs = self.services.registry.subscribers
+        subs = self.services.registry.all_subscribers()
         if subs:
             _lines = '\n  '.join(f'{t} -> [{", ".join(dests)}]' for t, dests in subs.items())
             self.logger.info(f'subscribers({sum(len(v) for v in subs.values())}):\n  {_lines}')
 
     async def on_shutdown(self) -> None:
+        for stack in (_hub_ctx_stack, _registry_ctx_stack, _session_ctx_stack, _services_ctx_stack):
+            if stack.top is not None:
+                stack.pop()
         self.services.clear()
 
     def on_worker_shutdown(self) -> None:

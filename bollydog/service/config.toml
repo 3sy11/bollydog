@@ -1,0 +1,26 @@
+["adapters.MemoryProtocol"]
+module = "bollydog.adapters.memory.MemoryProtocol"
+
+["bollydog.RegistryService"]
+module = "bollydog.service.registry.RegistryService"
+
+["bollydog.Session"]
+module = "bollydog.service.session.Session"
+protocol = "adapters.MemoryProtocol"
+
+["bollydog.Exchange"]
+module = "bollydog.service.exchange.Exchange"
+
+["bollydog.Queue"]
+module = "bollydog.service.queue.Queue"
+max_size = 1000
+history_size = 1000
+
+["bollydog.HubService"]
+module = "bollydog.service.app.HubService"
+commands = ["commands"]
+depends = ["bollydog.RegistryService", "bollydog.Exchange",
+           "bollydog.Queue", "bollydog.Session"]
+
+["bollydog.ExecuteService"]
+module = "bollydog.service.executor.ExecuteService"

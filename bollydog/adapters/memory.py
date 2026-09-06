@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from typing import Optional
 from bollydog.models.protocol import Protocol
@@ -52,9 +53,9 @@ class MemoryProtocol(KVProtocol):
 # ─── RedisProtocol ────────────────────────────────────────────
 
 class RedisProtocol(KVProtocol):
+    url: str = os.getenv('REDIS_URL', 'redis://localhost')
 
-    def __init__(self, url: str = 'redis://localhost', **kwargs):
-        self.url = url
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     async def on_start(self) -> None:
@@ -90,9 +91,10 @@ class RedisProtocol(KVProtocol):
 
 class SQLiteProtocol(KVProtocol):
     """SQLite as KV store: kv(key TEXT PK, value TEXT, updated_at REAL)."""
+    path: str = ':memory:'
+    table: str = 'kv'
 
-    def __init__(self, path: str = ':memory:', table: str = 'kv', **kwargs):
-        self.path, self.table = path, table
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     async def on_start(self) -> None:

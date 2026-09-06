@@ -127,9 +127,9 @@ def test_hub_context_middleware_init():
 
 def test_http_service_build_middlewares():
     from bollydog.entrypoint.http.app import HttpService
-    with patch.dict('os.environ', {}, clear=False):
-        mws = HttpService._build_middlewares()
-        assert isinstance(mws, list)
+    svc = HttpService()
+    mws = svc._build_middlewares()
+    assert isinstance(mws, list)
 
 def test_http_service_collect_routers():
     from bollydog.entrypoint.http.app import HttpService
@@ -193,8 +193,8 @@ async def test_uds_read_frame():
 
 def test_uds_service_init():
     from bollydog.entrypoint.uds.app import UdsService
-    svc = UdsService(sock_path='/tmp/test.sock')
-    assert svc._sock_path == '/tmp/test.sock'
+    svc = UdsService.create_from(sock_path='/tmp/test.sock')
+    assert svc.sock_path == '/tmp/test.sock'
     assert svc._server is None
 
 

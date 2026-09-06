@@ -5,7 +5,7 @@ from bollydog.adapters.composite import TableCacheLayer
 
 async def test_table_cache_set_get():
     inner = MemoryProtocol()
-    layer = TableCacheLayer(flush_threshold=100)
+    layer = TableCacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         await layer.set('k1', {'a': 1})
@@ -13,7 +13,7 @@ async def test_table_cache_set_get():
 
 async def test_table_cache_flush_on_threshold():
     inner = MemoryProtocol()
-    layer = TableCacheLayer(flush_threshold=2)
+    layer = TableCacheLayer.create_from(flush_threshold=2)
     layer.add_dependency(inner)
     async with layer:
         await layer.set('a', 10)
@@ -24,7 +24,7 @@ async def test_table_cache_flush_on_threshold():
 
 async def test_table_cache_remove():
     inner = MemoryProtocol()
-    layer = TableCacheLayer(flush_threshold=100)
+    layer = TableCacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         await layer.set('x', 'v')
@@ -35,7 +35,7 @@ async def test_table_cache_remove():
 
 async def test_table_cache_exists():
     inner = MemoryProtocol()
-    layer = TableCacheLayer(flush_threshold=100)
+    layer = TableCacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         assert not await layer.exists('z')
@@ -44,7 +44,7 @@ async def test_table_cache_exists():
 
 async def test_table_cache_keys():
     inner = MemoryProtocol()
-    layer = TableCacheLayer(flush_threshold=100)
+    layer = TableCacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         await inner.set('old', 1)
@@ -55,7 +55,7 @@ async def test_table_cache_keys():
 
 async def test_table_cache_sort_by():
     inner = MemoryProtocol()
-    layer = TableCacheLayer(sort_by='ts', flush_threshold=100)
+    layer = TableCacheLayer.create_from(sort_by='ts', flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         data = [{'ts': 3}, {'ts': 1}, {'ts': 2}]
@@ -65,7 +65,7 @@ async def test_table_cache_sort_by():
 
 async def test_table_cache_load_from_inner():
     inner = MemoryProtocol()
-    layer = TableCacheLayer(flush_threshold=100)
+    layer = TableCacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with inner:
         await inner.set('pre1', 'v1')
@@ -76,7 +76,7 @@ async def test_table_cache_load_from_inner():
 
 async def test_table_cache_compact():
     inner = MemoryProtocol()
-    layer = TableCacheLayer(flush_threshold=100)
+    layer = TableCacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         await layer.compact()  # no-op if inner has no compact, should not raise

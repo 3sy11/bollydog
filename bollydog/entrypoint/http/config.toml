@@ -1,0 +1,2 @@
+["bollydog.HttpService"]
+module = "bollydog.entrypoint.http.app.HttpService"

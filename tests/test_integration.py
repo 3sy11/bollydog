@@ -1,4 +1,4 @@
-"""Integration tests — CLI _resolve_command, Bootstrap, entrypoint logic via mock."""
+"""Integration tests — RegistryService resolve, CLI ls, Bootstrap, entrypoint logic via mock."""
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -10,62 +10,33 @@ from bollydog.service.registry import RegistryService
 # ─── helpers ─────────────────────────────────────────────────
 
 def _make_registry_with(*cmd_classes, prefix='app.Svc'):
-    """Create a RegistryService, populate bindings, push to context stack."""
+    """Create a RegistryService, populate _commands, push to context stack."""
     reg = RegistryService()
     for cls in cmd_classes:
         destination = f'{prefix}.{cls.alias}'
-        reg.bindings[destination] = cls
+        reg._commands[destination] = cls
     return reg
 
 
-# ─── CLI: _resolve_command ────────────────────────────────────
+# ─── RegistryService: resolve ─────────────────────────────────
 
 def test_resolve_exact():
-    from bollydog.entrypoint.cli import _resolve_command
-
     class Alpha(BaseCommand):
         async def __call__(self): return 1
 
     reg = _make_registry_with(Alpha)
     with _registry_ctx_stack.push(reg):
-        dest, cls = _resolve_command('app.Svc.Alpha')
+        cls = reg.resolve('app.Svc.Alpha')
         assert cls is Alpha
-        assert dest == 'app.Svc.Alpha'
-
-def test_resolve_suffix():
-    from bollydog.entrypoint.cli import _resolve_command
-
-    class Alpha(BaseCommand):
-        async def __call__(self): return 1
-
-    reg = _make_registry_with(Alpha)
-    with _registry_ctx_stack.push(reg):
-        dest, cls = _resolve_command('Alpha')
-        assert cls.alias == 'Alpha'
 
 def test_resolve_not_found():
-    from bollydog.entrypoint.cli import _resolve_command
-
     class Alpha(BaseCommand):
         async def __call__(self): return 1
 
     reg = _make_registry_with(Alpha)
     with _registry_ctx_stack.push(reg):
         with pytest.raises(KeyError, match="not found"):
-            _resolve_command('NonExistent')
-
-def test_resolve_ambiguous():
-    from bollydog.entrypoint.cli import _resolve_command
-
-    class Dup(BaseCommand):
-        async def __call__(self): return 0
-
-    reg = RegistryService()
-    reg.bindings['a.S1.Dup'] = Dup
-    reg.bindings['b.S2.Dup'] = Dup
-    with _registry_ctx_stack.push(reg):
-        with pytest.raises(KeyError, match="Ambiguous"):
-            _resolve_command('Dup')
+            reg.resolve('NonExistent')
 
 
 # ─── CLI: ls ──────────────────────────────────────────────────
@@ -134,7 +105,7 @@ def test_hub_context_middleware_init():
     assert mw.hub_instance is mock_hub
 
 
-# ─── Exchange: match via registry.subscriptions ───────────────
+# ─── Exchange: match via registry ─────────────────────────────
 
 def test_exchange_subscribe_unsubscribe():
     from bollydog.service.exchange import Exchange

@@ -1,21 +1,23 @@
 import asyncio
 import contextvars
+import os
 from typing import Any, AsyncGenerator
 from contextlib import asynccontextmanager
 from bollydog.adapters._base import GraphProtocol, TransactionMixin
 
 
 class Neo4jProtocol(GraphProtocol, TransactionMixin):
+    url: str = os.getenv('NEO4J_URL', 'bolt://localhost:7687')
+    auth: tuple = None
 
     _neo4j_ctx: contextvars.ContextVar = contextvars.ContextVar('neo4j_session')
 
-    def __init__(self, url: str, auth: tuple[str, str], *args, **kwargs):
-        self.url = url
-        self.auth = tuple(auth)
-        super().__init__(*args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     async def on_start(self) -> None:
         from neo4j import GraphDatabase
+        if isinstance(self.auth, list): self.auth = tuple(self.auth)
         self.adapter = GraphDatabase.driver(self.url, auth=self.auth)
 
     async def __aenter__(self):
@@ -50,9 +52,10 @@ class Neo4jProtocol(GraphProtocol, TransactionMixin):
 class NeuGProtocol(GraphProtocol):
     """GraphScope (alibaba/graphscope) standalone adapter."""
 
-    def __init__(self, cluster_type: str = 'hosts', num_workers: int = 1, **kwargs):
-        self.cluster_type = cluster_type
-        self.num_workers = num_workers
+    cluster_type: str = 'hosts'
+    num_workers: int = 1
+
+    def __init__(self, **kwargs):
         self._session = None
         super().__init__(**kwargs)
 

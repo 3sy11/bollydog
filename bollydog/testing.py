@@ -9,9 +9,8 @@ from contextlib import ExitStack, contextmanager, asynccontextmanager
 
 from bollydog.bootstrap import Bootstrap
 from bollydog.globals import (
-    _app_ctx_stack, _protocol_ctx_stack, _message_ctx_stack,
-    _services_ctx_stack, _session_ctx_stack, _hub_ctx_stack,
-    _registry_ctx_stack,
+    _app_ctx_stack, _protocol_ctx_stack,
+    _services_ctx_stack, _session_ctx_stack, _hub_ctx_stack, _registry_ctx_stack,
 )
 
 
@@ -32,30 +31,32 @@ async def run_command(cmd, app=None, protocol=None):
 
 @asynccontextmanager
 async def run_hub(config: str = None):
-    """E2E context manager: build services, start HubService, yield for testing."""
+    """E2E context manager: build services, start HubService, yield for testing.
+
+    Bootstrap.__init__ already pushes services/registry/session/hub onto
+    context stacks via push_without_automatic_cleanup, so we don't push again.
+    """
     bootstrap = Bootstrap(config=config)
-    with ExitStack() as stack:
-        stack.enter_context(_services_ctx_stack.push(bootstrap.services))
-        if bootstrap.services.registry:
-            stack.enter_context(_registry_ctx_stack.push(bootstrap.services.registry))
-            bootstrap.services.registry.register()
-        if bootstrap.services.session:
-            stack.enter_context(_session_ctx_stack.push(bootstrap.services.session))
-        stack.enter_context(_hub_ctx_stack.push(bootstrap.services.hub))
+    try:
         async with bootstrap.services.hub:
             yield bootstrap.services.hub
+    finally:
+        _pop_stacks()
 
 
 @asynccontextmanager
 async def run_execute(config: str = None):
     """Lightweight E2E: ExecuteService without Queue/Exchange."""
     bootstrap = Bootstrap(config=config)
-    with ExitStack() as stack:
-        stack.enter_context(_services_ctx_stack.push(bootstrap.services))
-        if bootstrap.services.registry:
-            stack.enter_context(_registry_ctx_stack.push(bootstrap.services.registry))
-            bootstrap.services.registry.register()
-        if bootstrap.services.session:
-            stack.enter_context(_session_ctx_stack.push(bootstrap.services.session))
+    try:
         async with bootstrap.services.executor:
             yield bootstrap.services.executor
+    finally:
+        _pop_stacks()
+
+
+def _pop_stacks():
+    """Pop all context stacks pushed by Bootstrap.__init__."""
+    for stack in (_hub_ctx_stack, _registry_ctx_stack, _session_ctx_stack, _services_ctx_stack):
+        if stack.top is not None:
+            stack.pop()

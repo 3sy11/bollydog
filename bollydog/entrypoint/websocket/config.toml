@@ -1,0 +1,2 @@
+["bollydog.SocketService"]
+module = "bollydog.entrypoint.websocket.app.SocketService"

@@ -75,7 +75,7 @@ async def test_memory_ttl_overwrite_removes_ttl():
 async def test_sqlite_standalone():
     """Protocol.__aenter__ triggers maybe_start(), no manual lifecycle needed."""
     from bollydog.adapters.memory import SQLiteProtocol
-    proto = SQLiteProtocol(path=':memory:')
+    proto = SQLiteProtocol.create_from(path=':memory:')
     async with proto:
         await proto.set('hello', {'msg': 'world'})
         assert await proto.get('hello') == {'msg': 'world'}
@@ -88,7 +88,7 @@ async def test_cache_layer_flush():
     from bollydog.adapters.memory import MemoryProtocol
     from bollydog.adapters.composite import CacheLayer
     inner = MemoryProtocol()
-    layer = CacheLayer(flush_threshold=3)
+    layer = CacheLayer.create_from(flush_threshold=3)
     layer.add_dependency(inner)
     async with layer:
         await layer.set('a', 1)
@@ -107,7 +107,7 @@ async def test_cache_layer_get_miss_fallback():
     from bollydog.adapters.memory import MemoryProtocol
     from bollydog.adapters.composite import CacheLayer
     inner = MemoryProtocol()
-    layer = CacheLayer(flush_threshold=100)
+    layer = CacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         await inner.set('deep', 'val')
@@ -118,7 +118,7 @@ async def test_cache_layer_remove():
     from bollydog.adapters.memory import MemoryProtocol
     from bollydog.adapters.composite import CacheLayer
     inner = MemoryProtocol()
-    layer = CacheLayer(flush_threshold=100)
+    layer = CacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         await layer.set('x', 1)
@@ -131,7 +131,7 @@ async def test_cache_layer_exists():
     from bollydog.adapters.memory import MemoryProtocol
     from bollydog.adapters.composite import CacheLayer
     inner = MemoryProtocol()
-    layer = CacheLayer(flush_threshold=100)
+    layer = CacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         assert not await layer.exists('z')
@@ -144,7 +144,7 @@ async def test_cache_layer_keys_pattern():
     from bollydog.adapters.memory import MemoryProtocol
     from bollydog.adapters.composite import CacheLayer
     inner = MemoryProtocol()
-    layer = CacheLayer(flush_threshold=100)
+    layer = CacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         await layer.set('foo:1', 'a')
@@ -160,7 +160,7 @@ async def test_cache_layer_compact():
     from bollydog.adapters.memory import MemoryProtocol
     from bollydog.adapters.composite import CacheLayer
     inner = MemoryProtocol()
-    layer = CacheLayer(flush_threshold=100)
+    layer = CacheLayer.create_from(flush_threshold=100)
     layer.add_dependency(inner)
     async with layer:
         await layer.compact()
@@ -170,7 +170,7 @@ async def test_cache_layer_compact():
 
 async def test_sqlite_keys_pattern():
     from bollydog.adapters.memory import SQLiteProtocol
-    proto = SQLiteProtocol(path=':memory:')
+    proto = SQLiteProtocol.create_from(path=':memory:')
     async with proto:
         await proto.set('user:1', 'a')
         await proto.set('user:2', 'b')
@@ -180,7 +180,7 @@ async def test_sqlite_keys_pattern():
 
 async def test_sqlite_compact():
     from bollydog.adapters.memory import SQLiteProtocol
-    proto = SQLiteProtocol(path=':memory:')
+    proto = SQLiteProtocol.create_from(path=':memory:')
     async with proto:
         await proto.set('k', 'v')
         await proto.remove('k')

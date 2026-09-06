@@ -4,7 +4,6 @@ import os
 
 import mode
 
-from bollydog.entrypoint.uds.config import ENTRYPOINT_UDS_SOCK_PATH
 from bollydog.globals import hub, registry
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService
@@ -22,15 +21,15 @@ def _write_frame(writer, payload: str):
 
 
 class UdsService(AppService):
+    sock_path: str = '/tmp/bollydog.sock'
 
-    def __init__(self, sock_path=None, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._sock_path = sock_path or ENTRYPOINT_UDS_SOCK_PATH
         self._server = None
 
     async def send(self, command: str, kwargs: dict) -> dict:
         """Client: length-prefixed JSON; server resolves command and hub.dispatch(msg)."""
-        reader, writer = await asyncio.open_unix_connection(self._sock_path)
+        reader, writer = await asyncio.open_unix_connection(self.sock_path)
         try:
             req = json.dumps({'command': command, 'kwargs': kwargs or {}})
             _write_frame(writer, req)
@@ -45,16 +44,16 @@ class UdsService(AppService):
                 pass
 
     async def on_start(self) -> None:
-        if os.path.exists(self._sock_path):
+        if os.path.exists(self.sock_path):
             try:
-                os.unlink(self._sock_path)
+                os.unlink(self.sock_path)
             except OSError as e:
                 self.logger.warning(f'uds unlink stale sock: {e}')
-        self._server = await asyncio.start_unix_server(self._handle, path=self._sock_path)
+        self._server = await asyncio.start_unix_server(self._handle, path=self.sock_path)
         await super().on_start()
 
     async def on_started(self) -> None:
-        self.logger.info(f'uds unix://{self._sock_path}')
+        self.logger.info(f'uds unix://{self.sock_path}')
         await super().on_started()
 
     @mode.task
@@ -93,9 +92,9 @@ class UdsService(AppService):
             except Exception as e:
                 self.logger.error(e)
             self._server = None
-        if os.path.exists(self._sock_path):
+        if os.path.exists(self.sock_path):
             try:
-                os.unlink(self._sock_path)
+                os.unlink(self.sock_path)
             except OSError as e:
                 self.logger.warning(f'uds unlink on stop: {e}')
         await super().on_stop()

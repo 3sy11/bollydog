@@ -10,7 +10,6 @@ from ptpython.repl import embed
 
 from bollydog.bootstrap import Bootstrap
 from bollydog.entrypoint.uds.app import UdsService
-from bollydog.entrypoint.uds.config import ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG
 from bollydog.globals import registry
 from bollydog.models.base import BaseCommand
 
@@ -26,7 +25,7 @@ class CLI:
     @staticmethod
     def ls(config: str = None):
         bootstrap = Bootstrap(config=config, override_logging=False)
-        commands = registry.commands
+        commands = registry.all_commands()
         if not commands:
             print('No commands registered.'); return
 
@@ -59,17 +58,19 @@ class CLI:
         bootstrap.run(lambda: cmd_cls(**kwargs), timeout=timeout)
 
     @staticmethod
-    def send(command: str, socket: str, config: str = ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG, **kwargs):
+    def send(command: str, socket: str, config: str = None, **kwargs):
+        # TODO: optimize startup — avoid full Bootstrap for send-only mode
         bootstrap = Bootstrap(config=config, override_logging=False)
         cmd_cls = registry.resolve(command)
-        uds_service = UdsService(sock_path=socket)
+        uds_service = UdsService()
+        uds_service.sock_path = socket
         _resp = asyncio.run(uds_service.send(command, kwargs))
         logging.info(json.dumps(_resp, ensure_ascii=False))
 
     @staticmethod
     def shell(config: str = None):
         bootstrap = Bootstrap(config=config, override_logging=False)
-        for destination, cmd_cls in registry.commands.items():
+        for destination, cmd_cls in registry.all_commands().items():
             print(f'{destination} -> {cmd_cls}')
         ns = {**globals(), 'services': bootstrap.services, 'hub': bootstrap.services.hub,
               'registry': registry, 'BaseCommand': BaseCommand}

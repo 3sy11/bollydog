@@ -3,7 +3,7 @@ import logging
 from collections import OrderedDict, deque
 from typing import Optional, Tuple
 
-from bollydog.config import DOMAIN, QUEUE_MAX_SIZE, QUEUE_HISTORY_MAX_SIZE
+from bollydog.config import DOMAIN
 from bollydog.exception import ServiceMaxSizeOfQueueError
 from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
@@ -15,18 +15,20 @@ PENDING, IN_FLIGHT, DONE, FAILED, CANCELLED = 1, 2, 0, 3, 4
 
 class Queue(AppService):
     domain = DOMAIN
+    max_size: int = 1000
+    history_size: int = 1000
     _store: OrderedDict[str, Tuple[Message, int, Optional[asyncio.Future]]]
     _history: deque
     _notify: asyncio.Event
 
-    def __init__(self, history_size=QUEUE_HISTORY_MAX_SIZE, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._store = OrderedDict()
-        self._history = deque(maxlen=history_size)
+        self._history = deque(maxlen=self.history_size)
         self._notify = asyncio.Event()
 
     async def put(self, message: Message) -> Message:
-        if len(self._store) >= QUEUE_MAX_SIZE:
+        if len(self._store) >= self.max_size:
             raise ServiceMaxSizeOfQueueError(f'{message.trace_id[:2]}{message.parent_span_id[:2]}:{message.span_id[:2]} Queue is full')
         self._store[message.iid] = (message, PENDING, None)
         self._notify.set()

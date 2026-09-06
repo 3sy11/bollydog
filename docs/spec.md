@@ -300,7 +300,26 @@ Key rules:
 
 ### Base class
 
-`Protocol(BaseService)` — lifecycle managed by `mode.Service`. Subclasses implement `on_start` (init adapter), `on_stop` (cleanup), `__aenter__`/`__aexit__` (connection scope).
+`Protocol(BaseService)` — lifecycle managed by `mode.Service`. Base class sets `domain = "adapters"`. Subclasses implement `on_start` (init adapter), `on_stop` (cleanup), `__aenter__`/`__aexit__` (connection scope).
+
+Protocol uses `__aenter__`/`__aexit__` for connection-scope management, separate from `mode.Service`'s lifecycle (`on_start`/`on_stop`). This allows short-lived connection contexts (e.g., DuckDB queries) within a long-lived service.
+
+### Adapter Convention
+
+Adapter parameters are declared as **class attributes with defaults**, not `__init__` parameters. Only connection-type parameters (URLs, auth) may use `os.getenv` fallbacks:
+
+```python
+class RedisProtocol(KVProtocol):
+    url: str = os.getenv('REDIS_URL', 'redis://localhost')  # connection: env var fallback
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)                            # no param signature
+
+class DuckDBProtocol(CRUDProtocol, DialectMixin):
+    url: str = ':memory:'     # non-connection: plain default
+    metadata: MetaData = None
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+```
 
 ### ABC hierarchy
 
@@ -386,92 +405,129 @@ await proto.execute_raw(sql)
 
 ## TOML Configuration
 
-### Structure
+### Unified `domain.alias` Key Model
+
+All TOML keys use `domain.alias` format as the unique reference key. Every entry must have an explicit `module` field. Protocols use `domain = "adapters"`.
 
 ```toml
-["myapp.app.MyService"]
-commands = ["commands", "extra_commands"]
+# ── Framework services (bollydog/service/config.toml) ──
+["adapters.MemoryProtocol"]
+module = "bollydog.adapters.memory.MemoryProtocol"
 
-["myapp.app.MyService".routers]
+["bollydog.Session"]
+module = "bollydog.service.session.Session"
+protocol = "adapters.MemoryProtocol"
+
+["bollydog.HubService"]
+module = "bollydog.service.app.HubService"
+commands = ["commands"]
+depends = ["bollydog.RegistryService", "bollydog.Exchange",
+           "bollydog.Queue", "bollydog.Session"]
+
+# ── Application services (app.toml) ──
+["adapters.duckdb_wh"]
+module = "bollydog.adapters.sqlalchemy.DuckDBProtocol"
+url = "data/warehouse.duckdb"
+
+["trading.DataEngine"]
+module = "trading.app.DataEngine"
+protocol = "adapters.duckdb_wh"
+depends = ["bollydog.Session"]
+commands = ["commands"]
+
+["trading.DataEngine".routers]
 Ping = ["GET",  "/api/ping"]
-Echo = ["POST", "/api/echo"]
-Stream = ["SSE", "/api/stream"]
 
-["myapp.app.MyService".subscribers]
+["trading.DataEngine".subscribers]
 "analytics.*.DataReady" = "on_data_ready"
-"trading.DataEngine.BarsReady" = ["on_bars", "update_cache"]
-
-["myapp.app.MyService".protocol]
-module = "bollydog.adapters.composite.CacheLayer"
-flush_threshold = 500
-
-["myapp.app.MyService".protocol.protocol]
-module = "bollydog.adapters.memory.SQLiteProtocol"
-path = "data/state.db"
 ```
 
-Top-level key = fully-qualified AppService class. `module` key in protocol sections = import path. Nested `protocol` sub-tables build the protocol chain recursively.
+### Reference System
 
-| Config Key | Type | Merged Into |
-|------------|------|-------------|
-| `commands` | `list[str]` | `cls.commands` ClassVar |
-| `routers` | `dict` | `cls.routers` ClassVar |
-| `subscribers` | `dict` | `{topic: method_name \| [method_names]}` merged into `cls.subscribers` |
-| `depends` | `list[str]` | Resolved to `dict[str, AppService]` after all services created. Access via `self.get_dependency("domain.alias")` |
-| `protocol` | `dict` | Instance `protocol` via `add_dependency` |
-| other keys | any | Passed as `**kwargs` to `__init__` |
+All references (`depends`, `protocol`) use `domain.alias` strings that resolve against the same flat config dict:
 
-### Parameter Management
+| Reference | Format | Example |
+|-----------|--------|---------|
+| TOML key | `domain.alias` | `["trading.DataEngine"]` |
+| `protocol` | `domain.alias` string | `protocol = "adapters.duckdb_wh"` |
+| `depends` | list of `domain.alias` | `depends = ["bollydog.Session"]` |
+| `services` dict key | `domain.alias` | `services["trading.DataEngine"]` |
 
-TOML keys are split into two categories:
+### Config Keys
 
-1. **Framework-level keys** (`commands`, `routers`, `subscribers`, `depends`, `protocol`) — always defined in TOML when needed. These control framework wiring.
-2. **Service-level custom parameters** — defined as `__init__` parameters with defaults in the service/protocol class itself. TOML only overrides values that differ from defaults.
+| Config Key | Type | Handling |
+|------------|------|----------|
+| `module` | `str` | Import path. Popped by Bootstrap before `create_from` |
+| `commands` | `list[str]` | Merged with ClassVar default by `AppService.create_from` |
+| `routers` | `dict` | Merged with ClassVar default by `AppService.create_from` |
+| `subscribers` | `dict` | Merged with ClassVar default by `AppService.create_from` |
+| `depends` | `list[str]` | Stored as `_depends`, resolved to `dict` in Phase 3 |
+| `protocol` | `str` | Stored as `_protocol`, bound in Phase 2 via `add_dependency` |
+| other keys | any | Injected via `setattr` onto instance |
 
-**Principle**: TOML should be minimal. If a service parameter equals its class default, omit it from TOML. Custom parameters belong in each service's `__init__` signature with sensible defaults; TOML's role is override, not definition.
+### Attribute Injection
+
+All remaining TOML parameters (after framework keys are popped) are injected via `setattr` onto the service instance. This means:
+
+- Service/Protocol classes declare configurable parameters as **class attributes with defaults**.
+- TOML overrides only non-default values.
+- No explicit `__init__` parameter signatures for configurable fields.
+
+```python
+class DuckDBProtocol(CRUDProtocol, DialectMixin):
+    url: str = ':memory:'           # class attr, overridden by TOML
+    metadata: MetaData = None
+
+    def __init__(self, **kwargs):   # no url/metadata params
+        super().__init__(**kwargs)
+```
 
 ```toml
-# Good: only override non-default values
-["myapp.strategy.FibStrategy"]
-subscriber = {"analysis.Engine.SignalEmitted" = "on_signal"}
-# position_size and min_strength use class defaults, not listed
-
-# Good: protocol parameters that differ from defaults
-["myapp.app.MyService".protocol]
-module = "bollydog.adapters.memory.SQLiteProtocol"
-path = "data/custom.db"
-
-# Bad: repeating default values
-["myapp.strategy.FibStrategy"]
-position_size = 0.1      # ← this is already the class default, remove it
-min_strength = 0.6        # ← same, remove it
+["adapters.duckdb_wh"]
+module = "bollydog.adapters.sqlalchemy.DuckDBProtocol"
+url = "data/warehouse.duckdb"      # overrides class default via setattr
 ```
+
+### Parameter Principle
+
+TOML should be minimal. If a parameter equals its class default, omit it from TOML.
 
 ### Service lifecycle
 
-Bootstrap handles config loading and service instantiation in a single `_build_services` method:
+Bootstrap loads multiple TOML sources and builds all services in a 3-phase pipeline:
 
 ```
 Bootstrap(mode.Worker)
   __init__(config=path)
-    -> _build_services(): read TOML, merge SERVICE_CONFIG, iterate sections
-       -> cls.create_from(**conf) per section
-       -> resolve depends: string refs -> AppService instances, add_dependency
-    -> returns BollydogServices(dict) with typed property accessors (.registry, .hub, .session, .executor)
-    -> push all context stacks: services, registry, session, hub
+    -> config (cached_property): merge framework TOML + entrypoint TOMLs + app TOML
+    -> _build_services(): 3-phase pipeline
+       Phase 1: for each TOML entry: pop module, smart_import, cls.create_from(**conf),
+                setattr alias/domain from key
+       Phase 2: bind _protocol references via add_dependency
+       Phase 3: resolve _depends list -> instance.depends dict via add_dependency
+       -> returns flat dict {domain.alias: instance}
+    -> filter AppService instances into BollydogServices (typed dict)
+    -> push all context stacks unconditionally: services, registry, session, hub
 
-  on_first_start
-    -> install signals
-
+  on_first_start -> install signals
   on_started
-    -> if _message set (execute mode): services.executor.execute -> stop
-    -> else: maybe_start all services, log commands + subscribers
-
+    -> execute mode: executor.execute(msg) -> stop
+    -> service mode: maybe_start all, log bindings
   on_shutdown -> services.clear()
 
 HubService(CommandRunnerMixin, AppService)
-  on_first_start       -> push hub onto _hub_ctx_stack
-  exchange/queue       -> lazy property, resolved from services dict
+  exchange/queue -> lazy @property, resolved from services dict
+```
+
+### create_from Hierarchy
+
+```
+BaseService.create_from     → cls() + setattr (pure injection, no protocol/depends)
+  ↑
+Protocol.create_from        → pop protocol → _protocol, then super()
+  ↑
+AppService.create_from      → pop commands/routers/subscribers/protocol/depends,
+                              merge ClassVar defaults, then super()
 ```
 
 ## CLI
@@ -495,7 +551,7 @@ CLI uses `registry.resolve(command)` for exact destination matching. Raises `Key
 
 ## Environment Variables
 
-Each module owns its own config via `os.getenv`, prefixed by module name (no global `BOLLYDOG_` prefix).
+Environment variables are minimal — most configuration lives in TOML and class attributes.
 
 ### Command (models/base.py)
 
@@ -505,14 +561,7 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 | `COMMAND_DEFAULT_SIGN` | `1` | Soft-delete marker (1=normal, -1=deleted) |
 | `COMMAND_DELIVERY_COUNT` | `0` | Retry count on timeout |
 
-### Service (service/config.py)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `QUEUE_MAX_SIZE` | `1000` | Queue capacity |
-| `QUEUE_HISTORY_MAX_SIZE` | `1000` | Queue history length |
-
-### Entrypoint Toggle (each entrypoint's config.py)
+### Entrypoint Toggle (bollydog/config.py)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -520,30 +569,18 @@ Each module owns its own config via `os.getenv`, prefixed by module name (no glo
 | `ENTRYPOINT_WS_ENABLED` | `0` | Enable WebSocket entrypoint |
 | `ENTRYPOINT_UDS_ENABLED` | `0` | Enable UDS entrypoint |
 
-### Entrypoint HTTP (entrypoint/http/config.py)
+### Adapter Connection (class attributes with env var fallback)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENTRYPOINT_HTTP_SERVICE_HOST` | `0.0.0.0` | Listen address |
-| `ENTRYPOINT_HTTP_SERVICE_PORT` | `8000` | Listen port |
-| `ENTRYPOINT_HTTP_SERVICE_DEBUG` | `False` | Debug mode |
-| `ENTRYPOINT_HTTP_SERVICE_LOG_LEVEL` | `info` | Log level |
+| Variable | Default | Used by |
+|----------|---------|---------|
+| `REDIS_URL` | `redis://localhost` | `RedisProtocol.url` |
+| `NEO4J_URL` | `bolt://localhost:7687` | `Neo4jProtocol.url` |
 
-### Entrypoint WebSocket (entrypoint/websocket/config.py)
+All other service/protocol parameters are configured via TOML or class attribute defaults — no env vars.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENTRYPOINT_WS_SERVICE_HOST` | `0.0.0.0` | Listen address |
-| `ENTRYPOINT_WS_SERVICE_PORT` | `8001` | Listen port |
-| `ENTRYPOINT_WS_SERVICE_DEBUG` | `False` | Debug mode |
-| `ENTRYPOINT_WS_SERVICE_LOG_LEVEL` | `info` | Log level |
+### Entrypoint Parameters
 
-### Entrypoint UDS (entrypoint/uds/config.py)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENTRYPOINT_UDS_SOCK_PATH` | `/tmp/bollydog.sock` | Unix domain socket path |
-| `ENTRYPOINT_UDS_SEND_DEFAULT_CONFIG` | - | Default send config |
+HTTP, WebSocket, and UDS service parameters (host, port, debug, log_level, etc.) are now **class attributes** on the respective service classes, configurable via TOML injection. No individual env vars.
 
 ## Design Rules
 

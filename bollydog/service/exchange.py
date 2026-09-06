@@ -29,7 +29,7 @@ class Exchange(AppService):
     domain = DOMAIN
 
     async def on_started(self) -> None:
-        subs = registry.subscribers
+        subs = registry.all_subscribers()
         if subs:
             lines = '\n  '.join(f'{t} -> [{", ".join(destinations)}]' for t, destinations in subs.items())
             self.logger.info(f'subscribers({sum(len(v) for v in subs.values())}):\n  {lines}')
@@ -38,7 +38,7 @@ class Exchange(AppService):
     def match(self, topic: str) -> set:
         """Match topic against registry.subscribers, return set of handler destinations."""
         matched = set()
-        for pattern, destinations in registry.subscribers.items():
+        for pattern, destinations in registry.all_subscribers().items():
             if pattern == topic or match_topic(pattern, topic):
                 matched.update(destinations)
         return matched

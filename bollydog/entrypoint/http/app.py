@@ -19,15 +19,6 @@ from bollydog.globals import hub, services, registry, _hub_ctx_stack
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService
 
-from .config import (
-    ENTRYPOINT_HTTP_SERVICE_DEBUG, ENTRYPOINT_HTTP_SERVICE_PORT, ENTRYPOINT_HTTP_SERVICE_LOG_LEVEL, ENTRYPOINT_HTTP_SERVICE_HOST,
-    ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH, ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY_PATH,
-    ENTRYPOINT_HTTP_SERVICE_LOOP, ENTRYPOINT_HTTP_SERVICE_HTTP,
-    ENTRYPOINT_HTTP_SERVICE_LIMIT_CONCURRENCY, ENTRYPOINT_HTTP_SERVICE_LIMIT_MAX_REQUESTS,
-    ENTRYPOINT_HTTP_SERVICE_TIMEOUT_KEEP_ALIVE, ENTRYPOINT_HTTP_SERVICE_BACKLOG,
-    ENTRYPOINT_HTTP_MIDDLEWARE_SESSION, ENTRYPOINT_HTTP_MIDDLEWARE_AUTH, ENTRYPOINT_HTTP_MIDDLEWARE_CORS,
-    ENTRYPOINT_HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY,
-)
 from .middleware import base_auth_backend
 
 
@@ -113,27 +104,38 @@ class SseHandler:
 
 
 class HttpService(AppService):
+    host: str = '0.0.0.0'
+    port: int = 8000
+    debug: bool = False
+    log_level: str = 'info'
+    private_key_path: str = None
+    public_key_path: str = None
+    loop: str = 'uvloop'
+    http: str = 'httptools'
+    limit_concurrency: int = None
+    limit_max_requests: int = 2000
+    timeout_keep_alive: int = 5
+    backlog: int = 128
+    middleware_session: bool = True
+    middleware_auth: bool = True
+    middleware_cors: bool = True
+    middleware_sessions_secret_key: str = ''
 
-    def __init__(self, web_app=None, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.app = self
-        self.http_app = web_app or Starlette()
+        self.http_app = Starlette()
         self.uvicorn = None
-        self.middlewares = self._build_middlewares()
 
-    @staticmethod
-    def _build_middlewares():
+    def _build_middlewares(self):
         mws = []
-        if ENTRYPOINT_HTTP_MIDDLEWARE_SESSION:
-            mws.append(Middleware(SessionMiddleware, secret_key=ENTRYPOINT_HTTP_MIDDLEWARE_SESSIONS_SECRET_KEY))
-        if ENTRYPOINT_HTTP_MIDDLEWARE_AUTH:
+        if self.middleware_session:
+            mws.append(Middleware(SessionMiddleware, secret_key=self.middleware_sessions_secret_key))
+        if self.middleware_auth:
             mws.append(Middleware(AuthenticationMiddleware, backend=base_auth_backend))
-        if ENTRYPOINT_HTTP_MIDDLEWARE_CORS:
+        if self.middleware_cors:
             mws.append(Middleware(CORSMiddleware, allow_origins=['*'], allow_methods=['*'], allow_headers=['*'], max_age=1728000))
         return mws
-
-    # async def on_first_start(self) -> None:
-    #     self.exit_stack.enter_context(redirect_stdouts(self.logger))
 
     @staticmethod
     def _collect_routers(service, visited=None):
@@ -149,7 +151,7 @@ class HttpService(AppService):
         _merged = {}
         for service in services.values():
             _merged.update(self._collect_routers(service))
-        for destination, cmd_cls in registry.commands.items():
+        for destination, cmd_cls in registry.all_commands().items():
             cmd_alias = cmd_cls.alias
             _route = _merged.get(cmd_cls.__name__, _merged.get(cmd_alias, _merged.get(destination)))
             if _route is None: continue
@@ -169,15 +171,15 @@ class HttpService(AppService):
             else:
                 _handler = HttpHandler(cmd_cls)
             self.http_app.router.add_route(_path, _handler, methods=_methods, name=cmd_alias, include_in_schema=True)
-        self.http_app.user_middleware = self.middlewares
-        self.http_app.debug = ENTRYPOINT_HTTP_SERVICE_DEBUG
+        self.http_app.user_middleware = self._build_middlewares()
+        self.http_app.debug = self.debug
         self._asgi_app = HubContextMiddleware(self.http_app, hub._get_current_object())
         self.init_server()
         await super(HttpService, self).on_start()
 
     async def on_started(self) -> None:
-        scheme = 'https' if ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH else 'http'
-        base = f'{scheme}://{ENTRYPOINT_HTTP_SERVICE_HOST}:{ENTRYPOINT_HTTP_SERVICE_PORT}'
+        scheme = 'https' if self.private_key_path else 'http'
+        base = f'{scheme}://{self.host}:{self.port}'
         routes = [r for r in self.http_app.routes if hasattr(r, 'path')]
         lines = '\n  '.join(f'{",".join(r.methods)} {base}{r.path} -> {r.name}' for r in routes)
         self.logger.info(f'http({len(routes)} routes) {base}\n  {lines}')
@@ -189,18 +191,18 @@ class HttpService(AppService):
 
     def init_server(self):
         config = uvicorn.Config(
-            host=ENTRYPOINT_HTTP_SERVICE_HOST,
+            host=self.host,
             app=self._asgi_app,
-            port=int(ENTRYPOINT_HTTP_SERVICE_PORT),
-            log_level=ENTRYPOINT_HTTP_SERVICE_LOG_LEVEL,
-            ssl_keyfile=ENTRYPOINT_HTTP_SERVICE_PRIVATE_KEY_PATH,
-            ssl_certfile=ENTRYPOINT_HTTP_SERVICE_PUBLIC_KEY_PATH,
-            loop=ENTRYPOINT_HTTP_SERVICE_LOOP,
-            http=ENTRYPOINT_HTTP_SERVICE_HTTP,
-            limit_concurrency=ENTRYPOINT_HTTP_SERVICE_LIMIT_CONCURRENCY,
-            limit_max_requests=ENTRYPOINT_HTTP_SERVICE_LIMIT_MAX_REQUESTS,
-            timeout_keep_alive=ENTRYPOINT_HTTP_SERVICE_TIMEOUT_KEEP_ALIVE,
-            backlog=ENTRYPOINT_HTTP_SERVICE_BACKLOG
+            port=int(self.port),
+            log_level=self.log_level,
+            ssl_keyfile=self.private_key_path,
+            ssl_certfile=self.public_key_path,
+            loop=self.loop,
+            http=self.http,
+            limit_concurrency=self.limit_concurrency,
+            limit_max_requests=self.limit_max_requests,
+            timeout_keep_alive=self.timeout_keep_alive,
+            backlog=self.backlog
         )
         self.uvicorn = uvicorn.Server(config)
 

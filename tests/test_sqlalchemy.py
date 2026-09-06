@@ -16,20 +16,20 @@ async def _lifecycle(proto):
 
 async def test_sqlalchemy_start_execute_raw():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     async with _lifecycle(proto):
         result = await proto.execute_raw('SELECT 1')
         assert result[0][0] == 1
 
 async def test_sqlalchemy_repr():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     assert 'SqlAlchemyProtocol' in repr(proto)
     assert 'sqlite' in repr(proto)
 
 async def test_sqlalchemy_dialect_name():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     async with _lifecycle(proto):
         assert proto.dialect_name == 'sqlite'
 
@@ -37,7 +37,7 @@ async def test_sqlalchemy_create_all():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
     meta = MetaData()
     Table('sa_test', meta, Column('id', Integer, primary_key=True), Column('name', String(50)))
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:', metadata=meta)
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:', metadata=meta)
     async with _lifecycle(proto):
         await proto.create_all()
         result = await proto.execute_raw("SELECT name FROM sqlite_master WHERE type='table'")
@@ -46,7 +46,7 @@ async def test_sqlalchemy_create_all():
 
 async def test_sqlalchemy_transaction():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     async with _lifecycle(proto):
         async with proto.transaction() as session:
             await session.execute(text('CREATE TABLE tx_test (k TEXT, v TEXT)'))
@@ -56,7 +56,7 @@ async def test_sqlalchemy_transaction():
 
 async def test_sqlalchemy_aenter_aexit():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     async with _lifecycle(proto):
         async with proto.transaction() as session:
             await session.execute(text('CREATE TABLE ctx_test (n INT)'))
@@ -68,7 +68,7 @@ async def test_sqlalchemy_aenter_aexit():
 
 async def test_sqlalchemy_compile():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     async with _lifecycle(proto):
         t = table('users', column('id'), column('name'))
         sql, params = proto.compile(select(t))
@@ -77,7 +77,7 @@ async def test_sqlalchemy_compile():
 
 async def test_sqlalchemy_compile_literal_binds():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     async with _lifecycle(proto):
         t = table('items', column('id'), column('price'))
         sql, params = proto.compile(select(t).where(column('id') == 1), literal_binds=True)
@@ -86,13 +86,13 @@ async def test_sqlalchemy_compile_literal_binds():
 
 async def test_sqlalchemy_on_stop():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     async with _lifecycle(proto):
         await proto.execute_raw('SELECT 1')
 
 async def test_sqlalchemy_search():
     from bollydog.adapters.sqlalchemy import SqlAlchemyProtocol
-    proto = SqlAlchemyProtocol(url='sqlite+aiosqlite:///:memory:')
+    proto = SqlAlchemyProtocol.create_from(url='sqlite+aiosqlite:///:memory:')
     async with _lifecycle(proto):
         async with proto.transaction() as session:
             await session.execute(text('CREATE TABLE s (n INT)'))

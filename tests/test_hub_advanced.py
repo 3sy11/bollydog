@@ -15,10 +15,10 @@ DEST_PREFIX = 'bollydog.HubService'
 
 
 def _reg(cmd_cls):
-    """Register a command class into registry.commands via dynamic subclass."""
+    """Register a command class into registry via dynamic subclass."""
     destination = f'{DEST_PREFIX}.{cmd_cls.alias}'
     bound = type(cmd_cls.__name__, (cmd_cls,), {'destination': destination})
-    registry.commands[destination] = bound
+    registry._commands[destination] = bound
     return destination
 
 
@@ -26,7 +26,7 @@ def _make(cmd_cls, **kwargs):
     """Create instance via dynamic-subclass bound class."""
     destination = f'{DEST_PREFIX}.{cmd_cls.alias}'
     bound = type(cmd_cls.__name__, (cmd_cls,), {'destination': destination})
-    registry.commands[destination] = bound
+    registry._commands[destination] = bound
     return bound(**kwargs)
 
 
@@ -153,7 +153,8 @@ async def test_event_triggers_subscriber(hub):
         async def on_done(self, message):
             received.append(message.data)
 
-    svc = _TestService(subscriber={'test._TestService.ThingDone': 'on_done'})
+    svc = _TestService()
+    svc.subscribers = {'test._TestService.ThingDone': 'on_done'}
     services['test._TestService'] = svc
     registry._register_subscribers('test._TestService', svc)
 

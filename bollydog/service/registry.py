@@ -14,17 +14,25 @@ class RegistryService(AppService):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.commands: Dict[str, Type[BaseCommand]] = {}
-        self.subscribers: Dict[str, Set[str]] = defaultdict(set)
+        self._commands: Dict[str, Type[BaseCommand]] = {}
+        self._subscribers: Dict[str, Set[str]] = defaultdict(set)
+
+    def all_commands(self) -> Dict[str, Type[BaseCommand]]:
+        """Return full command registry."""
+        return self._commands
+
+    def all_subscribers(self) -> Dict[str, Set[str]]:
+        """Return full subscriber registry."""
+        return self._subscribers
 
     def register(self):
-        """Scan all services, populate commands and subscribers."""
+        """Scan all services, populate _commands and _subscribers."""
         for key, service in services.items():
             if service.commands:
                 self._register_commands(key, service)
             if service.subscribers:
                 self._register_subscribers(key, service)
-        self.logger.info(f'commands({len(self.commands)}) subscribers({sum(len(v) for v in self.subscribers.values())})')
+        self.logger.info(f'commands({len(self._commands)}) subscribers({sum(len(v) for v in self._subscribers.values())})')
 
     def _register_commands(self, key: str, service: AppService):
         """Scan service command modules, bind each Command/Event via dynamic subclass."""
@@ -39,10 +47,10 @@ class RegistryService(AppService):
                 if not issubclass(_obj, BaseEvent) and '__call__' not in _obj.__dict__: continue
                 dest = f'{key}.{_obj.alias}'
                 bound = _obj if _obj.destination else type(_obj.__name__, (_obj,), {'destination': dest})
-                self.commands[dest] = bound
+                self._commands[dest] = bound
 
     def _register_subscribers(self, key: str, service: AppService):
-        """Scan service subscriber config, generate handler Commands, populate subscribers."""
+        """Scan service subscriber config, generate handler Commands, populate _subscribers."""
         for topic, methods in service.subscribers.items():
             methods = [methods] if isinstance(methods, str) else methods
             for method_name in methods:
@@ -55,21 +63,21 @@ class RegistryService(AppService):
                     'destination': dest, 'alias': method_name,
                     'module': type(service).__module__, '_source': None, '__call__': _call,
                 })
-                self.commands[dest] = handler_cls
-                self.subscribers[topic].add(dest)
+                self._commands[dest] = handler_cls
+                self._subscribers[topic].add(dest)
 
     def subscribe(self, topic: str, dest: str):
         """Runtime subscribe: add topic→dest mapping."""
-        self.subscribers[topic].add(dest)
+        self._subscribers[topic].add(dest)
 
     def unsubscribe(self, topic: str, dest: str):
         """Runtime unsubscribe: remove topic→dest mapping."""
-        self.subscribers.get(topic, set()).discard(dest)
+        self._subscribers.get(topic, set()).discard(dest)
 
     def resolve(self, destination: str) -> Type[BaseCommand]:
         """Exact destination lookup. Raises KeyError if not found."""
-        if destination not in self.commands: raise KeyError(f"Command '{destination}' not found")
-        return self.commands[destination]
+        if destination not in self._commands: raise KeyError(f"Command '{destination}' not found")
+        return self._commands[destination]
 
     def resolve_app(self, msg: BaseCommand) -> Optional[AppService]:
         """Resolve owning AppService from message's class-level destination."""

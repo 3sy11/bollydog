@@ -6,18 +6,21 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from bollydog.entrypoint.websocket.config import ENTRYPOINT_WS_SERVICE_DEBUG, ENTRYPOINT_WS_SERVICE_PORT, ENTRYPOINT_WS_SERVICE_LOG_LEVEL, ENTRYPOINT_WS_SERVICE_HOST
 from bollydog.globals import hub, registry, _hub_ctx_stack
 from bollydog.models.base import BaseCommand
 from bollydog.models.service import AppService
 
 
 class SocketService(AppService):
+    host: str = '0.0.0.0'
+    port: int = 8001
+    debug: bool = False
+    log_level: str = 'info'
 
-    def __init__(self, socket_app=None, **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.app = self
-        self.socket_app = socket_app or Starlette()
+        self.socket_app = Starlette()
         self.uvicorn = None
         self.subscribers: Set[WebSocket] = set()
         self.listening: Dict[str, Set[WebSocket]] = {}
@@ -78,12 +81,12 @@ class SocketService(AppService):
 
     async def on_start(self) -> None:
         self.socket_app.add_websocket_route("/", self.websocket_endpoint)
-        self.socket_app.debug = ENTRYPOINT_WS_SERVICE_DEBUG
+        self.socket_app.debug = self.debug
         self.init_server()
         await super(SocketService, self).on_start()
 
     async def on_started(self) -> None:
-        self.logger.info(f'ws ws://{ENTRYPOINT_WS_SERVICE_HOST}:{ENTRYPOINT_WS_SERVICE_PORT}/')
+        self.logger.info(f'ws ws://{self.host}:{self.port}/')
         await super(SocketService, self).on_started()
 
     @mode.task
@@ -91,7 +94,7 @@ class SocketService(AppService):
         await self.uvicorn.serve()
 
     def init_server(self):
-        config = uvicorn.Config(host=ENTRYPOINT_WS_SERVICE_HOST, app=self.socket_app, port=int(ENTRYPOINT_WS_SERVICE_PORT), log_level=ENTRYPOINT_WS_SERVICE_LOG_LEVEL)
+        config = uvicorn.Config(host=self.host, app=self.socket_app, port=int(self.port), log_level=self.log_level)
         self.uvicorn = uvicorn.Server(config)
 
     async def on_stop(self) -> None:

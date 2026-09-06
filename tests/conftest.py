@@ -13,7 +13,7 @@ from bollydog.globals import (
 
 
 @pytest.fixture(autouse=True)
-async def clean_globals():
+def clean_globals():
     yield
     for stack in (_hub_ctx_stack, _protocol_ctx_stack, _message_ctx_stack,
                   _session_ctx_stack, _app_ctx_stack, _services_ctx_stack,

@@ -1,0 +1,2 @@
+["bollydog.UdsService"]
+module = "bollydog.entrypoint.uds.app.UdsService"

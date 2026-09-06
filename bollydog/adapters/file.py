@@ -9,12 +9,13 @@ logger = logging.getLogger(__name__)
 
 
 class LocalFileProtocol(FileProtocol):
+    path: str = None
 
-    def __init__(self, path: str | pathlib.Path, **kwargs) -> None:
-        self.path = pathlib.Path(path) if isinstance(path, str) else path
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     async def on_start(self) -> None:
+        self.path = pathlib.Path(self.path)
         self.path.mkdir(parents=True, exist_ok=True)
         self.adapter = self.path
 
@@ -33,13 +34,14 @@ class LocalFileProtocol(FileProtocol):
 
 
 class TOMLFileProtocol(FileProtocol):
+    path: str = None
 
-    def __init__(self, path: str | pathlib.Path, **kwargs) -> None:
-        self.path = pathlib.Path(path) if isinstance(path, str) else path
+    def __init__(self, **kwargs):
         self._data: dict = {}
         super().__init__(**kwargs)
 
     async def on_start(self) -> None:
+        self.path = pathlib.Path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists():
             self._data = msgspec.toml.decode(self.path.read_bytes())

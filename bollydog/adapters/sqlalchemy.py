@@ -37,11 +37,12 @@ class SqlAlchemyProtocol(CRUDProtocol, DialectMixin, TransactionMixin, StreamMix
     """
     async_session = None
 
-    def __init__(self, url: str, metadata: MetaData = None, *args, **kwargs):
-        self.metadata = metadata
-        self.url = url
+    url: str = None
+    metadata: MetaData = None
+
+    def __init__(self, **kwargs):
         self._session_ctx = contextvars.ContextVar(f'sa_session_{id(self)}')
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
 
     def __repr__(self):
         return f'<SqlAlchemyProtocol {self.url}>'
@@ -232,10 +233,11 @@ class DuckDBProtocol(CRUDProtocol, DialectMixin):
     DialectMixin.compile(stmt) generates DuckDB-dialect SQL from SQLAlchemy stmts.
     """
 
-    def __init__(self, url, metadata: MetaData = None, *args, **kwargs):
-        self.url = url or ':memory:'
-        self.metadata = metadata
-        super().__init__(*args, **kwargs)
+    url: str = ':memory:'
+    metadata: MetaData = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def __repr__(self):
         return f'<DuckDBProtocol {self.url}>'

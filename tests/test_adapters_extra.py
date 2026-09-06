@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, AsyncMock
 
 def test_neo4j_protocol_init():
     from bollydog.adapters.graph import Neo4jProtocol
-    proto = Neo4jProtocol(url='bolt://localhost:7687', auth=('neo4j', 'test'))
+    proto = Neo4jProtocol.create_from(url='bolt://localhost:7687', auth=('neo4j', 'test'))
     assert proto.url == 'bolt://localhost:7687'
     assert proto.auth == ('neo4j', 'test')
 
 def test_neug_protocol_init():
     from bollydog.adapters.graph import NeuGProtocol
-    proto = NeuGProtocol(cluster_type='hosts', num_workers=2)
+    proto = NeuGProtocol.create_from(cluster_type='hosts', num_workers=2)
     assert proto.cluster_type == 'hosts'
     assert proto.num_workers == 2
     assert proto._session is None
@@ -38,7 +38,7 @@ async def test_neug_run_algorithm_missing():
 
 async def test_neo4j_on_stop_none():
     from bollydog.adapters.graph import Neo4jProtocol
-    proto = Neo4jProtocol(url='bolt://localhost', auth=('a', 'b'))
+    proto = Neo4jProtocol.create_from(url='bolt://localhost', auth=('a', 'b'))
     proto.adapter = None
     await proto.on_stop()  # should not raise
 

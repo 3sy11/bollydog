@@ -22,10 +22,11 @@ class CacheLayer(KVProtocol):
     on_start: init cache. on_started: load from inner (children ready by then).
     """
 
-    def __init__(self, flush_threshold: int = 100, **kwargs):
+    flush_threshold: int = 100
+
+    def __init__(self, **kwargs):
         self._cache: dict = {}
         self._dirty: set = set()
-        self.flush_threshold = flush_threshold
         super().__init__(**kwargs)
 
     async def on_start(self) -> None:
@@ -88,11 +89,12 @@ class TableCacheLayer(KVProtocol):
     composite keys and in-memory cache with dirty tracking.
     """
 
-    def __init__(self, sort_by: str = None, flush_threshold: int = 50, **kwargs):
+    sort_by: str = None
+    flush_threshold: int = 50
+
+    def __init__(self, **kwargs):
         self._cache: dict = {}
         self._dirty: set = set()
-        self.sort_by = sort_by
-        self.flush_threshold = flush_threshold
         super().__init__(**kwargs)
 
     async def on_start(self) -> None:
