@@ -22,16 +22,16 @@ class SocketService(AppService):
         self.app = self
         self.socket_app = Starlette()
         self.uvicorn = None
-        self.subscribers: Set[WebSocket] = set()
+        self.clients: Set[WebSocket] = set()
         self.listening: Dict[str, Set[WebSocket]] = {}
 
-    async def subscribe(self, websocket: WebSocket):
+    async def attach(self, websocket: WebSocket):
         await websocket.accept()
-        self.subscribers.add(websocket)
-        self.logger.debug(f"subscriber joined, total: {len(self.subscribers)}")
+        self.clients.add(websocket)
+        self.logger.debug(f"client joined, total: {len(self.clients)}")
 
-    async def unsubscribe(self, websocket: WebSocket):
-        self.subscribers.discard(websocket)
+    async def detach(self, websocket: WebSocket):
+        self.clients.discard(websocket)
         for trace_id in [k for k, ws in self.listening.items() if websocket in ws]:
             self.listening[trace_id].discard(websocket)
             if not self.listening[trace_id]:
@@ -48,7 +48,7 @@ class SocketService(AppService):
 
     async def websocket_endpoint(self, websocket: WebSocket):
         _hub_ctx_stack.push_without_automatic_cleanup(hub._get_current_object())
-        await self.subscribe(websocket)
+        await self.attach(websocket)
         try:
             while True:
                 raw = json.loads(await websocket.receive_text())
@@ -77,7 +77,7 @@ class SocketService(AppService):
             self.logger.exception(e)
         finally:
             _hub_ctx_stack.pop()
-            await self.unsubscribe(websocket)
+            await self.detach(websocket)
 
     async def on_start(self) -> None:
         self.socket_app.add_websocket_route("/", self.websocket_endpoint)
@@ -98,7 +98,7 @@ class SocketService(AppService):
         self.uvicorn = uvicorn.Server(config)
 
     async def on_stop(self) -> None:
-        for ws in list(self.subscribers):
+        for ws in list(self.clients):
             try: await ws.close()
             except Exception: pass
         try: await self.uvicorn.shutdown()

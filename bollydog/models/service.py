@@ -12,28 +12,28 @@ __all__ = ['BaseService', 'AppService']
 class AppService(BaseService, abstract=True):
     commands: ClassVar[List[str]] = []
     routers: ClassVar[dict] = {}
-    subscribers: ClassVar[dict] = {}
+    subscribe: ClassVar[dict] = {}
     protocol = None
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.commands = []
         self.routers = {}
-        self.subscribers = {}
+        self.subscribe = {}
         self.depends = {}
 
     @classmethod
     def create_from(cls, **conf):
         commands = [*{*(cls.commands or []), *(conf.pop('commands', None) or [])}]
         routers = {**(cls.routers or {}), **(conf.pop('routers', None) or {})}
-        subscribers = {**(cls.subscribers or {}), **(conf.pop('subscribers', None) or {})}
+        subscribe = {**(cls.subscribe or {}), **(conf.pop('subscribe', None) or {})}
         protocol = conf.pop('protocol', None)
         depends = conf.pop('depends', None) or []
 
         service = super().create_from(**conf)
         service.commands = commands
         service.routers = routers
-        service.subscribers = subscribers
+        service.subscribe = subscribe
         service._protocol = protocol
         service._depends = depends
         return service

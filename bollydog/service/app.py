@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 import mode
 
 from bollydog.config import DOMAIN
-from bollydog.globals import _hub_ctx_stack, services
-from bollydog.models.base import BaseCommand as Message, BaseEvent
+from bollydog.globals import _hub_ctx_stack, message as current_message, services
+from bollydog.models.base import BaseCommand as Message
 from bollydog.models.service import AppService
 from bollydog.service.runner import CommandRunnerMixin
 
@@ -19,11 +19,11 @@ if TYPE_CHECKING:
 class HubService(CommandRunnerMixin, AppService):
     """Service mode: messages go through Queue pipeline.
 
-    dispatch(msg) -> exchange.bind_subscriber_callbacks (Events only)
-                  -> queue.put(msg)
+    dispatch(msg) -> queue.put(msg)
     HubService.run consumer -> queue.take() -> create_task(_process_and_complete)
                             -> _run_with_context -> queue.complete
     execute(msg) = dispatch(msg) + await msg.state
+    emit(topic)  = exchange.instantiate(topic) + dispatch each, without awaiting
     """
     domain = DOMAIN
     commands = ['commands']
@@ -51,15 +51,27 @@ class HubService(CommandRunnerMixin, AppService):
         sub = await self.dispatch(message)
         return await sub.state
 
-    async def emit(self, event: Message):
-        await self.dispatch(event)
+    async def emit(self, topic: str = None, event: Message = None, source: Message = None) -> list:
+        """Publish an event. Fire-and-forget: the handlers are never awaited.
+
+        event given   -- dispatch that instance, topic is ignored.
+        event omitted -- topic (defaulting to the current message's destination)
+                         is matched against Exchange and every Event class bound
+                         to it is instantiated and dispatched.
+        source given  -- its dump is appended to each event's data['events'] list.
+        """
+        events = [event] if event is not None else self.exchange.instantiate(topic or current_message.destination)
+        for evt in events:
+            if source is not None:
+                evt.data.setdefault('events', []).append(source.model_dump())
+            await self.dispatch(evt)
+        return events
 
     async def gather(self, commands: list) -> list:
         subs = [await self.dispatch(cmd) for cmd in commands]
         return await asyncio.gather(*(sub.state for sub in subs), return_exceptions=True)
 
     async def dispatch(self, message: Message) -> Message:
-        self.exchange.bind_subscriber_callbacks(message)
         await self.queue.put(message)
         return message
 

@@ -4,6 +4,7 @@ Exposes entry method for CLI:
   run()              -> eager start all services, daemon mode
   run(msg)           -> execute single command, then stop
 """
+import inspect
 import signal
 import tomllib
 from functools import cached_property
@@ -19,20 +20,45 @@ from bollydog.config import (
     ENTRYPOINT_UDS_ENABLED,
 )
 from bollydog.globals import _hub_ctx_stack, _session_ctx_stack, _services_ctx_stack, _registry_ctx_stack
-from bollydog.models.base import BaseCommand as Message
+from bollydog.models.base import BaseCommand, BaseEvent
 from bollydog.models.service import AppService
 
 if TYPE_CHECKING:
     from bollydog.service.app import HubService
+    from bollydog.service.exchange import Exchange
     from bollydog.service.executor import ExecuteService
     from bollydog.service.registry import RegistryService
     from bollydog.service.session import Session
+
+
+def _walk_modules(key: str, service: AppService):
+    """Yield (destination, class) for every concrete Command/Event declared in
+    the service's command modules.
+
+    Classes without their own destination get a dynamic subclass carrying it, so
+    the same class can be owned by several service instances.
+    """
+    _pkg = type(service).__module__.rsplit('.', 1)[0]
+    for module_name in service.commands:
+        _fqn = f'{_pkg}.{module_name}' if '.' not in module_name else module_name
+        try: _mod = smart_import(_fqn)
+        except (ImportError, ModuleNotFoundError, AttributeError): continue
+        for _obj in vars(_mod).values():
+            if not (isinstance(_obj, type) and issubclass(_obj, BaseCommand)): continue
+            # BaseCommand.__call__ is abstract, so a Command that never defines
+            # one is an unfinished intermediate. BaseEvent's is concrete, so
+            # notification-only Events survive this filter.
+            if _obj in (BaseCommand, BaseEvent) or inspect.isabstract(_obj): continue
+            dest = _obj.destination or f'{key}.{_obj.alias}'
+            yield dest, _obj if _obj.destination else type(_obj.__name__, (_obj,), {'destination': dest})
 
 
 class BollydogServices(dict):
     """Dict subclass with typed property accessors for framework services."""
     @property
     def registry(self) -> Optional['RegistryService']: return self.get('bollydog.RegistryService')
+    @property
+    def exchange(self) -> Optional['Exchange']: return self.get('bollydog.Exchange')
     @property
     def session(self) -> Optional['Session']: return self.get('bollydog.Session')
     @property
@@ -46,7 +72,7 @@ class Bootstrap(mode.Worker):
 
     def __init__(self, config: str = None, **kwargs):
         self._config = config
-        self._message: Optional[Message] = None
+        self._message: Optional[BaseCommand] = None
         _services = self._build_services()
         _app_services = BollydogServices({
             k: v for k, v in _services.items()
@@ -56,7 +82,6 @@ class Bootstrap(mode.Worker):
         self.services = _app_services
         _services_ctx_stack.push_without_automatic_cleanup(self.services)
         _registry_ctx_stack.push_without_automatic_cleanup(self.services.registry)
-        self.services.registry.register()
         _session_ctx_stack.push_without_automatic_cleanup(self.services.session)
         _hub_ctx_stack.push_without_automatic_cleanup(self.services.hub)
 
@@ -87,11 +112,11 @@ class Bootstrap(mode.Worker):
         return merged
 
     def _build_services(self) -> dict:
-        """Three-phase build: create instances -> bind protocols -> resolve depends."""
+        """Two-phase build: instantiate everything, then wire it up."""
         config = self.config
         _services = {}
 
-        # Phase 1: create all instances
+        # Phase 1: create all instances — nothing may reference another service yet
         for key, entry in config.items():
             conf = dict(entry)
             module_path = conf.pop('module', None)
@@ -109,29 +134,47 @@ class Bootstrap(mode.Worker):
             instance.domain = domain
             _services[key] = instance
 
-        # Phase 2: bind protocol references
+        # Phase 2: wire protocol, depends, commands and events. All four only need
+        # Phase 1 finished; none of them depends on the others, so one pass does it.
+        _registry = _services.get('bollydog.RegistryService')
+        _exchange = _services.get('bollydog.Exchange')
         for key, instance in _services.items():
-            ref = getattr(instance, '_protocol', None)
-            if not ref:
-                continue
-            proto = _services.get(ref)
-            if proto is None:
-                raise ValueError(f"protocol '{ref}' not found for '{key}'")
-            instance.add_dependency(proto)
+            if ref := getattr(instance, '_protocol', None):
+                proto = _services.get(ref)
+                if proto is None:
+                    raise ValueError(f"protocol '{ref}' not found for '{key}'")
+                instance.add_dependency(proto)
 
-        # Phase 3: resolve depends
-        for key, instance in _services.items():
-            raw = getattr(instance, '_depends', [])
-            if not raw:
+            if raw := getattr(instance, '_depends', None):
+                resolved = {}
+                for dep_ref in raw:
+                    dep = _services.get(dep_ref)
+                    if dep is None:
+                        raise ValueError(f"depends '{dep_ref}' not found for '{key}'")
+                    instance.add_dependency(dep)
+                    resolved[dep_ref] = dep
+                instance.depends = resolved
+
+            if not isinstance(instance, AppService):
                 continue
-            resolved = {}
-            for dep_ref in raw:
-                dep = _services.get(dep_ref)
-                if dep is None:
-                    raise ValueError(f"depends '{dep_ref}' not found for '{key}'")
-                instance.add_dependency(dep)
-                resolved[dep_ref] = dep
-            instance.depends = resolved
+
+            for dest, cls in _walk_modules(key, instance):
+                if issubclass(cls, BaseEvent):
+                    _exchange.add_event(dest, cls)
+                else:
+                    _registry.add_command(dest, cls)
+
+            # subscribe aliases an already-registered Event class onto extra topics
+            for topic, names in instance.subscribe.items():
+                for name in ([names] if isinstance(names, str) else names):
+                    dest = name if '.' in name else f'{key}.{name}'
+                    try:
+                        _exchange.add_event(topic, _exchange.resolve(dest))
+                    except KeyError:
+                        raise ValueError(
+                            f"'{key}' subscribes '{topic}' to unknown Event '{dest}' — "
+                            f"declare it in one of the modules listed in commands"
+                        ) from None
 
         return _services
 
@@ -167,10 +210,6 @@ class Bootstrap(mode.Worker):
         if commands:
             _lines = '\n  '.join(f'{cmd_cls.alias:<20} -> {destination}' for destination, cmd_cls in commands.items())
             self.logger.info(f'commands({len(commands)}):\n  {_lines}')
-        subs = self.services.registry.all_subscribers()
-        if subs:
-            _lines = '\n  '.join(f'{t} -> [{", ".join(dests)}]' for t, dests in subs.items())
-            self.logger.info(f'subscribers({sum(len(v) for v in subs.values())}):\n  {_lines}')
 
     async def on_shutdown(self) -> None:
         for stack in (_hub_ctx_stack, _registry_ctx_stack, _session_ctx_stack, _services_ctx_stack):

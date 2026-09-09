@@ -121,9 +121,11 @@ class BaseCommand(_ModelMixin):
         ...
 
 class BaseEvent(BaseCommand, abstract=True):
+    """A fact that happened. Rides the same pipeline as a Command, but nobody
+    awaits its result. Subclasses put their reaction logic in __call__."""
 
     async def __call__(self, *args, **kwargs) -> Any:
-        self.state.set_result(True)
+        return None
 
 
 class BaseService(mode.Service):

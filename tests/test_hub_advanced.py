@@ -144,27 +144,44 @@ async def test_async_gen_parallel_fan_out(hub):
 
 # ─── Exchange subscriber ─────────────────────────────────────
 
-async def test_event_triggers_subscriber(hub):
-    """Emit Event → Exchange matches subscriber → subscriber command dispatched."""
+async def test_emit_topic_dispatches_bound_events(hub):
+    """hub.emit(topic) -> Exchange instantiates every bound Event -> pipeline runs it."""
     received = []
 
     class _TestService(AppService):
         domain = 'test'
-        async def on_done(self, message):
-            received.append(message.data)
 
     svc = _TestService()
-    svc.subscribers = {'test._TestService.ThingDone': 'on_done'}
     services['test._TestService'] = svc
-    registry._register_subscribers('test._TestService', svc)
+
+    class OnThingDone(BaseEvent):
+        destination = 'test._TestService.OnThingDone'
+        async def __call__(self):
+            received.append(self.data)
 
     class ThingDone(BaseEvent):
         destination = 'test._TestService.ThingDone'
 
-    evt = ThingDone(data={'info': 'ok'})
-    await hub.execute(evt)
+    hub.exchange.add_event('test._TestService.ThingDone', OnThingDone)
+
+    await hub.emit(topic='test._TestService.ThingDone', source=ThingDone(data={'info': 'ok'}))
     await asyncio.sleep(0.15)
-    assert len(received) >= 1
+    assert len(received) == 1
+    assert received[0]['events'][0]['data'] == {'info': 'ok'}
+
+
+async def test_emit_event_instance_bypasses_topic(hub):
+    """hub.emit(event=...) dispatches that instance directly, ignoring Exchange."""
+    received = []
+
+    class Standalone(BaseEvent):
+        destination = 'test._TestService.Standalone'
+        async def __call__(self):
+            received.append(self.data)
+
+    await hub.emit(event=Standalone(data={'n': 1}))
+    await asyncio.sleep(0.15)
+    assert received == [{'n': 1}]
 
 
 # ─── Hub _run retry/timeout path ──────────────────────────────

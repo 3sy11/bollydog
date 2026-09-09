@@ -105,24 +105,43 @@ def test_hub_context_middleware_init():
     assert mw.hub_instance is mock_hub
 
 
-# ─── Exchange: match via registry ─────────────────────────────
+# ─── Exchange: topic -> Event class index ─────────────────────
 
-def test_exchange_subscribe_unsubscribe():
+def test_exchange_add_remove_event():
+    from bollydog.models.base import BaseEvent
     from bollydog.service.exchange import Exchange
-    ex = Exchange()
-    reg = RegistryService()
-    with _registry_ctx_stack.push(reg):
-        reg.subscribe('a.b.c', 'svc.Handler1')
-        assert 'svc.Handler1' in ex.match('a.b.c')
-        reg.unsubscribe('a.b.c', 'svc.Handler1')
-        assert 'svc.Handler1' not in ex.match('a.b.c')
 
-def test_exchange_pattern_subscribe():
-    from bollydog.service.exchange import Exchange
+    class _Handler1(BaseEvent):
+        destination = 'svc.Handler1'
+
     ex = Exchange()
-    reg = RegistryService()
-    with _registry_ctx_stack.push(reg):
-        reg.subscribe('x.*.z', 'svc.Handler2')
-        assert 'svc.Handler2' in ex.match('x.y.z')
-        assert len(ex.match('x.q.z')) == 1
-        assert len(ex.match('x.y.w')) == 0
+    ex.add_event('a.b.c', _Handler1)
+    assert _Handler1 in ex.match('a.b.c')
+    assert ex.resolve('svc.Handler1') is _Handler1
+    ex.remove_event('a.b.c', _Handler1)
+    assert _Handler1 not in ex.match('a.b.c')
+
+def test_exchange_pattern_match():
+    from bollydog.models.base import BaseEvent
+    from bollydog.service.exchange import Exchange
+
+    class _Handler2(BaseEvent):
+        destination = 'svc.Handler2'
+
+    ex = Exchange()
+    ex.add_event('x.*.z', _Handler2)
+    assert _Handler2 in ex.match('x.y.z')
+    assert len(ex.match('x.q.z')) == 1
+    assert len(ex.match('x.y.w')) == 0
+
+def test_exchange_instantiate():
+    from bollydog.models.base import BaseEvent
+    from bollydog.service.exchange import Exchange
+
+    class _Handler3(BaseEvent):
+        destination = 'svc.Handler3'
+
+    ex = Exchange()
+    ex.add_event('p.q', _Handler3)
+    events = ex.instantiate('p.q')
+    assert len(events) == 1 and isinstance(events[0], _Handler3)

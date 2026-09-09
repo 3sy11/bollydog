@@ -17,24 +17,26 @@ CLI / HTTP / WS / UDS
    │  (Worker)    │── pushes registry/hub/session/services globals
    └────┬─────────┘
         │
-   ┌────▼──────────┐
-   │  Registry     │── commands: {destination → BoundCommandClass}
-   │  Service      │── subscribers: {topic → Set[destination]}
-   └────┬──────────┘
+   ┌────▼──────────┐          ┌───────────────┐
+   │  Registry     │          │   Exchange    │
+   │  Service      │          │               │
+   │ {destination  │          │ {topic →      │
+   │  → CommandCls}│          │  [EventCls]}  │
+   └────┬──────────┘          └───────┬───────┘
+        │                             │
+   ┌────▼─────────────────────────────▼────┐
+   │   Hub   dispatch / execute / emit     │
+   │         Session (KV via Protocol)     │
+   │         Queue   (message buffer)      │
+   └────┬──────────────────────────────────┘
         │
-   ┌────▼────┐
-   │   Hub   │── Exchange (stateless event trigger, reads registry)
-   │         │── Session  (KV via Protocol)
-   │         │── Queue    (message buffer)
-   └────┬────┘
-        │  dispatch / execute
    ┌────▼──────────┐
    │  AppService   │── protocol (data layer)
-   │  (domain)     │── commands / subscribers (config)
+   │  (domain)     │── commands / subscribe (config)
    └───────────────┘
 ```
 
-**Key types**: `BaseCommand` (callable action), `BaseEvent` (fire-and-forget), `AppService` (resource owner), `Protocol` (data access), `HubService` (dispatcher + lifecycle), `RegistryService` (centralized binding/subscription index), `Exchange` (stateless event routing trigger), `Bootstrap` (unified Worker entry), `ExecuteService` (lightweight one-shot executor).
+**Key types**: `BaseCommand` (callable action), `BaseEvent` (a Command subclass nobody awaits), `AppService` (resource owner), `Protocol` (data access), `HubService` (dispatcher + lifecycle), `RegistryService` (destination → Command index), `Exchange` (topic → Event class index), `Bootstrap` (unified Worker entry), `ExecuteService` (lightweight one-shot executor).
 
 ## Quick Start
 
@@ -92,9 +94,9 @@ Both `HubService` and `ExecuteService` extend `CommandRunnerMixin`. Subclass mus
 
 `Hub.dispatch(message)` — unified Queue path:
 
-All messages (Command + Event) go through `exchange.bind_subscriber_callbacks` -> `queue.put()` -> consumer `queue.take()` -> `create_task(_process_and_complete)`.
+All messages (Command + Event) go through `queue.put()` -> consumer `queue.take()` -> `create_task(_process_and_complete)`.
 `execute(msg)` = `dispatch(msg)` + `await msg.state` (syntactic sugar).
-Exchange subscriber callbacks bind only on Events (`isinstance(message, BaseEvent)`).
+`emit(topic)` = `exchange.instantiate(topic)` + `dispatch` each, without awaiting any of them.
 
 Hub accesses Exchange and Queue lazily via `apps` proxy (not via `on_init_dependencies`).
 
@@ -193,7 +195,7 @@ from bollydog.globals import hub, app, services, registry, protocol, session, me
 
 `services` is a `MutableMappingProxy` over `LocalStack` — forwards dict operations (`__getitem__`, `get`, `values`, etc.) to the underlying service registry dict pushed by Bootstrap.
 
-`registry` is a `Proxy` over `LocalStack` — pushed during `Bootstrap.__init__`, provides `commands`, `subscribers`, `resolve`, `resolve_app`, `get_app`.
+`registry` is a `Proxy` over `LocalStack` — pushed during `Bootstrap.__init__`, provides `all_commands`, `add_command`, `resolve`, `resolve_app`, `get_app`. Events are not in it; they live in Exchange, reached through `hub.emit` or `services.exchange`.
 
 ## Destination & Topic
 
@@ -201,46 +203,55 @@ Format: `domain.ServiceAlias.CommandAlias` (3-part topic).
 
 - Commands without explicit `destination` are bound via dynamic subclass at registration time: `type(Name, (OriginalCls,), {'destination': dest})`. Original class stays unchanged.
 - `registry.resolve_app(msg)` reads `type(msg).destination` and takes first two segments to find the owning service from `services`.
-- Exchange uses full destination as topic for pattern matching.
+- An Event's destination doubles as its default topic in Exchange.
 
 ## Exchange (pub/sub)
 
-Subscriber values are **method names** (str or list) pointing to methods on the AppService. RegistryService generates handler Commands at startup and maintains subscribers; Exchange is a stateless routing trigger.
+An Event is just a Command subclass that nobody awaits. It carries its own reaction logic in `__call__(self)` and rides the same Queue pipeline as any Command, reaching `app` / `protocol` / `message` through the usual context proxies. There is no separate handler abstraction and no dynamically generated wrapper class.
+
+Exchange holds two indexes and nothing else:
+
+- `_events`: topic (exact destination or wildcard pattern) → list of Event classes
+- `_classes`: destination → Event class, for exact lookup
+
+Every Event found while scanning a service's `commands` modules is registered under its own destination. `subscribe` then aliases those same classes onto extra topics — values are **Event class names**, not method names.
 
 ```python
-class DataEngine(AppService):
-    subscribers = {
-        'analytics.*.DataReady': 'on_data_ready',                   # single method
-        'trading.DataEngine.BarsReady': ['on_bars', 'update_cache'], # fan-out: both run in parallel
-    }
+# trading/commands.py
+class BarsReady(BaseEvent):
+    """Notification only — no __call__ needed."""
 
-    async def on_data_ready(self, message):
-        ...
+class OnDataReady(BaseEvent):
+    async def __call__(self):
+        source = self.data['events'][-1]
+        await app.recompute(source['data'])
 
-    async def on_bars(self, message): ...
-    async def update_cache(self, message): ...
+class UpdateCache(BaseEvent):
+    async def __call__(self): ...
 ```
-
-TOML:
 
 ```toml
-["trading.app.DataEngine".subscribers]
-"analytics.*.DataReady" = "on_data_ready"
-"trading.DataEngine.BarsReady" = ["on_bars", "update_cache"]
+["trading.DataEngine"]
+module = "trading.app.DataEngine"
+commands = ["commands"]
+subscribe = { "analytics.*.DataReady" = "OnDataReady", "trading.DataEngine.BarsReady" = ["OnDataReady", "UpdateCache"] }
 ```
 
-### Registration (RegistryService)
+A short name is resolved against the declaring service (`f'{key}.{name}'`); a dotted name is taken as a full destination. An unresolvable name fails the build with a clear error rather than silently doing nothing.
 
-During `registry.register()`, subscriber configs are scanned. For each `(topic, method_name)`, a dynamic Command class wrapping the bound method is generated, stored in `registry.commands`, and the topic→destination mapping is stored in `registry.subscribers`.
+### Publishing
 
-### Routing (Exchange)
+```python
+await hub.emit(topic='trading.DataEngine.BarsReady', source=message)  # fan out by topic
+await hub.emit(event=BarsReady(data={'sym': 'AAPL'}))                 # dispatch one instance
+await hub.emit(source=message)                                        # topic defaults to message.destination
+```
 
-Exchange reads `registry.subscribers` at runtime — no local state. `bind_subscriber_callbacks(msg)` adds done-callbacks to Event's state Future. When Event completes, `_on_subscriber_done` resolves the handler via `registry.resolve(destination)`, instantiates it with `_source = original_msg`, and dispatches it through Hub.
+`emit` matches the topic, instantiates every bound Event class, appends `source.model_dump()` to each instance's `data['events']` list, and dispatches them all through the Queue. It returns the instances without awaiting them — a publisher never blocks on its subscribers.
 
-- Callback signature: `async def method(self, message)` — self = AppService instance, message = the source Event instance.
 - AMQP-style wildcards: `*` = one segment, `#` = zero or more.
-- Multiple instances subscribing to the same topic → each instance's handlers dispatch independently in parallel.
-- Runtime subscribe/unsubscribe via `registry.subscribe(topic, dest)` / `registry.unsubscribe(topic, dest)`.
+- Fan-out is resolved in one pass at emit time; there is no "event completes, then subscribers fire" second stage.
+- Runtime binding via `exchange.add_event(topic, cls)` / `exchange.remove_event(topic, cls)`.
 
 ## Hooks (before/after)
 
@@ -277,22 +288,18 @@ Business logic chooses the key: `trace_id` for conversations, `created_by` for u
 class DataEngine(AppService):
     domain = 'trading'
     commands = ['commands']
-    depends = ['infra.ConfigEngine']                            # resolved to instances at startup
-    subscribers = {'trading.*.BarsReady': 'on_bars_ready'}      # method name, not Command class
-
-    async def on_bars_ready(self, message):
-        event = message.get_event()
-        self.transform(event['data'])
+    depends = ['infra.ConfigEngine']                    # resolved to instances at startup
+    subscribe = {'trading.*.BarsReady': 'OnBarsReady'}  # Event class name, not method name
 
     def transform(self, data):
-        return processed_data  # business method called by Commands
+        return processed_data  # business method called by Commands and Events
 ```
 
 Key rules:
 - `protocol` is auto-assigned when `add_dependency` receives a `Protocol` instance.
 - Service registry is the `services` MutableMappingProxy (`globals.services`), keyed by `{domain}.{alias}`. Populated by Bootstrap.
-- `RegistryService` manages all command bindings (`commands`) and event subscriptions (`subscribers`). Accessible globally via `globals.registry`.
-- `create_from(**conf)` merges TOML config (`commands`, `routers`, `subscribers`, `depends`) with class-level defaults.
+- `RegistryService` holds command bindings; `Exchange` holds event topics. Reached via `globals.registry` and `services.exchange`.
+- `create_from(**conf)` merges TOML config (`commands`, `routers`, `subscribe`, `depends`) with class-level defaults.
 - `registry.resolve_app(message)` reads `type(msg).destination` and uses first two segments to find the owning service from `services`.
 - Commands access the owning service via `globals.app`; never reach into sub-services.
 
@@ -437,9 +444,13 @@ commands = ["commands"]
 
 ["trading.DataEngine".routers]
 Ping = ["GET",  "/api/ping"]
+```
 
-["trading.DataEngine".subscribers]
-"analytics.*.DataReady" = "on_data_ready"
+`subscribe` is an inline table, so it stays on the service's own key rather than opening a sub-table:
+
+```toml
+["trading.DataEngine"]
+subscribe = { "analytics.*.DataReady" = "OnDataReady" }
 ```
 
 ### Reference System
@@ -460,8 +471,8 @@ All references (`depends`, `protocol`) use `domain.alias` strings that resolve a
 | `module` | `str` | Import path. Popped by Bootstrap before `create_from` |
 | `commands` | `list[str]` | Merged with ClassVar default by `AppService.create_from` |
 | `routers` | `dict` | Merged with ClassVar default by `AppService.create_from` |
-| `subscribers` | `dict` | Merged with ClassVar default by `AppService.create_from` |
-| `depends` | `list[str]` | Stored as `_depends`, resolved to `dict` in Phase 3 |
+| `subscribe` | `dict` | Merged with ClassVar default by `AppService.create_from`; values are Event class names |
+| `depends` | `list[str]` | Stored as `_depends`, resolved to `dict` in Phase 2 |
 | `protocol` | `str` | Stored as `_protocol`, bound in Phase 2 via `add_dependency` |
 | other keys | any | Injected via `setattr` onto instance |
 
@@ -494,17 +505,20 @@ TOML should be minimal. If a parameter equals its class default, omit it from TO
 
 ### Service lifecycle
 
-Bootstrap loads multiple TOML sources and builds all services in a 3-phase pipeline:
+Bootstrap loads multiple TOML sources and builds all services in a 2-phase pipeline:
 
 ```
 Bootstrap(mode.Worker)
   __init__(config=path)
     -> config (cached_property): merge framework TOML + entrypoint TOMLs + app TOML
-    -> _build_services(): 3-phase pipeline
+    -> _build_services(): 2-phase pipeline
        Phase 1: for each TOML entry: pop module, smart_import, cls.create_from(**conf),
                 setattr alias/domain from key
-       Phase 2: bind _protocol references via add_dependency
-       Phase 3: resolve _depends list -> instance.depends dict via add_dependency
+       Phase 2: one pass per instance, four independent wirings —
+                  _protocol reference   -> add_dependency
+                  _depends list         -> instance.depends dict via add_dependency
+                  _walk_modules scan    -> Commands to Registry, Events to Exchange
+                  subscribe entries     -> alias registered Event classes onto extra topics
        -> returns flat dict {domain.alias: instance}
     -> filter AppService instances into BollydogServices (typed dict)
     -> push all context stacks unconditionally: services, registry, session, hub
@@ -526,7 +540,7 @@ BaseService.create_from     → cls() + setattr (pure injection, no protocol/dep
   ↑
 Protocol.create_from        → pop protocol → _protocol, then super()
   ↑
-AppService.create_from      → pop commands/routers/subscribers/protocol/depends,
+AppService.create_from      → pop commands/routers/subscribe/protocol/depends,
                               merge ClassVar defaults, then super()
 ```
 
@@ -659,4 +673,4 @@ Coverage reports: `tmp/htmlcov/` (HTML), `tmp/coverage.xml` (XML).
 | `resolve` fails | Use full destination; suffix match only works in CLI |
 | Wrong `app` in Command | Ensure class-level `destination` matches service key |
 | Protocol not started | Must be added via `add_dependency`, not just assigned |
-| subscriber not triggered | Verify `subscribers` config in TOML; check `registry.subscribers` |
+| subscriber not triggered | Verify `subscribe` config in TOML; check `services.exchange.all_events()` |

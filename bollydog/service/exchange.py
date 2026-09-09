@@ -1,8 +1,11 @@
-"""Exchange: lightweight event routing and subscriber trigger."""
-from functools import partial
+"""Exchange: topic -> Event class index. Registration and instantiation only.
+
+Dispatch is HubService.emit's job — Exchange holds no reference to hub or queue.
+"""
+from collections import defaultdict
+from typing import Dict, List, Type
 
 from bollydog.config import DOMAIN
-from bollydog.globals import hub, registry
 from bollydog.models.base import BaseEvent
 from bollydog.models.service import AppService
 
@@ -28,40 +31,52 @@ def match_topic(pattern: str, topic: str) -> bool:
 class Exchange(AppService):
     domain = DOMAIN
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # topic (exact destination or wildcard pattern) -> Event classes
+        self._events: Dict[str, List[Type[BaseEvent]]] = defaultdict(list)
+        # destination -> Event class, for exact lookup by subscribe config
+        self._classes: Dict[str, Type[BaseEvent]] = {}
+
     async def on_started(self) -> None:
-        subs = registry.all_subscribers()
-        if subs:
-            lines = '\n  '.join(f'{t} -> [{", ".join(destinations)}]' for t, destinations in subs.items())
-            self.logger.info(f'subscribers({sum(len(v) for v in subs.values())}):\n  {lines}')
+        if self._events:
+            lines = '\n  '.join(
+                f'{topic:<40} -> [{", ".join(c.alias for c in classes)}]'
+                for topic, classes in self._events.items()
+            )
+            self.logger.info(f'events({sum(len(v) for v in self._events.values())}):\n  {lines}')
         await super().on_started()
 
-    def match(self, topic: str) -> set:
-        """Match topic against registry.subscribers, return set of handler destinations."""
-        matched = set()
-        for pattern, destinations in registry.all_subscribers().items():
-            if pattern == topic or match_topic(pattern, topic):
-                matched.update(destinations)
-        return matched
+    def all_events(self) -> Dict[str, List[Type[BaseEvent]]]:
+        """Return full topic -> Event classes index."""
+        return self._events
 
-    def _on_subscriber_done(self, destination, source_message, state):
-        try:
-            if self.should_stop: return
-            if state.cancelled() or state.exception(): return
-            handler = registry.resolve(destination)
-            command = handler()
-            command._source = source_message
-            self.add_future(hub.dispatch(command))
-        except Exception as e:
-            self.logger.exception(f'subscriber callback error: {e}')
+    def add_event(self, topic: str, cls: Type[BaseEvent]):
+        """Bind an Event class to a topic. Called once per class with its own
+        destination at startup, then again per subscribe entry to alias it onto
+        another topic."""
+        if cls not in self._events[topic]:
+            self._events[topic].append(cls)
+        if cls.destination:
+            self._classes[cls.destination] = cls
 
-    def bind_subscriber_callbacks(self, message):
-        if not isinstance(message, BaseEvent): return
-        topic = type(message).destination
-        if not topic:
-            self.logger.warning(
-                f'Event {type(message).__name__} has no destination bound, '
-                f'subscribers will not fire. Use registry.resolve() or svc.event() to construct events.'
-            )
-            return
-        for destination in self.match(topic):
-            message.state.add_done_callback(partial(self._on_subscriber_done, destination, message))
+    def remove_event(self, topic: str, cls: Type[BaseEvent]):
+        """Unbind an Event class from a topic."""
+        if cls in self._events.get(topic, ()):
+            self._events[topic].remove(cls)
+
+    def resolve(self, destination: str) -> Type[BaseEvent]:
+        """Exact destination lookup. Raises KeyError if not found."""
+        if destination not in self._classes: raise KeyError(f"Event '{destination}' not found")
+        return self._classes[destination]
+
+    def match(self, topic: str) -> List[Type[BaseEvent]]:
+        """Every Event class whose registered topic matches."""
+        return [cls
+                for pattern, classes in self._events.items()
+                if pattern == topic or match_topic(pattern, topic)
+                for cls in classes]
+
+    def instantiate(self, topic: str) -> List[BaseEvent]:
+        """Materialize every Event bound to topic. Dispatch is the caller's job."""
+        return [cls() for cls in self.match(topic)]

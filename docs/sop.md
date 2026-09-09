@@ -294,11 +294,16 @@ class SomeService(AppService):
     def get_state(self, key: str) -> dict: ...
 ```
 
-**Subscriber signatures**:
+**Subscriber signatures** — subscribing binds a topic to an Event class, and the Event carries its own logic:
 ```python
 class AnotherService(AppService):
-    subscribers = {'domain.SomeService.TaskDone': 'on_task_done'}
-    async def on_task_done(self, message: BaseCommand) -> dict | None: ...
+    subscribe = {'domain.SomeService.TaskDone': 'OnTaskDone'}
+
+# in the service's commands module
+class OnTaskDone(BaseEvent):
+    async def __call__(self) -> dict | None:
+        source = self.data['events'][-1]
+        ...
 ```
 
 ### 5b. Data Modeling
@@ -464,15 +469,15 @@ The skeleton **provides a runtime environment for verified Command behavior chai
 
 2. Service declaration
    → AppService class definition, mount Protocol
-   → commands / subscribers / depends declarations
+   → commands / subscribe / depends declarations
 
 3. Service registration and configuration
    → Write config.toml
    → Bootstrap(_build_services) validation
 
 4. Hub integration
-   → Bootstrap startup, registry.register() binds commands + subscribers
-   → Exchange broadcast verification
+   → Bootstrap startup, _build_services binds Commands to Registry and Events to Exchange
+   → hub.emit fan-out verification
 
 5. Entry point verification
    → bollydog ls --config config.toml         ← confirm all Commands registered
@@ -485,13 +490,11 @@ The skeleton **provides a runtime environment for verified Command behavior chai
 TOML should be **minimal** — only framework-level wiring keys and overrides of non-default service parameters. Service-level custom parameters are defined in `__init__` with defaults; TOML's role is override, not definition.
 
 ```toml
-# Framework-level keys: commands, subscribers, depends, protocol — always explicit
+# Framework-level keys: commands, subscribe, depends, protocol — always explicit
 ["myapp.services.SomeService"]
 commands = ["commands"]
 depends = ["infra.ConfigSvc"]
-
-["myapp.services.SomeService".subscribers]
-"domain.*.TaskDone" = "on_task_done"
+subscribe = { "domain.*.TaskDone" = "OnTaskDone" }
 
 # Protocol parameters: only include values that differ from class defaults
 ["myapp.services.SomeService".protocol]

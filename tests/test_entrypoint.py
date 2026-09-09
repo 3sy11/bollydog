@@ -203,25 +203,25 @@ def test_uds_service_init():
 def test_socket_service_init():
     from bollydog.entrypoint.websocket.app import SocketService
     svc = SocketService()
-    assert svc.subscribers == set()
+    assert svc.clients == set()
     assert svc.listening == {}
 
-async def test_socket_service_subscribe():
+async def test_socket_service_attach():
     from bollydog.entrypoint.websocket.app import SocketService
     svc = SocketService()
     ws = AsyncMock()
-    await svc.subscribe(ws)
-    assert ws in svc.subscribers
+    await svc.attach(ws)
+    assert ws in svc.clients
     ws.accept.assert_awaited_once()
 
-async def test_socket_service_unsubscribe():
+async def test_socket_service_detach():
     from bollydog.entrypoint.websocket.app import SocketService
     svc = SocketService()
     ws = AsyncMock()
-    await svc.subscribe(ws)
+    await svc.attach(ws)
     svc.listening['trace1'] = {ws}
-    await svc.unsubscribe(ws)
-    assert ws not in svc.subscribers
+    await svc.detach(ws)
+    assert ws not in svc.clients
     assert 'trace1' not in svc.listening
 
 
